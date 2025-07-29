@@ -2,12 +2,12 @@ let rhythmManager;
 let hitDetector;
 
 function preload() {
-    rhythmManager = new rhythmManager("congaPatterns/tumbao.json");
+    rhythmManager = new RhythmManager("congaPatterns/tumbao.json");
 }
 
 function setup() {
     createCanvas(960, 480);
-    hitDetector = new hitDetector(rhythmManager);
+    hitDetector = new HitDetector(rhythmManager);
 }
 
 function draw() {
