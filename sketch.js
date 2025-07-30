@@ -56,9 +56,20 @@ function draw() {
 
 function drawJudgeBox() {
     const box = rhythmManager.getBox();
+
+    //判定框本身
     noFill();
     stroke(150);
     rect(box.x, box.y, box.width, box.height);
+
+    //中心线
+    const cx = box.x + box.width / 2;
+    stroke(200, 0, 0);
+    strokeWeight(2);
+    line(cx, box.y, cx, box.y + box.height);
+
+    //恢复默认
+    strokeWeight(1);
 }
 
 function drawNotes() {
