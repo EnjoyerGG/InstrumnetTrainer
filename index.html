@@ -4,13 +4,44 @@
 <head>
     <meta charset="UTF-8">
     <title>Conga Rhythm trainer</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- load p5.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+
+    <!-- load ml5.js -->
+    <script src="https://cdn.jsdelivr.net/npm/ml5@latest/dist/ml5.min.js"></script>
+
+    <!-- load custom scripts -->
     <script src="rhythmManager.js"></script>
-    <script src="grayOverlay.js"></script>
     <script src="hitDetector.js"></script>
     <script src="sketch.js"></script>
 </head>
 
-<body></body>
+<body>
+    <h2>🥁 Instrument Trainer – Stage 1 Demo</h2>
+
+    <div id="ui">
+        <button id="start-btn">Start</button>
+        <button id="pause-btn">Pause</button>
+        <button id="reset-btn">Reset</button>
+        <label>
+            Speed(px/frame):
+            <input id="speed-slider" type="range" min="0.1" max="2.0" step="0.01" value="0.5" />
+            <span id="speed-val">0.50</span>
+        </label>
+    </div>
+
+    <div id="status">Hits 0 | Miss 0</div>
+    <div id="label">ml5 label: waiting...</div>
+
+    <!-- 独立的导出按钮 -->
+    <div style="margin-top: 8px;">
+        <button id="export-btn">Export</button>
+    </div>
+
+    <!-- （可选）背景音乐 -->
+</body>
 
 </html>
