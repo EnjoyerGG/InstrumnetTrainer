@@ -12,10 +12,10 @@ class RhythmManager {
             good: 20
         };
         this.judgementBox = {
-            width: 60,
-            height: 60,
+            width: 50,
+            height: 120,
             get x() { return width / 2 - this.width / 2; },
-            get y() { return 250; }
+            get y() { return 180; }
         };
     }
 
