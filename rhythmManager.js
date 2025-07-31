@@ -18,10 +18,16 @@ class RhythmManager {
     getElapsedTime() { return this.startTime === null ? 0 : this._now() - this.startTime; }
     _t() { return this.getElapsedTime() * this.speedFactor; }   // 加速后视觉时间
     setSpeedFactor(newF) {
+        /* 尚未开始播放 → 只记录倍率 */
+        if (this.startTime === null) {
+            this.speedFactor = newF;
+            return;
+        }
+        /* 已在播放 → 对 startTime 做补偿 */
         const now = this._now();
-        const tVisOld = (now - this.startTime) * this.speedFactor;      // 旧视觉时间
+        const tVisOld = (now - this.startTime) * this.speedFactor;
         this.speedFactor = newF;
-        this.startTime = now - tVisOld / newF;                        // 调整 startTime
+        this.startTime = now - tVisOld / newF;                       // 调整 startTime
     }
 
     /* ---------- 播放控制 ---------- */
@@ -40,11 +46,13 @@ class RhythmManager {
 
     pause() { if (!this.paused) { this.paused = true; this.pauseAt = millis(); } }
     resume() {
+        /* 首次播放：直接 reset */
+        if (this.startTime === null) { this.reset(); return; }
+
         if (this.paused) {
             this.startTime += millis() - this.pauseAt; // 补偿暂停时长
             this.paused = false;
-        }
-        if (this.startTime === null) this.reset();     // 第一次点击 Start
+        }    // 第一次点击 Start
     }
 
 
