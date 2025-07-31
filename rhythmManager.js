@@ -1,152 +1,103 @@
 class RhythmManager {
     constructor() {
-        this.notes = [];
-        this.hits = [];
-        this.spawnInterval = 120; // 生成音符的帧间隔
-        this.noteSpeed = 2;
-        this.timer = 0;
-        this.pattern = ["open", "open", "slap", "heel", "slap", "open"];
-        this.patternIndex = 0;
-        this.hitWindow = {
-            perfect: 5,
-            good: 20
-        };
-        this.judgementBox = {
-            width: 50,
-            height: 120,
-            get x() { return width / 2 - this.width / 2; },
-            get y() { return 180; }
-        };
+        this.scoreNotes = [];                  // 灰色谱面音符
+        this.bpm = 120;
+        this.noteInterval = 60000 / this.bpm / 2; // 8 分音
+        this.scrollSpeed = 0.2;                // px / ms
+        this.noteY = 200;
+        this.judgeLineX = 500;
+
+        this.startTime = null;               // 播放基准
+        this.paused = false;
+        this.pauseAt = 0;
     }
 
-    setSpeed(speed) {
-        this.noteSpeed = speed;
-    }
+    /* ---------- 播放控制 ---------- */
+    _now() { return this.paused ? this.pauseAt : millis(); }
+    getElapsedTime() { return this.startTime === null ? 0 : this._now() - this.startTime; }
 
     reset() {
-        this.notes = [];
-        this.hits = [];
-        this.timer = 0;
-        this.patternIndex = 0;
+        this.scoreNotes.length = 0;
+        this.startTime = millis();
+        for (let i = 0; i < 32; i++) {
+            this.scoreNotes.push({
+                time: i * this.noteInterval, // 理论时间
+                judged: false,                 // 是否已有反馈
+                result: null,                  // Perfect / Good / Miss
+                hitTime: null                   // 实际点击时间（仅 Perfect/Good）
+            });
+        }
     }
 
-    update() {
-        this.timer++;
-        if (this.timer % this.spawnInterval === 0) {
-            this.spawnNote();
+    pause() { if (!this.paused) { this.paused = true; this.pauseAt = millis(); } }
+    resume() {
+        if (this.paused) {
+            this.startTime += millis() - this.pauseAt; // 补偿暂停时长
+            this.paused = false;
+        }
+        if (this.startTime === null) this.reset();     // 第一次点击 Start
+    }
+
+    setScrollSpeed(v) { this.scrollSpeed = v; }
+
+    /* ---------- 击打判定 ---------- */
+    registerHit() {
+        const tHit = this.getElapsedTime();
+
+        // 找离点击最近、且尚未判定的音符
+        let best = null;
+        let bestDiff = Infinity;
+        for (const n of this.scoreNotes) {
+            if (n.judged) continue;
+            const d = Math.abs(n.time - tHit);
+            if (d < bestDiff) { bestDiff = d; best = n; }
         }
 
-        for (let note of this.notes) {
-            note.x -= this.noteSpeed;
+        // 若找到且在 200 ms 判定范围内 → 绑定结果
+        if (best && bestDiff <= 200) {
+            best.judged = true;
+            best.hitTime = tHit;
+            best.result = bestDiff <= 20 ? "Perfect"
+                : bestDiff <= 100 ? "Good"
+                    : "Miss";            // >100 ms 但仍 ≤200 ms
         }
+        // 若没找到匹配音符，则忽略这次点击，不额外生成 Miss
+    }
 
-        for (let hit of this.hits) {
-            hit.x -= this.noteSpeed;
-        }
-
-        // 自动标记miss（音符离开判断框）
-        for (let note of this.notes) {
-            if (!note.hit && note.x + 10 < this.judgementBox.x) {
-                note.hit = true;
-                note.result = "Miss";
-                this.hits.push({
-                    note: note,
-                    offset: note.x - (this.judgementBox.x + this.judgementBox.width / 2),
-                    result: "Miss"
-                });
+    checkAutoMiss() {
+        const tNow = this.getElapsedTime();
+        for (const n of this.scoreNotes) {
+            if (!n.judged && tNow - n.time > 200) {   // 超时仍未点击
+                n.judged = true;
+                n.result = "Miss";
             }
         }
     }
 
-    spawnNote() {
-        const noteType = this.pattern[this.patternIndex];
-        this.patternIndex = (this.patternIndex + 1) % this.pattern.length;
-        this.notes.push({
-            x: width + 20,
-            y: this.judgementBox.y + this.judgementBox.height / 2,
-            type: noteType,
-            hit: false
-        });
+    /* ---------- 绘制辅助 ---------- */
+    getScrollX(tNote) {
+        const tNow = this.getElapsedTime();
+        return this.judgeLineX + (tNote - tNow) * this.scrollSpeed;
+    }
+    getVisibleNotes() {
+        const tNow = this.getElapsedTime();
+        return this.scoreNotes.filter(n => tNow - n.time < 5000); // 仅渲染近 5 s
     }
 
-    registerHit(type) {
-        // 寻找最近的未命中的音符
-        for (let note of this.notes) {
-            if (note.hit || note.type !== type) continue;
-
-            const cx = this.judgementBox.x + this.judgementBox.width / 2;
-            const dx = note.x - cx;
-
-            if (Math.abs(dx) <= this.judgementBox.width / 2) {
-                let result = "Good";
-                if (Math.abs(dx) <= this.hitWindow.perfect) result = "Perfect";
-                note.hit = true;
-                note.result = result;
-
-                this.hits.push({
-                    note: note,
-                    offset: dx,
-                    result: result
-                });
-                return result;
-            }
-        }
-
-        return "Ignored";
-    }
-
-    getNotes() {
-        return this.notes;
-    }
-
-    getHits() {
-        return this.hits;
-    }
-
-    getBox() {
-        return this.judgementBox;
-    }
-
-    exportCSV() {
-        let lines = ["time,type,result,offset"];
-        for (const h of this.hits) {
-            lines.push(`${h.note.x},${h.note.type},${h.result},${h.offset}`);
-        }
-        return lines.join("\n");
-    }
-
-    // 允许任意打击类型，只关心 timing 是否对齐
-    registerHitAny() {
-        for (let note of this.notes) {
-            if (note.hit) continue;
-            const cx = this.judgementBox.x + this.judgementBox.width / 2;
-            const dx = note.x - cx;
-
-            if (Math.abs(dx) <= this.judgementBox.width / 2) {
-                let result = "Good";
-                if (Math.abs(dx) <= this.hitWindow.perfect) result = "Perfect";
-                note.hit = true;
-                note.result = result;
-
-                this.hits.push({
-                    note: note,
-                    offset: dx,
-                    result: result
-                });
-                return result;
-            }
-        }
-
-        return "Ignored";
-    }
-
+    /* ---------- 统计 / 导出 ---------- */
     getStats() {
-        let hitCount = 0;
-        let missCount = 0;
-        for (const h of this.hits) {
-            if (h.result === "Miss") missCount++;
-            else hitCount++;
+        let hit = 0, miss = 0;
+        for (const n of this.scoreNotes) {
+            if (!n.judged) continue;
+            if (n.result === "Perfect" || n.result === "Good") hit++;
+            else miss++;
         }
-        return { hit: hitCount, miss: missCount };
+        return { hit, miss };
+    }
+    exportCSV() {
+        const rows = ["time_ms,result"];
+        for (const n of this.scoreNotes)
+            rows.push(`${n.time},${n.result ?? "Unjudged"}`);
+        return rows.join("\n");
     }
 }

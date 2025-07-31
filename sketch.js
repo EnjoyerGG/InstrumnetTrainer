@@ -1,107 +1,67 @@
-let rhythmManager;
-let isRunning = false;
+let rm;          // RhythmManager 实例
+let running = false;
 
 function setup() {
     createCanvas(1000, 400);
-    rhythmManager = new RhythmManager();
+    rm = new RhythmManager();
 
-    // 按钮绑定到 HTML 中的按钮
-    const startBtn = select("#start-btn");
-    const pauseBtn = select("#pause-btn");
-    const resetBtn = select("#reset-btn");
-    const exportBtn = select("#export-btn");
-    const speedSlider = select("#speed-slider");
-    const speedVal = select("#speed-val");
-
-    startBtn.mousePressed(() => {
-        isRunning = true;
-    });
-
-    pauseBtn.mousePressed(() => {
-        isRunning = false;
-    });
-
-    resetBtn.mousePressed(() => {
-        rhythmManager.reset();
-        isRunning = true;
-    });
-
-    exportBtn.mousePressed(() => {
-        const csv = rhythmManager.exportCSV();
-        saveStrings([csv], "hits.csv");
-    });
-
-    speedSlider.input(() => {
-        const val = parseFloat(speedSlider.value());
-        speedVal.html(val.toFixed(2));
-        rhythmManager.setSpeed(val * 4); // 显著影响速度
+    /* ---------- UI 绑定 ---------- */
+    select("#start-btn").mousePressed(() => { running = true; rm.resume(); });
+    select("#pause-btn").mousePressed(() => { running = false; rm.pause(); });
+    select("#reset-btn").mousePressed(() => { rm.reset(); running = true; });
+    select("#export-btn").mousePressed(() =>
+        saveStrings([rm.exportCSV()], "hits.csv")
+    );
+    select("#speed-slider").input(() => {
+        const v = parseFloat(select("#speed-slider").value());
+        select("#speed-val").html(v.toFixed(2));
+        rm.setScrollSpeed(v);
     });
 }
 
 function draw() {
-    background(255);
+    background("#f4f4f4");
+    stroke(255, 0, 0);
+    line(rm.judgeLineX, 0, rm.judgeLineX, height);
 
-    if (isRunning) {
-        rhythmManager.update();
+    if (running) {
+        rm.checkAutoMiss();
     }
+    drawNotesAndFeedback();
 
-    drawJudgeBox();
-    drawNotes();
-    drawHits();
-
-    // 更新统计显示
-    const stats = rhythmManager.getStats();
-    select("#status").html(`Hits ${stats.hit} | Miss ${stats.miss}`);
+    const { hit, miss } = rm.getStats();
+    select("#status").html(`Hits ${hit} | Miss ${miss}`);
 }
 
-function drawJudgeBox() {
-    const box = rhythmManager.getBox();
+function drawNotesAndFeedback() {
+    const notes = rm.getVisibleNotes();
+    for (const n of notes) {
+        const xNote = rm.getScrollX(n.time);
+        const y = rm.noteY;
 
-    //判定框本身
-    noFill();
-    stroke(150);
-    rect(box.x, box.y, box.width, box.height);
+        /* 灰色音符 */
+        fill(180); stroke(200, 0, 0);
+        ellipse(xNote, y, 20);
 
-    //中心线
-    const cx = box.x + box.width / 2;
-    stroke(200, 0, 0);
-    strokeWeight(2);
-    line(cx, box.y, cx, box.y + box.height);
+        if (n.judged) {
+            /* 反馈文字 */
+            textSize(14); textAlign(CENTER);
+            fill(
+                n.result === "Perfect" ? "purple" :
+                    n.result === "Good" ? "green" : "red"
+            );
+            text(n.result, xNote, y - 30);
 
-    //恢复默认
-    strokeWeight(1);
-}
-
-function drawNotes() {
-    const notes = rhythmManager.getNotes();
-    for (let note of notes) {
-        if (!note.hit) {
-            fill(150);
-            noStroke();
-            ellipse(note.x, note.y, 20);
+            /* 黑色打击点（仅 Perfect / Good）*/
+            if (n.result === "Perfect" || n.result === "Good") {
+                const xHit = rm.getScrollX(n.hitTime);
+                fill(0); noStroke();
+                ellipse(xHit, y, 10);
+            }
         }
     }
 }
 
-function drawHits() {
-    const hits = rhythmManager.getHits();
-    textAlign(CENTER);
-    textSize(16);
-    for (let h of hits) {
-        const x = h.note.x;
-        const y = h.note.y;
-        fill(0);
-        ellipse(x, y, 20);
-        if (h.result === "Perfect") fill("purple");
-        else if (h.result === "Good") fill("green");
-        else fill("red");
-        text(h.result, x, y - 30);
-    }
-}
-
-// 鼠标点击模拟任意打击（忽略类型）
 function mousePressed() {
-    if (!isRunning) return;
-    const result = rhythmManager.registerHitAny(); // 用新的泛型方法
-    console.log("Hit result:", result);
+    if (running) rm.registerHit();
 }
