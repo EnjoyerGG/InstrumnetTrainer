@@ -20,7 +20,7 @@ function setup() {
 }
 
 function draw() {
-    background("#f4f4f4");
+    background("#cccccc");
     stroke(255, 0, 0);
     line(rm.judgeLineX, 0, rm.judgeLineX, height);
 
