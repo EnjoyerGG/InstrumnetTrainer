@@ -17,7 +17,12 @@ class RhythmManager {
     _now() { return this.paused ? this.pauseAt : millis(); }
     getElapsedTime() { return this.startTime === null ? 0 : this._now() - this.startTime; }
     _t() { return this.getElapsedTime() * this.speedFactor; }   // 加速后视觉时间
-    setSpeedFactor(f) { this.speedFactor = f; }
+    setSpeedFactor(newF) {
+        const now = this._now();
+        const tVisOld = (now - this.startTime) * this.speedFactor;      // 旧视觉时间
+        this.speedFactor = newF;
+        this.startTime = now - tVisOld / newF;                        // 调整 startTime
+    }
 
     /* ---------- 播放控制 ---------- */
     reset() {
