@@ -41,7 +41,7 @@ function drawNotesAndFeedback() {
 
         /* 灰音符 */
         fill(180);
-        stroke(200, 0, 0);
+        noStroke();
         ellipse(xNote, y, 20);
 
         if (n.judged) {
