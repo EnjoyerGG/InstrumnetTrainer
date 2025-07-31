@@ -3,7 +3,8 @@ class RhythmManager {
         this.scoreNotes = [];                  // 灰色谱面音符
         this.bpm = 120;
         this.noteInterval = 60000 / this.bpm / 2; // 8 分音
-        this.scrollSpeed = 0.2;                // px / ms
+        this.scrollSpeed = 0.2;
+        this.speedFactor = 1.0;                // px / ms
         this.noteY = 200;
         this.judgeLineX = 500;
 
@@ -12,10 +13,13 @@ class RhythmManager {
         this.pauseAt = 0;
     }
 
-    /* ---------- 播放控制 ---------- */
+    /* ===== 时间工具 ===== */
     _now() { return this.paused ? this.pauseAt : millis(); }
     getElapsedTime() { return this.startTime === null ? 0 : this._now() - this.startTime; }
+    _t() { return this.getElapsedTime() * this.speedFactor; }   // 加速后视觉时间
+    setSpeedFactor(f) { this.speedFactor = f; }
 
+    /* ---------- 播放控制 ---------- */
     reset() {
         this.scoreNotes.length = 0;
         this.startTime = millis();
@@ -38,36 +42,32 @@ class RhythmManager {
         if (this.startTime === null) this.reset();     // 第一次点击 Start
     }
 
-    setScrollSpeed(v) { this.scrollSpeed = v; }
 
     /* ---------- 击打判定 ---------- */
     registerHit() {
-        const tHit = this.getElapsedTime();
+        const hitTime = this._t();                      // 取加速后时间
 
-        // 找离点击最近、且尚未判定的音符
-        let best = null;
-        let bestDiff = Infinity;
+        // 寻找最近的未判定音符
+        let best = null, bestDiff = Infinity;
         for (const n of this.scoreNotes) {
             if (n.judged) continue;
-            const d = Math.abs(n.time - tHit);
+            const d = Math.abs(n.time - hitTime);
             if (d < bestDiff) { bestDiff = d; best = n; }
         }
 
-        // 若找到且在 200 ms 判定范围内 → 绑定结果
         if (best && bestDiff <= 200) {
             best.judged = true;
-            best.hitTime = tHit;
-            best.result = bestDiff <= 20 ? "Perfect"
-                : bestDiff <= 100 ? "Good"
-                    : "Miss";            // >100 ms 但仍 ≤200 ms
+            best.hitTime = hitTime;
+            best.result = bestDiff <= 20 ? "Perfect" :
+                bestDiff <= 100 ? "Good" : "Miss";
         }
-        // 若没找到匹配音符，则忽略这次点击，不额外生成 Miss
+        /* 若无匹配或 >200 ms，则忽略点击，不生成额外 Miss */
     }
 
     checkAutoMiss() {
-        const tNow = this.getElapsedTime();
+        const now = this._t();
         for (const n of this.scoreNotes) {
-            if (!n.judged && tNow - n.time > 200) {   // 超时仍未点击
+            if (!n.judged && now - n.time > 200) {
                 n.judged = true;
                 n.result = "Miss";
             }
@@ -75,13 +75,10 @@ class RhythmManager {
     }
 
     /* ---------- 绘制辅助 ---------- */
-    getScrollX(tNote) {
-        const tNow = this.getElapsedTime();
-        return this.judgeLineX + (tNote - tNow) * this.scrollSpeed;
-    }
+    getScrollX(noteTime) { return this.judgeLineX + (noteTime - this._t()) * this.scrollSpeed; }
     getVisibleNotes() {
-        const tNow = this.getElapsedTime();
-        return this.scoreNotes.filter(n => tNow - n.time < 5000); // 仅渲染近 5 s
+        const now = this._t();
+        return this.scoreNotes.filter(n => now - n.time < 5000);  // 渲染最近 5 s
     }
 
     /* ---------- 统计 / 导出 ---------- */

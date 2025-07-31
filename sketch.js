@@ -13,9 +13,9 @@ function setup() {
         saveStrings([rm.exportCSV()], "hits.csv")
     );
     select("#speed-slider").input(() => {
-        const v = parseFloat(select("#speed-slider").value());
+        const v = parseFloat(select("#speed-slider").value());  // 0.5 ~ 3.0
         select("#speed-val").html(v.toFixed(2));
-        rm.setScrollSpeed(v);
+        rm.setSpeedFactor(v);   // **只改速度倍率**
     });
 }
 
@@ -39,24 +39,23 @@ function drawNotesAndFeedback() {
         const xNote = rm.getScrollX(n.time);
         const y = rm.noteY;
 
-        /* 灰色音符 */
-        fill(180); stroke(200, 0, 0);
+        /* 灰音符 */
+        fill(180);
+        stroke(200, 0, 0);
         ellipse(xNote, y, 20);
 
         if (n.judged) {
-            /* 反馈文字 */
-            textSize(14); textAlign(CENTER);
-            fill(
-                n.result === "Perfect" ? "purple" :
-                    n.result === "Good" ? "green" : "red"
-            );
+            /* 文字 */
+            textSize(14);
+            textAlign(CENTER);
+            fill(n.result === "Perfect" ? "purple" :
+                n.result === "Good" ? "green" : "red");
             text(n.result, xNote, y - 30);
 
-            /* 黑色打击点（仅 Perfect / Good）*/
+            /* 黑点（仅 Perfect / Good）*/
             if (n.result === "Perfect" || n.result === "Good") {
                 const xHit = rm.getScrollX(n.hitTime);
-                fill(0); noStroke();
-                ellipse(xHit, y, 10);
+                fill(0); noStroke(); ellipse(xHit, y, 10);
             }
         }
     }
