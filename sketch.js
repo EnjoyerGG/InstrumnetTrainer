@@ -38,6 +38,7 @@ function handleReset() {
 
     // 重新设置 pauseAt = startTime，使倒计时期间完全静止
     rm.pause();                  // 再次 pause，把 pauseAt 对齐到新的 startTime
+    rm.pauseAt = rm.startTime;
 
     counting = true;            // 启动倒计时
     ctStart = millis();
