@@ -55,30 +55,22 @@ function startCountdown() {
 }
 
 function draw() {
-    background("#cccccc");
-    stroke(255, 0, 0);
+    background('#d0d0d0');
+    drawGrid();
+    stroke(255, 0, 0, 150); strokeWeight(1.5);
     line(rm.judgeLineX, 0, rm.judgeLineX, height);
 
-    /* --- 倒计时逻辑 --- */
+    /* 倒计时 */
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
-
-        if (remain <= 0) {          // 倒计时结束 → 开始播放
-            counting = false;
-            running = true;
-            rm.resume();
-        } else {
-            drawCountdown(remain);
-        }
+        if (remain <= 0) { counting = false; running = true; rm.resume(); }
+        else drawCountdown(remain);
     }
-
-    if (running) {
-        rm.checkAutoMiss();
-    }
+    if (running) rm.checkAutoMiss();
     drawNotesAndFeedback();
 
     const { hit, miss } = rm.getStats();
-    select("#status").html(`Hits ${hit} | Miss ${miss}`);
+    select('#status').html(`Hits ${hit} | Miss ${miss}`);
 }
 
 /* ---------- 渲染 ---------- */
@@ -86,37 +78,49 @@ function drawCountdown(remain) {
     const n = Math.ceil(remain / 1000);   // 3 → 1
     textSize(80);
     fill("#ff5722");
+    noStroke();
     textAlign(CENTER, CENTER);
     text(n, width / 2, height / 2);
 }
 
+function drawGrid() {
+    stroke(255, 255, 255, 60); strokeWeight(1);
+    const y = rm.noteY;
+    for (let o of [-30, -15, 15, 30]) line(0, y + o, width, y + o);
+}
+
 function drawNotesAndFeedback() {
+    const now = rm._t();
     const notes = rm.getVisibleNotes();
+
+    drawingContext.shadowBlur = 6;
+    drawingContext.shadowColor = '#888';
+
     for (const n of notes) {
-        const xNote = rm.getScrollX(n.time);
-        const y = rm.noteY;
+        const xN = rm.getScrollX(n.time), y = rm.noteY;
 
         /* 灰音符 */
-        fill(180);
-        noStroke();
-        ellipse(xNote, y, 20);
+        fill(200, 180); noStroke(); ellipse(xN, y, 20);
 
         if (n.judged) {
-            /* 文字 */
-            textSize(14);
-            textAlign(CENTER);
-            fill(n.result === "Perfect" ? "purple" :
-                n.result === "Good" ? "green" : "red");
-            text(n.result, xNote, y - 30);
+            /* 文字颜色 */
+            const col = n.result === 'Perfect' ? '#7b1fa2'
+                : n.result === 'Good' ? '#2e7d32'
+                    : '#d32f2f';
 
-            /* 黑点（仅 Perfect / Good）*/
-            if (n.result === "Perfect" || n.result === "Good") {
-                fill(0);
-                const xHit = rm.getScrollX(n.hitTime);
-                noStroke(); ellipse(xHit, y, 10);
+            /* 直接绘制文字（无白框） */
+            fill(col); textSize(14); textAlign(CENTER, CENTER);
+            text(n.result, xN, y - 30);
+
+            /* 黑点 0.5 s 渐隐 */
+            if (n.result !== 'Miss') {
+                const age = now - n.hitTime;
+                const a = map(age, 0, 500, 255, 0, true);
+                fill(0, a); ellipse(rm.getScrollX(n.hitTime), y, 10);
             }
         }
     }
+    drawingContext.shadowBlur = 0; // 清除阴影
 }
 
 function mousePressed() {
