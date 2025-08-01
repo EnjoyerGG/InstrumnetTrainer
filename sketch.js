@@ -30,10 +30,18 @@ function handleStart() {
 }
 
 function handleReset() {
-    rm.reset();                                  // 先生成新谱面
-    startCountdown();                            // 然后倒计时再播
-}
+    running = false;           // 保证重置前不再滚动
+    counting = false;
 
+    rm.pause();                  // 先冻结当前计时
+    rm.reset();                  // 重新生成谱面 & startTime = now
+
+    // 重新设置 pauseAt = startTime，使倒计时期间完全静止
+    rm.pause();                  // 再次 pause，把 pauseAt 对齐到新的 startTime
+
+    counting = true;            // 启动倒计时
+    ctStart = millis();
+}
 /* ---------- Start + 倒计时 ---------- */
 function startCountdown() {
     /* 若还没播过，reset 一次生成谱面 */
