@@ -56,7 +56,7 @@ function startCountdown() {
 }
 
 function draw() {
-    background('#d0d0d0');
+    background("#3a3a3a");
     drawGrid();
     stroke(255, 0, 0, 150); strokeWeight(1.5);
     line(rm.judgeLineX, 0, rm.judgeLineX, height);

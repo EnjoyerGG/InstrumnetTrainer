@@ -68,7 +68,7 @@ class RhythmManager {
             if (d < bestDiff) { bestDiff = d; best = n; }
         }
 
-        if (best && bestDiff <= 200) {
+        if (best && bestDiff <= 150) {
             best.judged = true;
             best.hitTime = hitTime;
             best.result = bestDiff <= 20 ? "Perfect" :
@@ -80,7 +80,7 @@ class RhythmManager {
     checkAutoMiss() {
         const now = this._t();
         for (const n of this.scoreNotes) {
-            if (!n.judged && now - n.time > 200) {
+            if (!n.judged && now - n.time > 120) {
                 n.judged = true;
                 n.result = "Miss";
             }
