@@ -75,12 +75,15 @@ function draw() {
 
 /* ---------- 渲染 ---------- */
 function drawCountdown(remain) {
-    const n = Math.ceil(remain / 1000);   // 3 → 1
+    const sec = Math.ceil(remain / 1000);     // 3,2,1
+    const ms = remain % 1000;                // 0–999
+    const alpha = map(ms, 999, 0, 255, 0);      // 1 秒内 255→0
+
     textSize(80);
-    fill("#ff5722");
+    fill(255, 87, 34, alpha);                   // #ff5722 with α
     noStroke();
     textAlign(CENTER, CENTER);
-    text(n, width / 2, height / 2);
+    text(sec, width / 2, height / 2);
 }
 
 function drawGrid() {
