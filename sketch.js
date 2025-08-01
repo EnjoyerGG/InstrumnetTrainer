@@ -5,9 +5,10 @@ let ctStart = 0;
 const COUNTDOWN_MS = 3000; // 3秒倒计时
 
 function setup() {
-    createCanvas(1000, 400);
+    createCanvas(1000, 250);
     rm = new RhythmManager();
     rm.setSpeedFactor(0.3);  // 初始速度倍率0.3x
+    rm.noteY = 150;
 
     /* ---------- UI 绑定 ---------- */
     select("#start-btn").mousePressed(handleStart);
