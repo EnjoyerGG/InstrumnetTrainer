@@ -4,67 +4,83 @@
     "conga": [
         {
             "time": 0.0,
-            "type": "palm"
+            "type": "palm",
+            "abbr": "P"
         },
         {
             "time": 0.5,
-            "type": "tip"
+            "type": "tip",
+            "abbr": "T"
         },
         {
             "time": 1.0,
-            "type": "slap"
+            "type": "slap",
+            "abbr": "S"
         },
         {
             "time": 1.5,
-            "type": "tip"
+            "type": "tip",
+            "abbr": "T"
         },
         {
             "time": 2.0,
-            "type": "palm"
+            "type": "palm",
+            "abbr": "P"
         },
         {
             "time": 2.5,
-            "type": "tip"
+            "type": "tip",
+            "abbr": "T"
         },
         {
             "time": 3.0,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         },
         {
             "time": 3.5,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         },
         {
             "time": 4.0,
-            "type": "palm"
+            "type": "palm",
+            "abbr": "P"
         },
         {
             "time": 4.5,
-            "type": "tip"
+            "type": "tip",
+            "abbr": "T"
         },
         {
             "time": 5.0,
-            "type": "slap"
+            "type": "slap",
+            "abbr": "S"
         },
         {
             "time": 5.5,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         },
         {
             "time": 6.0,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         },
         {
             "time": 6.5,
-            "type": "tip"
+            "type": "tip",
+            "abbr": "T"
         },
         {
             "time": 7.0,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         },
         {
             "time": 7.5,
-            "type": "open"
+            "type": "open",
+            "abbr": "O"
         }
     ]
 }

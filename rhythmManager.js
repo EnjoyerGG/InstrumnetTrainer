@@ -40,10 +40,11 @@ class RhythmManager {
     initChart(arr) {
         this.resetState();
         for (const n of arr) {
-            // JSON 里的 n.time 是 “拍位” (0,0.5,1 …)，要换算成绝对时间
-            const tMs = n.time * this.noteInterval;      // ← 关键补偿
+            const tMs = n.time * this.noteInterval;
             this.scoreNotes.push({
-                time: tMs, type: n.type,
+                time: tMs,
+                type: n.type,
+                abbr: n.abbr || n.type[0].toUpperCase(),
                 judged: false, result: null, hitTime: null
             });
         }
