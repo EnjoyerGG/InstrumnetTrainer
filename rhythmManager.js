@@ -1,7 +1,7 @@
 // ---- 常量 ----
-const MISS_WINDOW = 120;     // ms：超出即 Miss
+const MISS_WINDOW = 100;     // ms：超出即 Miss
 const PERFECT_WIN = 20;
-const GOOD_WINDOW = 100;
+const GOOD_WINDOW = 80;
 
 class RhythmManager {
     constructor() {
