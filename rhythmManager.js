@@ -1,113 +1,113 @@
+// ---- 常量 ----
+const MISS_WINDOW = 120;     // ms：超出即 Miss
+const PERFECT_WIN = 20;
+const GOOD_WINDOW = 100;
+
 class RhythmManager {
     constructor() {
-        this.scoreNotes = [];                  // 灰色谱面音符
         this.bpm = 120;
-        this.noteInterval = 60000 / this.bpm / 2; // 8 分音
-        this.scrollSpeed = 0.2;
-        this.speedFactor = 1.0;                // px / ms
-        this.noteY = 200;
+        this.noteInterval = 60000 / this.bpm / 2;    // 8分音符
+        this.scrollSpeed = 0.50;                    // px / ms
+        this.speedFactor = 1.00;                    // 实时倍率
+        this.noteY = 150;
         this.judgeLineX = 500;
 
-        this.startTime = null;               // 播放基准
+        this.resetState();
+    }
+
+    /* ---------- 内部状态 ---------- */
+    resetState() {
+        this.scoreNotes = [];
+        this.startTime = null;
         this.paused = false;
         this.pauseAt = 0;
     }
 
-    /* ===== 时间工具 ===== */
+    /* ---------- 时间工具 ---------- */
     _now() { return this.paused ? this.pauseAt : millis(); }
     getElapsedTime() { return this.startTime === null ? 0 : this._now() - this.startTime; }
-    _t() { return this.getElapsedTime() * this.speedFactor; }   // 加速后视觉时间
-    setSpeedFactor(newF) {
-        /* 尚未开始播放 → 只记录倍率 */
-        if (this.startTime === null) {
-            this.speedFactor = newF;
-            return;
-        }
-        /* 已在播放 → 对 startTime 做补偿 */
+    _t() { return this.getElapsedTime() * this.speedFactor; }
+
+    setSpeedFactor(f) {
+        if (this.startTime === null) { this.speedFactor = f; return; }
         const now = this._now();
         const tVisOld = (now - this.startTime) * this.speedFactor;
-        this.speedFactor = newF;
-        this.startTime = now - tVisOld / newF;                       // 调整 startTime
+        this.speedFactor = f;
+        this.startTime = now - tVisOld / f;
     }
 
-    /* ---------- 播放控制 ---------- */
-    reset() {
-        this.scoreNotes.length = 0;
-        this.startTime = millis();
-        for (let i = 0; i < 32; i++) {
+    /* ---------- 载入谱面 ---------- */
+    initChart(arr) {
+        this.resetState();
+        for (const n of arr) {
+            // JSON 里的 n.time 是 “拍位” (0,0.5,1 …)，要换算成绝对时间
+            const tMs = n.time * this.noteInterval;      // ← 关键补偿
             this.scoreNotes.push({
-                time: i * this.noteInterval, // 理论时间
-                judged: false,                 // 是否已有反馈
-                result: null,                  // Perfect / Good / Miss
-                hitTime: null                   // 实际点击时间（仅 Perfect/Good）
+                time: tMs, type: n.type,
+                judged: false, result: null, hitTime: null
             });
         }
     }
 
+    /* ---------- 播放控制 ---------- */
+    reset() {
+        this.startTime = millis();
+        for (const n of this.scoreNotes) {
+            n.judged = false;
+            n.result = null;
+            n.hitTime = null;
+        }
+    }
     pause() { if (!this.paused) { this.paused = true; this.pauseAt = millis(); } }
     resume() {
-        /* 首次播放：直接 reset */
         if (this.startTime === null) { this.reset(); return; }
-
         if (this.paused) {
-            this.startTime += millis() - this.pauseAt; // 补偿暂停时长
+            this.startTime += millis() - this.pauseAt;
             this.paused = false;
-        }    // 第一次点击 Start
+        }
     }
 
-
-    /* ---------- 击打判定 ---------- */
+    /* ---------- 判定 ---------- */
     registerHit() {
-        const hitTime = this._t();                      // 取加速后时间
-
-        // 寻找最近的未判定音符
+        const hitTime = this._t();
         let best = null, bestDiff = Infinity;
         for (const n of this.scoreNotes) {
             if (n.judged) continue;
             const d = Math.abs(n.time - hitTime);
             if (d < bestDiff) { bestDiff = d; best = n; }
         }
-
-        if (best && bestDiff <= 150) {
-            best.judged = true;
-            best.hitTime = hitTime;
-            best.result = bestDiff <= 20 ? "Perfect" :
-                bestDiff <= 100 ? "Good" : "Miss";
+        if (best && bestDiff <= MISS_WINDOW) {
+            best.judged = true; best.hitTime = hitTime;
+            best.result = bestDiff <= PERFECT_WIN ? "Perfect"
+                : bestDiff <= GOOD_WINDOW ? "Good"
+                    : "Miss";
         }
-        /* 若无匹配或 >200 ms，则忽略点击，不生成额外 Miss */
     }
-
     checkAutoMiss() {
         const now = this._t();
         for (const n of this.scoreNotes) {
-            if (!n.judged && now - n.time > 120) {
-                n.judged = true;
-                n.result = "Miss";
+            if (!n.judged && now - n.time > MISS_WINDOW) {
+                n.judged = true; n.result = "Miss";
             }
         }
     }
 
     /* ---------- 绘制辅助 ---------- */
-    getScrollX(noteTime) { return this.judgeLineX + (noteTime - this._t()) * this.scrollSpeed; }
-    getVisibleNotes() {
-        const now = this._t();
-        return this.scoreNotes.filter(n => now - n.time < 5000);  // 渲染最近 5 s
-    }
+    getScrollX(tNote) { return this.judgeLineX + (tNote - this._t()) * this.scrollSpeed; }
+    getVisibleNotes() { const now = this._t(); return this.scoreNotes.filter(n => now - n.time < 5000); }
 
-    /* ---------- 统计 / 导出 ---------- */
+    /* ---------- 统计 ---------- */
     getStats() {
         let hit = 0, miss = 0;
         for (const n of this.scoreNotes) {
             if (!n.judged) continue;
-            if (n.result === "Perfect" || n.result === "Good") hit++;
-            else miss++;
+            if (n.result === "Perfect" || n.result === "Good") hit++; else miss++;
         }
         return { hit, miss };
     }
     exportCSV() {
         const rows = ["time_ms,result"];
-        for (const n of this.scoreNotes)
-            rows.push(`${n.time},${n.result ?? "Unjudged"}`);
+        for (const n of this.scoreNotes) rows.push(`${n.time},${n.result ?? "Unjudged"}`);
         return rows.join("\n");
     }
 }
