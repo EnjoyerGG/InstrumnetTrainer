@@ -1,40 +1,30 @@
 {
     "name": "Tumbao",
     "bpm": 90,
-    "clave": [
-        1,
-        0,
-        0,
-        1,
-        0,
-        0,
-        0,
-        1
-    ],
     "conga": [
         {
             "time": 0.0,
-            "type": "open"
+            "type": "palm"
         },
         {
             "time": 0.5,
-            "type": "slap"
+            "type": "tip"
         },
         {
             "time": 1.0,
-            "type": "open"
+            "type": "slap"
         },
         {
             "time": 1.5,
-            "type": "ghost"
+            "type": "tip"
         },
         {
             "time": 2.0,
-            "type": "bass"
+            "type": "palm"
         },
         {
             "time": 2.5,
-            "type": "slap"
+            "type": "tip"
         },
         {
             "time": 3.0,
@@ -42,7 +32,39 @@
         },
         {
             "time": 3.5,
-            "type": "ghost"
+            "type": "open"
+        },
+        {
+            "time": 4.0,
+            "type": "palm"
+        },
+        {
+            "time": 4.5,
+            "type": "tip"
+        },
+        {
+            "time": 5.0,
+            "type": "slap"
+        },
+        {
+            "time": 5.5,
+            "type": "open"
+        },
+        {
+            "time": 6.0,
+            "type": "open"
+        },
+        {
+            "time": 6.5,
+            "type": "tip"
+        },
+        {
+            "time": 7.0,
+            "type": "open"
+        },
+        {
+            "time": 7.5,
+            "type": "open"
         }
     ]
 }
