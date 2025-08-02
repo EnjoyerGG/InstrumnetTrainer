@@ -7,7 +7,7 @@ class RhythmManager {
     constructor() {
         this.bpm = 120;
         this.noteInterval = 60000 / this.bpm / 2;    // 8分音符
-        this.scrollSpeed = 0.50;                    // px / ms
+        this.scrollSpeed = 0.5;                    // px / ms
         this.speedFactor = 1.00;                    // 实时倍率
         this.noteY = 150;
         this.judgeLineX = 500;
