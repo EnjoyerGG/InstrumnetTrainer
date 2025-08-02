@@ -58,8 +58,12 @@ function draw() {
         else drawCountdown(remain);
     }
 
-    if (running) rm.checkAutoMiss();
+    if (running) {
+        rm.checkAutoMiss();
+        rm.checkLoopAndRestart();
+    }
     drawNotesAndFeedback();
+
 
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);

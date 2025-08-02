@@ -106,6 +106,13 @@ class RhythmManager {
         }
         return { hit, miss };
     }
+
+    checkLoopAndRestart() {
+        if (this.scoreNotes.length > 0 && this.scoreNotes.every(n => n.judged)) {
+            this.reset();
+        }
+    }
+
     exportCSV() {
         const rows = ["time_ms,result"];
         for (const n of this.scoreNotes) rows.push(`${n.time},${n.result ?? "Unjudged"}`);
