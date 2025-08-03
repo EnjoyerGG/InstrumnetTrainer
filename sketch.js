@@ -81,6 +81,7 @@ function drawGrid() {
     const y = rm.noteY;
     for (const o of [-30, -15, 15, 30]) line(0, y + o, width, y + o);
 }
+
 function drawNotesAndFeedback() {
     const notes = rm.getVisibleNotes();
     drawingContext.shadowBlur = 6; drawingContext.shadowColor = '#888';
@@ -88,29 +89,28 @@ function drawNotesAndFeedback() {
         const xN = rm.getScrollX(n.time), y = rm.noteY;
         fill(200, 180); noStroke(); ellipse(xN, y, 20);   // 灰音符
 
-        //显示简写字母
-        fill('#eeeeee'); textSize(12);
-        textAlign(CENTER, TOP);
+        // 显示简写字母
+        fill('#eeeeee'); textSize(12); textAlign(CENTER, TOP);
         text(n.abbr, xN, y + 12);
-
 
         if (n.judged) {
             const col = n.result === "Perfect" ? "#7b1fa2" :
                 n.result === "Good" ? "#2e7d32" : "#d32f2f";
-            fill(col); textSize(14); textAlign(CENTER); text(n.result, xN, y - 30);
+            fill(col); textSize(14); textAlign(CENTER);
+            text(n.result, xN, y - 30);
 
             if (n.result !== 'Miss') {
                 const dt = n.hitTime - n.time;
                 const R = 10;
                 const pxOffset = dt / GOOD_WINDOW * R;
                 fill(0);
-                const xCenter = rm.getScrollX(n.time);
-                ellipse(xCenter + pxOffset, y, 10);
+                ellipse(xN + pxOffset, y, 10);
             }
         }
     }
     drawingContext.shadowBlur = 0;
 }
+
 
 /* ------------ Interaction --------- */
 function mousePressed() { if (running) rm.registerHit(); }
