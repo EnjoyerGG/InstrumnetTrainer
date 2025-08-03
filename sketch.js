@@ -11,11 +11,11 @@ function preload() { chartJSON = loadJSON('assets/tumbao.json'); }
 
 /* ------------ Setup --------------- */
 function setup() {
-    createCanvas(1000, 250);
+    createCanvas(1000, 80);
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga, 5);   // 读取 JSON
     rm.setSpeedFactor(0.3);
-    rm.noteY = 125;
+    rm.noteY = 40;
 
     /* UI */
     select('#start-btn').mousePressed(handleStart);
