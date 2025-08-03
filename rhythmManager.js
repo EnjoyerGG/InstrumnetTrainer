@@ -21,6 +21,9 @@ class RhythmManager {
         this.startTime = null;
         this.paused = false;
         this.pauseAt = 0;
+        this.totalDuration = 0;
+        // 用于反馈：每轮判定表
+        this.feedbackStates = [];
     }
 
     /* ---------- 时间工具 ---------- */
@@ -44,20 +47,27 @@ class RhythmManager {
             this.scoreNotes.push({
                 time: tMs,
                 type: n.type,
-                abbr: n.abbr || n.type[0].toUpperCase(),
-                judged: false, result: null, hitTime: null
+                abbr: n.abbr || n.type[0].toUpperCase()
             });
         }
+        // 计算总时长
+        const N = this.scoreNotes.length;
+        this.totalDuration = N > 0 ? (this.scoreNotes[N - 1].time + this.noteInterval) : 0;
+
+        // 初始化反馈状态（每轮一份）
+        this.feedbackStates = this._emptyFeedback();
+    }
+
+    _emptyFeedback() {
+        return this.scoreNotes.map(() => ({
+            judged: false, result: null, hitTime: null
+        }));
     }
 
     /* ---------- 播放控制 ---------- */
     reset() {
         this.startTime = millis();
-        for (const n of this.scoreNotes) {
-            n.judged = false;
-            n.result = null;
-            n.hitTime = null;
-        }
+        this.feedbackStates = this._emptyFeedback();
     }
     pause() { if (!this.paused) { this.paused = true; this.pauseAt = millis(); } }
     resume() {
@@ -70,12 +80,16 @@ class RhythmManager {
 
     /* ---------- 判定 ---------- */
     registerHit() {
-        const hitTime = this._t();
-        let best = null, bestDiff = Infinity;
-        for (const n of this.scoreNotes) {
-            if (n.judged) continue;
+        if (!this.scoreNotes.length) return;
+        // 当前循环内时间
+        const hitTime = this._t() % this.totalDuration;
+        let best = null, bestDiff = Infinity, bestIdx = -1;
+        for (let i = 0; i < this.scoreNotes.length; i++) {
+            const n = this.scoreNotes[i];
+            const state = this.feedbackStates[i];
+            if (state.judged) continue;
             const d = Math.abs(n.time - hitTime);
-            if (d < bestDiff) { bestDiff = d; best = n; }
+            if (d < bestDiff) { bestDiff = d; best = state; bestIdx = i; }
         }
         if (best && bestDiff <= MISS_WINDOW) {
             best.judged = true; best.hitTime = hitTime;
@@ -84,18 +98,39 @@ class RhythmManager {
                     : "Miss";
         }
     }
+
     checkAutoMiss() {
-        const now = this._t();
-        for (const n of this.scoreNotes) {
-            if (!n.judged && now - n.time > MISS_WINDOW) {
-                n.judged = true; n.result = "Miss";
+        // 只判定当前可见的本轮音符
+        const now = this._t() % this.totalDuration;
+        for (let i = 0; i < this.scoreNotes.length; i++) {
+            const n = this.scoreNotes[i];
+            const state = this.feedbackStates[i];
+            if (!state.judged && now - n.time > MISS_WINDOW && now - n.time < this.noteInterval) {
+                state.judged = true; state.result = "Miss";
             }
         }
     }
 
     /* ---------- 绘制辅助 ---------- */
-    getScrollX(tNote) { return this.judgeLineX + (tNote - this._t()) * this.scrollSpeed; }
-    getVisibleNotes() { const now = this._t(); return this.scoreNotes.filter(n => now - n.time < 5000); }
+    getScrollX(tNote) { return this.judgeLineX + (tNote - (this._t() % this.totalDuration)) * this.scrollSpeed; }
+    getVisibleNotes() {
+        // 绘制3轮，主轮+前后轮
+        const now = this._t() % this.totalDuration;
+        const res = [];
+        const N = this.scoreNotes.length;
+        const offsetArr = [-1, 0, 1];
+        for (let offset of offsetArr) {
+            for (let i = 0; i < N; i++) {
+                const n = this.scoreNotes[i];
+                const t = n.time + offset * this.totalDuration;
+                // 可视区音符
+                if (now - t < 5000 && t - now < 1000 * 60) {
+                    res.push({ ...n, _feedbackIdx: i, _isMainLoop: offset === 0, _displayTime: t });
+                }
+            }
+        }
+        return res;
+    }
 
     /* ---------- 统计 ---------- */
     getStats() {
@@ -107,15 +142,23 @@ class RhythmManager {
         return { hit, miss };
     }
 
+    // 无限循环，不需要 reset feedback，每圈自动清零
     checkLoopAndRestart() {
-        if (this.scoreNotes.length > 0 && this.scoreNotes.every(n => n.judged)) {
-            this.reset();
+        // 到新一圈就清理 feedback 状态
+        const elapsed = this._t();
+        if (this.totalDuration && (elapsed % this.totalDuration) < 20) {
+            // 新一轮
+            this.feedbackStates = this._emptyFeedback();
         }
     }
 
     exportCSV() {
         const rows = ["time_ms,result"];
-        for (const n of this.scoreNotes) rows.push(`${n.time},${n.result ?? "Unjudged"}`);
+        for (let i = 0; i < this.scoreNotes.length; i++) {
+            const n = this.scoreNotes[i];
+            const state = this.feedbackStates[i];
+            rows.push(`${n.time},${state.result ?? "Unjudged"}`);
+        }
         return rows.join("\n");
     }
 }

@@ -13,7 +13,7 @@ function setup() {
     createCanvas(1000, 250);
 
     rm = new RhythmManager();
-    rm.initChart(chartJSON.conga);   // 读取 JSON
+    rm.initChart(chartJSON.conga, 5);   // 读取 JSON
     rm.setSpeedFactor(0.3);
 
     /* UI */
@@ -86,21 +86,23 @@ function drawNotesAndFeedback() {
     const notes = rm.getVisibleNotes();
     drawingContext.shadowBlur = 6; drawingContext.shadowColor = '#888';
     for (const n of notes) {
-        const xN = rm.getScrollX(n.time), y = rm.noteY;
+        const xN = rm.getScrollX(n._displayTime ?? n.time), y = rm.noteY;
         fill(200, 180); noStroke(); ellipse(xN, y, 20);   // 灰音符
 
         // 显示简写字母
-        fill('#eeeeee'); textSize(12); textAlign(CENTER, TOP);
+        fill('#eeeeee'); textSize(12);
+        textAlign(CENTER, TOP);
         text(n.abbr, xN, y + 12);
 
-        if (n.judged) {
-            const col = n.result === "Perfect" ? "#7b1fa2" :
-                n.result === "Good" ? "#2e7d32" : "#d32f2f";
-            fill(col); textSize(14); textAlign(CENTER);
-            text(n.result, xN, y - 30);
+        // 只在“主循环”才显示反馈
+        if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
+            const state = rm.feedbackStates[n._feedbackIdx];
+            const col = state.result === "Perfect" ? "#7b1fa2" :
+                state.result === "Good" ? "#2e7d32" : "#d32f2f";
+            fill(col); textSize(14); textAlign(CENTER); text(state.result, xN, y - 30);
 
-            if (n.result !== 'Miss') {
-                const dt = n.hitTime - n.time;
+            if (state.result !== 'Miss') {
+                const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time;
                 const R = 10;
                 const pxOffset = dt / GOOD_WINDOW * R;
                 fill(0);
