@@ -13,7 +13,6 @@ class RhythmManager {
         this.speedFactor = 1.00;                    // 实时倍率
         this.noteY = 150;
         this.judgeLineX = 500;
-
         this.resetState();
     }
 

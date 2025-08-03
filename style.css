@@ -50,8 +50,7 @@ input[type="range"] {
 canvas {
     display: block;
     margin: 0 auto;
-    border-top: 2px solid #fff;
-    border-bottom: 2px solid #fff;
+    border: 5px solid #777777
 }
 
 #status,
