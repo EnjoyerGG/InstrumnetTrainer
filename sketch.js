@@ -109,8 +109,8 @@ function drawNotesAndFeedback() {
         // 只在“主循环”才显示反馈
         if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
             const state = rm.feedbackStates[n._feedbackIdx];
-            const col = state.result === "Perfect" ? "#7b1fa2" :
-                state.result === "Good" ? "#2e7d32" : "#d32f2f";
+            const col = state.result === "Perfect" ? "#ae4fd6ff" :
+                state.result === "Good" ? "#55bb5aff" : "#d32f2f";
             fill(col); textSize(14); textAlign(CENTER); text(state.result, xN, y - 30);
 
             if (state.result !== 'Miss') {
