@@ -137,7 +137,7 @@ class RhythmManager {
     /* ---------- 统计 ---------- */
     getStats() {
         let hit = 0, miss = 0;
-        for (const n of this.scoreNotes) {
+        for (const n of this.feedbackStates) {
             if (!n.judged) continue;
             if (n.result === "Perfect" || n.result === "Good") hit++; else miss++;
         }
