@@ -2,6 +2,7 @@
 let rm;
 let running = false, counting = false;
 let ctStart = 0;
+let judgeLineGlow = 0; // 红线发光效果
 const COUNTDOWN_MS = 3000;
 
 /* ------------ Preload JSON --------*/
@@ -48,9 +49,20 @@ function startCountdown() {
 /* ------------ Draw Loop ----------- */
 function draw() {
     background('#3a3a3a');            // 深灰背景
+    judgeLineGlow *= 0.9;
+    if (judgeLineGlow < 0.01) judgeLineGlow = 0;
     drawGrid();
-    stroke(255, 0, 0, 150); strokeWeight(1.5);
+
+    // 判定线发光
+    let glowLevel = lerp(2, 18, judgeLineGlow);
+    let alpha = lerp(120, 255, judgeLineGlow);
+    drawingContext.save();
+    drawingContext.shadowBlur = glowLevel;
+    drawingContext.shadowColor = 'rgba(255,30,30,0.8)';
+    stroke(255, 0, 0, alpha);
+    strokeWeight(judgeLineGlow > 0.2 ? 4 : 1.5);
     line(rm.judgeLineX, 0, rm.judgeLineX, height);
+    drawingContext.restore();
 
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
@@ -115,4 +127,9 @@ function drawNotesAndFeedback() {
 
 
 /* ------------ Interaction --------- */
-function mousePressed() { if (running) rm.registerHit(); }
+function mousePressed() {
+    if (running) {
+        rm.registerHit();
+        judgeLineGlow = 1;
+    }
+}
