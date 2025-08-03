@@ -2,6 +2,8 @@
 const MISS_WINDOW = 80;     // ms：超出即 Miss
 const PERFECT_WIN = 10;
 const GOOD_WINDOW = 40;
+const WARMUP_MS = 500;
+const INITIAL_OFFSET = 100; // 让谱面整体右移400ms
 
 class RhythmManager {
     constructor() {
@@ -43,7 +45,7 @@ class RhythmManager {
     initChart(arr) {
         this.resetState();
         for (const n of arr) {
-            const tMs = n.time * this.noteInterval;
+            const tMs = n.time * this.noteInterval + INITIAL_OFFSET;
             this.scoreNotes.push({
                 time: tMs,
                 type: n.type,
