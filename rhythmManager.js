@@ -23,7 +23,6 @@ class RhythmManager {
         this.paused = false;
         this.pauseAt = 0;
         this.totalDuration = 0;
-        // 用于反馈：每轮判定表
         this.feedbackStates = [];
     }
 
@@ -54,8 +53,6 @@ class RhythmManager {
         // 计算总时长
         const N = this.scoreNotes.length;
         this.totalDuration = N > 0 ? (this.scoreNotes[N - 1].time + this.noteInterval) : 0;
-
-        // 初始化反馈状态（每轮一份）
         this.feedbackStates = this._emptyFeedback();
     }
 
@@ -70,7 +67,13 @@ class RhythmManager {
         this.startTime = millis();
         this.feedbackStates = this._emptyFeedback();
     }
-    pause() { if (!this.paused) { this.paused = true; this.pauseAt = millis(); } }
+
+    pause() {
+        if (!this.paused) {
+            this.paused = true; this.pauseAt = millis();
+        }
+    }
+
     resume() {
         if (this.startTime === null) { this.reset(); return; }
         if (this.paused) {
@@ -90,7 +93,11 @@ class RhythmManager {
             const state = this.feedbackStates[i];
             if (state.judged) continue;
             const d = Math.abs(n.time - hitTime);
-            if (d < bestDiff) { bestDiff = d; best = state; bestIdx = i; }
+            if (d < bestDiff) {
+                bestDiff = d;
+                best = state;
+                bestIdx = i;
+            }
         }
         if (best && bestDiff <= MISS_WINDOW) {
             best.judged = true; best.hitTime = hitTime;
@@ -121,7 +128,10 @@ class RhythmManager {
     }
 
     /* ---------- 绘制辅助 ---------- */
-    getScrollX(tNote) { return this.judgeLineX + (tNote - (this._t() % this.totalDuration)) * this.scrollSpeed; }
+    getScrollX(tNote) {
+        return this.judgeLineX + (tNote - (this._t() % this.totalDuration)) * this.scrollSpeed;
+    }
+
     getVisibleNotes() {
         // 绘制3轮，主轮+前后轮
         const now = this._t() % this.totalDuration;
