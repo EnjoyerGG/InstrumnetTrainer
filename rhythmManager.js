@@ -101,6 +101,11 @@ class RhythmManager {
         }
     }
 
+    setBPM(bpm) {
+        this.bpm = bpm;
+        this.noteInterval = 60000 / bpm;
+    }
+
     checkAutoMiss() {
         // 只判定当前可见的本轮音符
         const now = this._t() % this.totalDuration;

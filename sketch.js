@@ -5,28 +5,47 @@ let ctStart = 0;
 let judgeLineGlow = 0; // 红线发光效果
 const COUNTDOWN_MS = 3000;
 
+const BPM_MIN = 60, BPM_MAX = 240;
+const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
+
 /* ------------ Preload JSON --------*/
 let chartJSON;
 function preload() { chartJSON = loadJSON('assets/tumbao.json'); }
+
+function speedToBPM(speed) {
+    return BPM_MIN + (BPM_MAX - BPM_MIN) * (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
+}
+function bpmToSpeed(bpm) {
+    return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPEED_MIN) / (BPM_MAX - BPM_MIN);
+}
 
 /* ------------ Setup --------------- */
 function setup() {
     createCanvas(1000, 80);
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga, 5);   // 读取 JSON
-    rm.setSpeedFactor(0.3);
+    /* UI */
+    let initSpeed = parseFloat(select('#speed-slider').value());
+    select('#speed-val').html(initSpeed.toFixed(2));
+    const initBpm = speedToBPM(initSpeed);
+    select('#bpm-val').html(Math.round(initBpm));
+    rm.setBPM(initBpm);
+    rm.setSpeedFactor(initSpeed);
     rm.noteY = 40;
 
-    /* UI */
     select('#start-btn').mousePressed(handleStart);
     select('#pause-btn').mousePressed(() => { running = false; counting = false; rm.pause(); });
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(() => saveStrings([rm.exportCSV()], 'hits.csv'));
 
     select('#speed-slider').input(() => {
-        const v = parseFloat(select('#speed-slider').value());
-        select('#speed-val').html(v.toFixed(2));
-        rm.setSpeedFactor(v);
+        const speedVal = parseFloat(select('#speed-slider').value());
+        select('#speed-val').html(speedVal.toFixed(2));
+        // 速度和BPM双向绑定
+        const bpmVal = speedToBPM(speedVal);
+        select('#bpm-val').html(Math.round(bpmVal));
+        rm.setBPM(bpmVal);        // 判定与滚动
+        rm.setSpeedFactor(speedVal); // 视觉速度
     });
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
 }
