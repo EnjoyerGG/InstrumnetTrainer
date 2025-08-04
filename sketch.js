@@ -109,15 +109,18 @@ function drawNotesAndFeedback() {
         // 只在“主循环”才显示反馈
         if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
             const state = rm.feedbackStates[n._feedbackIdx];
-            const col = state.result === "Perfect" ? "#ae4fd6ff" :
-                state.result === "Good" ? "#55bb5aff" : "#d32f2f";
+            if (state.fadeTimer > 0) state.fadeTimer -= deltaTime;
+            const alpha = constrain(map(state.fadeTimer, 0, 2000, 0, 255), 0, 255);
+            const col = state.result === "Perfect" ? color(174, 79, 214, alpha)
+                : state.result === "Good" ? color(85, 187, 90, alpha)
+                    : color(211, 47, 47, alpha);
             fill(col); textSize(14); textAlign(CENTER); text(state.result, xN, y - 30);
 
             if (state.result !== 'Miss') {
                 const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time;
                 const R = 10;
                 const pxOffset = dt / GOOD_WINDOW * R;
-                fill(0);
+                fill(0, alpha);
                 ellipse(xN + pxOffset, y, 10);
             }
         }

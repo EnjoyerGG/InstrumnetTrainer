@@ -61,7 +61,7 @@ class RhythmManager {
 
     _emptyFeedback() {
         return this.scoreNotes.map(() => ({
-            judged: false, result: null, hitTime: null
+            judged: false, result: null, hitTime: null, fadeTimer: 0
         }));
     }
 
@@ -97,6 +97,7 @@ class RhythmManager {
             best.result = bestDiff <= PERFECT_WIN ? "Perfect"
                 : bestDiff <= GOOD_WINDOW ? "Good"
                     : "Miss";
+            best.fadeTimer = 2000;
         }
     }
 
@@ -107,7 +108,9 @@ class RhythmManager {
             const n = this.scoreNotes[i];
             const state = this.feedbackStates[i];
             if (!state.judged && now - n.time > MISS_WINDOW && now - n.time < this.noteInterval) {
-                state.judged = true; state.result = "Miss";
+                state.judged = true;
+                state.result = "Miss";
+                state.fadeTimer = 2000;
             }
         }
     }
