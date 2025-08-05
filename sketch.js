@@ -134,7 +134,7 @@ function draw() {
     }
 
     if (metronomeEnabled && running) {
-        metro.tick(millis());
+        metro.tick(rm.getElapsedTime());
     }
     drawNotesAndFeedback();
 
