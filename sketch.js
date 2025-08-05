@@ -1,16 +1,23 @@
 /* ------------ Globals ------------ */
 let rm;
+let metro;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0; // 红线发光效果
+let metronomeEnabled = false;
+let chartJSON;
 const COUNTDOWN_MS = 3000;
 
 const BPM_MIN = 60, BPM_MAX = 240;
 const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
 
 /* ------------ Preload JSON --------*/
-let chartJSON;
-function preload() { chartJSON = loadJSON('assets/tumbao.json'); }
+
+function preload() {
+    chartJSON = loadJSON('assets/tumbao.json');
+    metro = new Metronome({ bpm: 120, beatsPerBar: 4 });
+    metro.preload('assets/metronome/Tic.wav', 'assets/metronome/Toc.wav');
+}
 
 function speedToBPM(speed) {
     return BPM_MIN + (BPM_MAX - BPM_MIN) * (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN);
@@ -24,6 +31,23 @@ function setup() {
     createCanvas(1000, 80);
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga, 5);   // 读取 JSON
+    metro.onloaded(() => {
+        console.log("Metronome loaded!");
+        metro.reset();
+    });
+
+    select('#metro-toggle').mousePressed(() => {
+        metronomeEnabled = !metronomeEnabled;
+        if (metronomeEnabled) {
+            select('#metro-toggle').html('关闭节拍器');
+        } else {
+            select('#metro-toggle').html('打开节拍器');
+        }
+        metro.enable(metronomeEnabled);
+    });
+    select('#metro-toggle').html('打开节拍器');
+    metro.enable(false);
+
     /* UI */
     let initSpeed = parseFloat(select('#speed-slider').value());
     select('#speed-val').html(initSpeed.toFixed(2));
@@ -44,9 +68,11 @@ function setup() {
         // 速度和BPM双向绑定
         const bpmVal = speedToBPM(speedVal);
         select('#bpm-val').html(Math.round(bpmVal));
+        metro.setBPM(bpmVal);        // 判定与滚动
         rm.setBPM(bpmVal);        // 判定与滚动
         rm.setSpeedFactor(speedVal); // 视觉速度
     });
+
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
 }
 
@@ -54,15 +80,27 @@ function setup() {
 function handleStart() {
     if (running || counting) return;
     startCountdown();
+    metro.reset();
 }
+
 function handleReset() {
-    running = false; counting = false;
-    rm.pause(); rm.reset(); rm.pause(); rm.pauseAt = rm.startTime;
-    counting = true; ctStart = millis();
+    running = false;
+    counting = false;
+    rm.pause();
+    rm.reset();
+    rm.pause();
+    rm.pauseAt = rm.startTime;
+    counting = true;
+    ctStart = millis();
+    metro.reset();
 }
+
 function startCountdown() {
     if (rm.startTime === null) rm.reset();
-    rm.pause(); running = false; counting = true; ctStart = millis();
+    rm.pause();
+    running = false;
+    counting = true;
+    ctStart = millis();
 }
 
 /* ------------ Draw Loop ----------- */
@@ -92,6 +130,11 @@ function draw() {
     if (running) {
         rm.checkAutoMiss();
         rm.checkLoopAndRestart();
+
+    }
+
+    if (metronomeEnabled && running) {
+        metro.tick(millis());
     }
     drawNotesAndFeedback();
 
@@ -145,6 +188,11 @@ function drawNotesAndFeedback() {
         }
     }
     drawingContext.shadowBlur = 0;
+}
+
+//实时调节BPM
+function someBPMChangeHandler(newBPM) {
+    metro.setBPM(newBPM);
 }
 
 
