@@ -12,15 +12,16 @@ class Metronome {
     }
 
     preload(strongTickPath, weakTickPath) {
-        this.strongTick = loadSound(strongTickPath, this._onloaded.bind(this));
-        this.weakTick = loadSound(weakTickPath, this._onloaded.bind(this));
+        this.strongTick = loadSound(strongTickPath, this._onLoaded.bind(this));
+        this.weakTick = loadSound(weakTickPath, this._onLoaded.bind(this));
     }
 
-    _onloaded() {
-        if (this.strongTick.isLoaded() && this.weakTick.isLoaded()) {
+    _onLoaded() {
+        if (this.strongTick && this.weakTick
+            && this.strongTick.isLoaded() && this.weakTick.isLoaded()) {
             this._loaded = true;
             this._cbList.forEach(cb => cb());
-            this.cbList = [];
+            this._cbList = [];
         }
     }
 
@@ -33,6 +34,11 @@ class Metronome {
     setBeatsPerBar(n) { this.beatsPerBar = n; }
     enable(flag) { this.enabled = flag; }
     reset() { this.lastBeat = -1; }
+
+    // 检查音效是否加载完
+    isLoaded() {
+        return this._loaded;
+    }
 
     // 传入全局时间（ms），自动判断是否播放tick
     tick(currentTimeMs) {

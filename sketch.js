@@ -6,6 +6,8 @@ let ctStart = 0;
 let judgeLineGlow = 0; // 红线发光效果
 let metronomeEnabled = false;
 let chartJSON;
+let lastNoteIdx = -1;
+let beatsPerBar = 4; // 每小节的拍数
 const COUNTDOWN_MS = 3000;
 
 const BPM_MIN = 60, BPM_MAX = 240;
@@ -80,12 +82,14 @@ function setup() {
 function handleStart() {
     if (running || counting) return;
     startCountdown();
+    lastNoteIdx = -1; // 重置音符索引
     metro.reset();
 }
 
 function handleReset() {
     running = false;
     counting = false;
+    lastNoteIdx = -1;
     rm.pause();
     rm.reset();
     rm.pause();
@@ -133,8 +137,20 @@ function draw() {
 
     }
 
-    if (metronomeEnabled && running) {
-        metro.tick(rm.getElapsedTime());
+    if (metronomeEnabled && running && metro.isLoaded()) {
+        let elapsed = rm.getElapsedTime() % rm.totalDuration;
+        let curNoteIdx = Math.floor(elapsed / rm.noteInterval);
+        if (curNoteIdx !== lastNoteIdx) {
+            let barIdx = curNoteIdx % beatsPerBar;
+            if (barIdx === 0) {
+                console.log('strongTick');
+                metro.strongTick.play();
+            } else {
+                console.log('weakTick');
+                metro.weakTick.play();
+            }
+            lastNoteIdx = curNoteIdx;
+        }
     }
     drawNotesAndFeedback();
 
