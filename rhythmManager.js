@@ -47,7 +47,8 @@ class RhythmManager {
             this.scoreNotes.push({
                 time: tMs,
                 type: n.type,
-                abbr: n.abbr || n.type[0].toUpperCase()
+                abbr: n.abbr || n.type[0].toUpperCase(),
+                accent: n.accent !== undefined ? n.accent : 'weak'
             });
         }
         // 计算总时长

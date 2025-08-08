@@ -174,13 +174,18 @@ function drawGrid() {
 
 function drawNotesAndFeedback() {
     const notes = rm.getVisibleNotes();
-    drawingContext.shadowBlur = 6; drawingContext.shadowColor = '#888';
+    drawingContext.shadowBlur = 6;
+    drawingContext.shadowColor = '#888';
     for (const n of notes) {
-        const xN = rm.getScrollX(n._displayTime ?? n.time), y = rm.noteY;
-        fill(200, 180); noStroke(); ellipse(xN, y, 20);   // 灰音符
+        const xN = rm.getScrollX(n._displayTime ?? n.time);
+        y = rm.noteY;
+        fill(n.accent === 1 ? 'gold' : color(200, 180));
+        noStroke();
+        ellipse(xN, y, 20);   // 灰音符
 
         // 显示简写字母
-        fill('#eeeeee'); textSize(12);
+        fill('#eeeeee');
+        textSize(12);
         textAlign(CENTER, TOP);
         text(n.abbr, xN, y + 12);
 
