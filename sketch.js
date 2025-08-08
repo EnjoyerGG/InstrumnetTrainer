@@ -138,19 +138,27 @@ function draw() {
     }
 
     if (metronomeEnabled && running && metro.isLoaded()) {
-        let elapsed = rm.getElapsedTime() % rm.totalDuration;
-        let curNoteIdx = Math.floor(elapsed / rm.noteInterval);
-        if (curNoteIdx !== lastNoteIdx) {
-            let barIdx = curNoteIdx % beatsPerBar;
-            if (barIdx === 0) {
-                console.log('strongTick');
-                metro.strongTick.play();
-            } else {
-                console.log('weakTick');
-                metro.weakTick.play();
+        let now = rm._t();
+        let totalDuration = rm.totalDuration;
+        let loopNow = now % totalDuration;
+        let notes = rm.scoreNotes;
+
+        if (typeof window.lastLoopNow === "undefined") window.lastLoopNow = 0;
+        if (loopNow < window.lastLoopNow) lastNoteIdx = -1; // 新一圈，重置
+        window.lastLoopNow = loopNow;
+
+        for (let idx = lastNoteIdx + 1; idx < notes.length; idx++) {
+            let n = notes[idx];
+            if (!n) break; // 防止越界
+            if (n.time > loopNow) break;
+            if (metronomeEnabled) {
+                if (n.accent === 1 && metro.strongTick) metro.strongTick.play();
+                else if (n.accent === 0 && metro.weakTick) metro.weakTick.play();
             }
-            lastNoteIdx = curNoteIdx;
         }
+        let nextIdx = notes.findIndex(n => n.time > loopNow);
+        if (nextIdx === -1) nextIdx = notes.length;
+        lastNoteIdx = nextIdx - 1;
     }
     drawNotesAndFeedback();
 
