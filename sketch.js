@@ -76,9 +76,9 @@ function setup() {
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
         if (metronomeEnabled) {
-            select('#metro-toggle').html('关闭节拍器');
+            select('#metro-toggle').html('Metronome Off');
         } else {
-            select('#metro-toggle').html('打开节拍器');
+            select('#metro-toggle').html('Metronome On');
         }
         metro.enable(metronomeEnabled);
     });
