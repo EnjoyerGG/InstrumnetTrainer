@@ -105,6 +105,7 @@ class RhythmManager {
 
         let bestDiff = Infinity;
         let bestIdx = -1;
+
         for (let i = 0; i < this.scoreNotes.length; i++) {
             const n = this.scoreNotes[i];
             const state = this.feedbackStates[i];

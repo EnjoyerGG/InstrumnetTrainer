@@ -44,11 +44,11 @@
                 let energy = 0;
                 if (result.spectrogram && result.spectrogram.data) {
                     const arr = result.spectrogram.data;
-                    let sum = 0;
+                    let sumSq = 0;
                     for (let i = 0; i < arr.length; i++) {
-                        sum += Math.abs(arr[i]);
+                        sumSq += arr[i] * arr[i];
                     }
-                    energy = sum / arr.length;
+                    energy = Math.sqrt(sumSq / arr.length); //RMS
                     console.log('tmEnergy', energy.toFixed(4));
                     window._tmEnergy = energy;  //让UI能够显示TM能量
                 }
