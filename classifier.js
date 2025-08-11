@@ -94,7 +94,11 @@
         },
 
         onLabelChange(cb) { if (typeof cb === 'function') this._onLabel.add(cb); },
-        onRaw(cb) { if (typeof cb === 'function') this._onRaw.add(cb); }
+        onRaw(cb) { if (typeof cb === 'function') this._onRaw.add(cb); },
+
+        setCooldown(ms) {
+            this._cooldownMs = Math.max(0, ms | 0);
+        }
     };
 
     global.CongaClassifier = TMRecognizer; // 用原来的名字，sketch.js 无需大改

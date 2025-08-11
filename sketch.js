@@ -44,9 +44,6 @@ function setup() {
     CongaClassifier.init({
         modelURL: 'models/conga/',
         probabilityThreshold: 0.2,
-        overlapFactor: 0.65,
-        stableFrames: 1,
-        probabilityThreshold: 0.2,
         overlapFactor: 0.75,
         stableFrames: 1,
         cooldownMs: 250
@@ -143,7 +140,7 @@ function handleReset() {
     running = false;
     counting = false;
     lastNoteIdx = -1;
-    rm.pause();
+
     rm.reset();
     rm.pause();
     rm.pauseAt = rm.startTime;

@@ -1,8 +1,8 @@
 // ---- 常量 ----
-const MISS_WINDOW = 80;     // ms：超出即 Miss
-const EARLY_WINDOW = 35;
-const PERFECT_WIN = 10;
-const GOOD_WINDOW = 40;
+const MISS_WINDOW = 140;     // ms：超出即 Miss
+const EARLY_WINDOW = 25;
+const PERFECT_WIN = 12;
+const GOOD_WINDOW = 45;
 //const WARMUP_MS = 500;
 const INITIAL_OFFSET = 100; // 让谱面整体右移100ms
 
