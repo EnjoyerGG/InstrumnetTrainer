@@ -92,6 +92,9 @@ function setup() {
     select('#bpm-val').html(Math.round(initBpm));
     rm.setBPM(initBpm);
     rm.setSpeedFactor(initSpeed);
+    if (CongaClassifier.setCooldown) {
+        CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
+    }
     rm.noteY = 40;
 
     select('#start-btn').mousePressed(handleStart);
@@ -131,7 +134,14 @@ async function handleStart() {
 
     try { if (mic && mic.stop) mic.stop(); } catch (e) { console.warn(e); }
 
-    try { CongaClassifier.start(); } catch (e) { console.error(e); }
+    try {
+        CongaClassifier.start();
+        if (CongaClassifier.setCooldown) {
+            CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
+        }
+    } catch (e) {
+        console.error(e);
+    }
 
     startCountdown();
     lastNoteIdx = -1; // 重置音符索引
