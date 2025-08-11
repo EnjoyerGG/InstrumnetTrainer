@@ -1,154 +1,101 @@
-//teachable machine + ml5.js的conga击法分类器(open, slap, palm, tip)
 
 (function (global) {
-    const CANON_MAP = new Map([
-        ['open', 'open'],
-        ['slap', 'slap'],
-        ['palm', 'palm'],
-        ['tip', 'tip'],
-        ['Background Noise', 'background'],
-        ['noise', 'background'],
-        ['unknown', 'background'],
-        ['_background_noise_', 'background']
-    ]);
+    const TMRecognizer = {
+        _rec: null, _ready: false, _active: false,
+        _labels: [],
+        _probGate: 0.6, _stable: 3, _overlap: 0.5,
+        _cooldownMs: 250, _lastEmitTs: 0,
+        _pending: { label: null, count: 0 },
+        _onLabel: new Set(), _onRaw: new Set(),
 
-    function canonLabel(s) {
-        const low = (s || '').toLowerCase().trim();
-        if (CANON_MAP.has(low)) return CANON_MAP.get(low);
-        if (low.includes('open')) return 'open';
-        if (low.includes('slap')) return 'slap';
-        if (low.includes('palm') || low.includes('bass')) return 'palm';
-        if (low.includes('tip') || low.includes('finger')) return 'tip';
-        return 'background';
-    }
+        async init({ modelURL, probabilityThreshold = 0.6, stableFrames = 3, overlapFactor = 0.5, cooldownMs = 250 } = {}) {
+            if (!modelURL) throw new Error('modelURL 不能为空');
 
-    const CongaClassifier = {
-        _classifier: null,
-        _ready: false,
-        _active: false,
-
-        //当前"稳定后“的预测
-        _label: 'waiting...',
-        _conf: 0,
-
-        //去抖
-        _pendingLabel: null,
-        _pendingCount: 0,
-        //配置
-        _cfg: {
-            modelURL: '',
-            probabilityThreshold: 0.6, //置信度阈值
-            overlapFactor: 0.5, //重叠因子
-            includeSpectrogram: false, //是否包含频谱图
-            stableFrames: 3,
-            allowed: new Set(['open', 'slap', 'palm', 'tip'])   //限定输出类别
-        },
-
-        //事件
-        _onLabelChange: new Set(),
-        _onRaw: new Set(),
-
-        //初始化
-        async init(opts = {}) {
-            if (!opts.modelURL || !opts.modelURL.endWith('/')) {
-                throw new Error('[CongaClassifier] modelURL loads error, must be a directory URL');
-            }
-            //合并配置
-            this._cfg = {
-                ...this._cfg,
-                ...opts,
-                allowed: new Set((opts.allowedLabels || ['open', 'slap', 'palm', 'tip']).map(s => s.toLowerCase()))
+            const toAbsRoot = (u) => {
+                let root = /^(https?:|file:)/.test(u) ? u : new URL(u, location.href).href;
+                if (!root.endsWith('/')) root += '/';
+                return root;
             };
+            const root = toAbsRoot(modelURL);
 
-            //创建ml5分类器
-            this._classifier = await ml5.soundClassifier(this._cfg.modelURL + 'model.json', {
-                probabilityThreshold: this._cfg.probabilityThreshold,
-                overlapFactor: this._cfg.overlapFactor,
-                includeSpectrogram: this._cfg.includeSpectrogram
-            });
+            this._probGate = probabilityThreshold;
+            this._stable = stableFrames;
+            this._overlap = overlapFactor;
+            this._cooldownMs = cooldownMs;
 
+            this._rec = speechCommands.create(
+                'BROWSER_FFT',
+                undefined,
+                root + 'model.json',
+                root + 'metadata.json'
+            )
+
+
+            await this._rec.ensureModelLoaded();
+            this._labels = this._rec.wordLabels();
             this._ready = true;
             return true;
         },
 
-        //开始监听
         start() {
-            if (!this._ready || !this._classifier) {
-                console.warn('[CongaClassifier] Not ready or classifier not initialized');
-                return;
-            }
+            if (!this._ready || this._active) return;
             this._active = true;
-            this._classifier.classify(this._gotResult.bind(this));
+            this._rec.listen(result => {
+                let energy = 0;
+                if (result.spectrogram && result.spectrogram.data) {
+                    const arr = result.spectrogram.data;
+                    let sum = 0;
+                    for (let i = 0; i < arr.length; i++) {
+                        sum += Math.abs(arr[i]);
+                    }
+                    energy = sum / arr.length;
+                    console.log('tmEnergy', energy.toFixed(4));
+                    window._tmEnergy = energy;  //让UI能够显示TM能量
+                }
+
+                const scores = Array.from(result.scores);
+                const idx = scores.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]);
+
+                // 原始 topN 给到调试
+                const top = idx.slice(0, Math.min(5, idx.length))
+                    .map(([v, i]) => ({ label: this._labels[i], confidence: v }));
+                this._onRaw.forEach(fn => { try { fn(top); } catch { } });
+
+                const [s1, i1] = idx[0], [s2] = idx[1] || [0];
+                if (s1 < this._probGate) return; // 置信度门限（外部也可自己再做门控）
+                const lab = this._labels[i1];
+
+                // 简易去抖
+                if (this._pending.label === lab) this._pending.count++;
+                else this._pending = { label: lab, count: 1 };
+
+                if (this._pending.count >= this._stable) {
+                    const now = performance.now();
+                    if (now - this._lastEmitTs >= this._cooldownMs) {
+                        this._lastEmitTs = now;
+                        const payload = { label: lab, confidence: s1, margin: s1 - s2, energy, raw: top };
+                        this._onLabel.forEach(fn => { try { fn(payload); } catch { } });
+                    }
+                }
+            }, {
+                includeSpectrogram: true,
+                probabilityThreshold: 0,              // 放开，让我们自己 gate
+                invokeCallbackOnNoiseAndUnknown: true,
+                overlapFactor: this._overlap
+            });
         },
-        //停止监听
+
         stop() {
-            {
-                this._active = false;
-                if (this._classifier && typeof this._classifier.stop === 'function') {
-                    try {
-                        this._classifier.stop();
-                    } catch (_) { }
-                }
-            }
-        },
-        /** 设置本地阈值（运行时更改） */
-        setProbabilityThreshold(p) {
-            if (Number.isFinite(p)) this._cfg.probabilityThreshold = p;
-        },
-        /** 读取当前稳定预测 */
-        getPrediction() {
-            return { label: this._label, confidence: this._conf };
-        },
-        /** 订阅稳定标签变化 */
-        onLabelChange(cb) {
-            if (typeof cb === 'function') this._onLabelChange.add(cb);
-            return () => this._onLabelChange.delete(cb);
-        },
-        /** 订阅原始结果流（调试/可视化） */
-        onRaw(cb) {
-            if (typeof cb === 'function') this._onRaw.add(cb);
-            return () => this._onRaw.delete(cb);
-        },
-        // —— 内部：结果处理 —— //
-        _gotResults(err, results) {
             if (!this._active) return;
-            if (err) {
-                console.error('[CongaClassifier] classify error:', err);
-                return;
-            }
-            if (!results || !results.length) return;
+            this._active = false;
+            this._rec.stopListening();
+            this._pending = { label: null, count: 0 };
+            this._lastEmitTs = 0;
+        },
 
-            // 原始结果回调
-            this._onRaw.forEach(fn => { try { fn(results); } catch { } });
-
-            const top = results[0];
-            const rawLabel = top?.label ?? 'unknown';
-            const conf = Number(top?.confidence ?? 0);
-
-            if (conf < this._cfg.probabilityThreshold) return;
-
-            const mapped = canonLabel(rawLabel);
-            const finalLabel = this._cfg.allowed.has(mapped) ? mapped : 'background';
-
-            // 去抖：连续 N 帧一致才更新
-            if (finalLabel === this._pendingLabel) {
-                this._pendingCount++;
-            } else {
-                this._pendingLabel = finalLabel;
-                this._pendingCount = 1;
-            }
-
-            if (this._pendingCount >= this._cfg.stableFrames) {
-                const changed = (finalLabel !== this._label);
-                this._label = finalLabel;
-                this._conf = conf;
-                if (changed) {
-                    const payload = { label: this._label, confidence: this._conf, raw: results };
-                    this._onLabelChange.forEach(fn => { try { fn(payload); } catch { } });
-                }
-            }
-        }
+        onLabelChange(cb) { if (typeof cb === 'function') this._onLabel.add(cb); },
+        onRaw(cb) { if (typeof cb === 'function') this._onRaw.add(cb); }
     };
-    global.CongaClassifier = CongaClassifier;
-})(typeof window !== 'undefined' ? window : globalThis);
 
+    global.CongaClassifier = TMRecognizer; // 用原来的名字，sketch.js 无需大改
+})(typeof window !== 'undefined' ? window : globalThis);

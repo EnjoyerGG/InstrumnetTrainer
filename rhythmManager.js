@@ -1,9 +1,10 @@
 // ---- 常量 ----
 const MISS_WINDOW = 80;     // ms：超出即 Miss
+const EARLY_WINDOW = 35;
 const PERFECT_WIN = 10;
 const GOOD_WINDOW = 40;
 //const WARMUP_MS = 500;
-const INITIAL_OFFSET = 100; // 让谱面整体右移400ms
+const INITIAL_OFFSET = 100; // 让谱面整体右移100ms
 
 class RhythmManager {
     constructor() {
@@ -24,6 +25,7 @@ class RhythmManager {
         this.pauseAt = 0;
         this.totalDuration = 0;
         this.feedbackStates = [];
+        this._loopIdx = 0;
     }
 
     /* ---------- 时间工具 ---------- */
@@ -48,7 +50,7 @@ class RhythmManager {
                 time: tMs,
                 type: n.type,
                 abbr: n.abbr || n.type[0].toUpperCase(),
-                accent: n.accent !== undefined ? n.accent : 'weak'
+                accent: n.accent !== undefined ? n.accent : 0
             });
         }
         // 计算总时长
@@ -67,6 +69,7 @@ class RhythmManager {
     reset() {
         this.startTime = millis();
         this.feedbackStates = this._emptyFeedback();
+        this._loopIdx = 0;
     }
 
     pause() {
@@ -84,34 +87,66 @@ class RhythmManager {
     }
 
     /* ---------- 判定 ---------- */
-    registerHit() {
-        if (!this.scoreNotes.length) return;
+    registerHit(kind) {
+        if (!this.scoreNotes.length || !this.totalDuration) return;
         // 当前循环内时间
         const hitTime = this._t() % this.totalDuration;
-        let best = null, bestDiff = Infinity, bestIdx = -1;
+
+        const norm = (k) => {
+            if (!k) return null;
+            const s = String(k).toLowerCase();
+            if (s === 'o' || s === 'open') return 'O';
+            if (s === 'p' || s === 'palm' || s === 'bass') return 'P';
+            if (s === 't' || s === 'tip' || s === 'finger') return 'T';
+            if (s === 's' || s === 'slap') return 'S';
+            return null;
+        };
+        const want = norm(kind);
+
+        let bestDiff = Infinity;
+        let bestIdx = -1;
         for (let i = 0; i < this.scoreNotes.length; i++) {
             const n = this.scoreNotes[i];
             const state = this.feedbackStates[i];
             if (state.judged) continue;
-            const d = Math.abs(n.time - hitTime);
-            if (d < bestDiff) {
-                bestDiff = d;
-                best = state;
+            if (want && n.abbr !== want) continue;
+
+            const dsigned = n.time - hitTime;
+            //只允许在[-MISS_WINDOW, EARLY_WINDOW]内判定
+            if (dsigned < -MISS_WINDOW || dsigned > EARLY_WINDOW) continue;
+            const dabs = Math.abs(dsigned);
+            if (dabs < bestDiff || (dabs === bestDiff && dsigned <= 0)) {
+                bestDiff = dabs;
                 bestIdx = i;
             }
         }
-        if (best && bestDiff <= MISS_WINDOW) {
-            best.judged = true; best.hitTime = hitTime;
-            best.result = bestDiff <= PERFECT_WIN ? "Perfect"
-                : bestDiff <= GOOD_WINDOW ? "Good"
-                    : "Miss";
-            best.fadeTimer = 2000;
+
+        if (bestIdx < 0) {
+            // 策略1：忽略（什么都不做）
+            // 策略2：将“最接近的未判定音符”判 Miss（更严格）
+            // 这里采用忽略，避免误伤
+            return;
         }
+        const st = this.feedbackStates[bestIdx];
+        st.judged = true;
+        st.hitTime = hitTime;
+        if (bestDiff <= PERFECT_WIN) {
+            st.result = "Perfect";
+        } else if (bestDiff <= GOOD_WINDOW) {
+            st.result = "Good";
+        } else if (bestDiff <= MISS_WINDOW) {
+            st.result = "Miss";
+        } else {
+            // 超过 MISS_WINDOW：建议也直接判 Miss，
+            // 否则需要等到 checkAutoMiss() 扫描后才显示
+            st.result = "Miss";
+        }
+        st.fadeTimer = 2000;
     }
 
     setBPM(bpm) {
         this.bpm = bpm;
-        this.noteInterval = 60000 / bpm;
+        this.noteInterval = 60000 / bpm / 2;
     }
 
     checkAutoMiss() {
@@ -165,9 +200,10 @@ class RhythmManager {
     // 无限循环，不需要 reset feedback，每圈自动清零
     checkLoopAndRestart() {
         // 到新一圈就清理 feedback 状态
-        const elapsed = this._t();
-        if (this.totalDuration && (elapsed % this.totalDuration) < 20) {
-            // 新一轮
+        if (!this.totalDuration) return;
+        const idx = Math.floor(this._t() / this.totalDuration);
+        if (idx !== this._loopIdx) {
+            this._loopIdx = idx;
             this.feedbackStates = this._emptyFeedback();
         }
     }

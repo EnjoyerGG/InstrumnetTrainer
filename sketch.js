@@ -8,6 +8,7 @@ let metronomeEnabled = false;
 let chartJSON;
 let lastNoteIdx = -1;
 let beatsPerBar = 4; // 每小节的拍数
+let mic;
 const COUNTDOWN_MS = 3000;
 
 const BPM_MIN = 60, BPM_MAX = 240;
@@ -32,10 +33,45 @@ function bpmToSpeed(bpm) {
 function setup() {
     createCanvas(1000, 80);
     rm = new RhythmManager();
-    rm.initChart(chartJSON.conga, 5);   // 读取 JSON
+    rm.initChart(chartJSON.conga);   // 读取 JSON
     metro.onloaded(() => {
         console.log("Metronome loaded!");
         metro.reset();
+    });
+    mic = new p5.AudioIn();
+    mic.start();
+
+    CongaClassifier.init({
+        modelURL: 'models/conga/',
+        probabilityThreshold: 0.2,
+        overlapFactor: 0.65,
+        stableFrames: 1,
+        probabilityThreshold: 0.2,
+        overlapFactor: 0.75,
+        stableFrames: 1,
+        cooldownMs: 250
+    }).then(() => {
+        CongaClassifier.onRaw(top => console.log('top5', top));
+
+        const ENERGY_GATE_TM = 5;
+        const MIN_CONF = 0.35;
+        const MIN_MARGIN = 0.15;
+
+        CongaClassifier.onLabelChange(({ label, confidence, margin, energy }) => {
+            if (!running) return;
+            if ((energy ?? 0) < ENERGY_GATE_TM) return; // 用 TM 能量门控
+            if (confidence < MIN_CONF || margin < MIN_MARGIN) return;
+
+            // 标签映射更“宽容”：忽略大小写和空格
+            const s = (label || '').toLowerCase().replace(/\s+/g, '');
+            const abbr =
+                s.includes('open') ? 'O' :
+                    (s.includes('palm') || s.includes('bass')) ? 'P' :
+                        (s.includes('tip') || s.includes('finger')) ? 'T' :
+                            s.includes('slap') ? 'S' : null;
+
+            if (abbr) { rm.registerHit(abbr); judgeLineGlow = 1; }
+        });
     });
 
     select('#metro-toggle').mousePressed(() => {
@@ -60,7 +96,12 @@ function setup() {
     rm.noteY = 40;
 
     select('#start-btn').mousePressed(handleStart);
-    select('#pause-btn').mousePressed(() => { running = false; counting = false; rm.pause(); });
+    select('#pause-btn').mousePressed(() => {
+        running = false;
+        counting = false;
+        rm.pause();
+        CongaClassifier.stop();
+    });
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(() => saveStrings([rm.exportCSV()], 'hits.csv'));
 
@@ -79,8 +120,20 @@ function setup() {
 }
 
 /* ------------ Control ------------- */
-function handleStart() {
+async function handleStart() {
     if (running || counting) return;
+
+    if (typeof getAudioContext === 'function') {
+        const ac = getAudioContext();
+        if (ac && ac.state !== 'running') {
+            try { await ac.resume(); } catch (e) { console.warn(e); }
+        }
+    }
+
+    try { if (mic && mic.stop) mic.stop(); } catch (e) { console.warn(e); }
+
+    try { CongaClassifier.start(); } catch (e) { console.error(e); }
+
     startCountdown();
     lastNoteIdx = -1; // 重置音符索引
     metro.reset();
@@ -97,6 +150,8 @@ function handleReset() {
     counting = true;
     ctStart = millis();
     metro.reset();
+    CongaClassifier.stop();
+    try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
 }
 
 function startCountdown() {
@@ -113,6 +168,13 @@ function draw() {
     judgeLineGlow *= 0.9;
     if (judgeLineGlow < 0.01) judgeLineGlow = 0;
     drawGrid();
+
+    //麦克风
+    const lvl = mic ? mic.getLevel() : 0;
+    const tm = (window._tmEnergy || 0).toFixed(1);
+    fill(255);
+    noStroke();
+    text(`mic: ${lvl.toFixed(3)} | tm: ${tm}`, 30, 10);
 
     // 判定线发光
     let glowLevel = lerp(2, 18, judgeLineGlow);
@@ -186,7 +248,7 @@ function drawNotesAndFeedback() {
     drawingContext.shadowColor = '#888';
     for (const n of notes) {
         const xN = rm.getScrollX(n._displayTime ?? n.time);
-        y = rm.noteY;
+        const y = rm.noteY;
         fill(n.accent === 1 ? 'gold' : color(200, 180));
         noStroke();
         ellipse(xN, y, 20);   // 灰音符
@@ -205,7 +267,10 @@ function drawNotesAndFeedback() {
             const col = state.result === "Perfect" ? color(174, 79, 214, alpha)
                 : state.result === "Good" ? color(85, 187, 90, alpha)
                     : color(211, 47, 47, alpha);
-            fill(col); textSize(14); textAlign(CENTER); text(state.result, xN, y - 30);
+            fill(col);
+            textSize(14);
+            textAlign(CENTER);
+            text(state.result, xN, y - 30);
 
             if (state.result !== 'Miss') {
                 const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time;
