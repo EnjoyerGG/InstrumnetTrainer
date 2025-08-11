@@ -98,6 +98,24 @@
 
         setCooldown(ms) {
             this._cooldownMs = Math.max(0, ms | 0);
+        },
+
+        setProbGate(p) {
+            if (Number.isFinite(p)) {
+                this._probGate = Math.max(0, Math.min(1, p));
+            }
+        },
+
+        setStableFrames(n) {
+            if (Number.isFinite(n)) {
+                this._stable = Math.max(1, n | 0);
+            }
+        },
+
+        setOverlap(f) {
+            if (Number.isFinite(f)) {
+                this._overlap = Math.max(0, Math.min(0.99, f));
+            }
         }
     };
 
