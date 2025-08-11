@@ -14,7 +14,8 @@ const COUNTDOWN_MS = 3000;
 const BPM_MIN = 60, BPM_MAX = 240;
 const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
 
-/* ------------ Preload JSON --------*/
+let _emaE = 0, _emaVar = 1, _alphaE = 0.08;
+const MIN_MARGIN = 0.08;
 
 function preload() {
     chartJSON = loadJSON('assets/tumbao.json');
@@ -43,21 +44,22 @@ function setup() {
 
     CongaClassifier.init({
         modelURL: 'models/conga/',
-        probabilityThreshold: 0.2,
-        overlapFactor: 0.75,
+        probabilityThreshold: 0.3,
+        overlapFactor: 0.85,
         stableFrames: 1,
-        cooldownMs: 250
+        cooldownMs: 120
     }).then(() => {
         CongaClassifier.onRaw(top => console.log('top5', top));
 
-        const ENERGY_GATE_TM = 5;
-        const MIN_CONF = 0.35;
-        const MIN_MARGIN = 0.15;
-
         CongaClassifier.onLabelChange(({ label, confidence, margin, energy }) => {
             if (!running) return;
-            if ((energy ?? 0) < ENERGY_GATE_TM) return; // 用 TM 能量门控
-            if (confidence < MIN_CONF || margin < MIN_MARGIN) return;
+            const e = energy ?? 0;
+            _emaE = (1 - _alphaE) * _emaE + _alphaE * e;
+            const dev = e - _emaE;
+            _emaVar = (1 - _alphaE) * _emaVar + _alphaE * (dev * dev);
+            const z = dev / Math.sqrt(_emaVar + 1e-6);
+            if (z < 1.9) return;
+            if ((margin ?? 0) < MIN_MARGIN) return; // 忽略小于最小边距的结果
 
             // 标签映射更“宽容”：忽略大小写和空格
             const s = (label || '').toLowerCase().replace(/\s+/g, '');
