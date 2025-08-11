@@ -50,7 +50,7 @@ class RhythmManager {
                 time: tMs,
                 type: n.type,
                 abbr: n.abbr || n.type[0].toUpperCase(),
-                accent: n.accent !== undefined ? n.accent : 0
+                accent: (n.accent !== undefined ? n.accent : 0) | 0
             });
         }
         // 计算总时长

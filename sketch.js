@@ -140,7 +140,6 @@ function handleReset() {
     running = false;
     counting = false;
     lastNoteIdx = -1;
-
     rm.reset();
     rm.pause();
     rm.pauseAt = rm.startTime;
