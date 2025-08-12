@@ -52,6 +52,30 @@
         <div id="drum-wrap"></div> <!-- 鼓面独立画布 -->
     </div>
 
+    <style>
+        .app {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 16px;
+            align-items: start;
+        }
+
+        #score-wrap {
+            min-width: 640px;
+        }
+
+        #drum-wrap {
+            width: 260px;
+            height: 260px;
+            border: 1px solid #3b3e46;
+            border-radius: 16px;
+        }
+
+        /* 想叠在右下角：
+  #drum-wrap{ position:fixed; right:24px; bottom:24px; width:240px; height:240px; }
+  }*/
+    </style>
+
 
 
 

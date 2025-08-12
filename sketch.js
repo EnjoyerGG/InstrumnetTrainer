@@ -32,7 +32,9 @@ function bpmToSpeed(bpm) {
 
 /* ------------ Setup --------------- */
 function setup() {
-    createCanvas(1000, 80);
+    const cnv = createCanvas(1000, 80);
+    cnv.parent('score-wrap');
+
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);   // 读取 JSON
     metro.onloaded(() => {
@@ -69,7 +71,13 @@ function setup() {
                         (s.includes('tip') || s.includes('finger')) ? 'T' :
                             s.includes('slap') ? 'S' : null;
 
-            if (abbr) { rm.registerHit(abbr); judgeLineGlow = 1; }
+            if (abbr) {
+                rm.registerHit(abbr);
+                judgeLineGlow = 1;
+                if (window.DrumCanvas?.trigger) {
+                    DrumCanvas.trigger(abbr, 320);
+                }
+            }
         });
     });
 
@@ -120,9 +128,9 @@ function setup() {
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
 
-
-    //Drum UI
-    window.drum = new DrumUI().fitToCanvas(width, height, 10);
+    if (window.DrumCanvas && !window.DrumCanvas._ctx) {
+        DrumCanvas.init({ mount: '#drum-wrap' });
+    }
 }
 
 /* ------------ Control ------------- */
@@ -176,10 +184,6 @@ function startCountdown() {
 
 /* ------------ Draw Loop ----------- */
 function draw() {
-    //drum UI update
-    if (window.drum) {
-        drum.update(deltaTime);
-    }
 
     background('#3a3a3a');            // 深灰背景
     judgeLineGlow *= 0.9;
@@ -247,9 +251,6 @@ function draw() {
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);
 
-    if (window.drum) {
-        window.drum.draw();
-    }
 }
 
 /* ------------ Visualization ------- */
@@ -315,14 +316,6 @@ function someBPMChangeHandler(newBPM) {
 
 /* ------------ Interaction --------- */
 function mousePressed() {
-    if (window.drum && window.drum.isMouseInside() && window.drum.hoverAbbr) {
-        const sec = DRUM_SECTORS.find(s => s.abbr === window.drum.hoverAbbr);
-        if (sec?.link) {
-            window.open(sec.link, '_blank', 'noopener');
-            return;
-        }
-    }
-
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
