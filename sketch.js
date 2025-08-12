@@ -317,8 +317,12 @@ function mousePressed() {
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
-        if (window.DrumCanvas?.trigger) {
-            DrumCanvas.trigger('O', 240);
-        }
+    }
+
+    if (window.DrumCanvas?.trigger && rm.scoreNotes?.length) {
+        const now = rm._t() % rm.totalDuration;
+        let next = rm.scoreNotes.find(n => n.time > now);
+        if (!next) next = rm.scoreNotes[0];
+        DrumCanvas.trigger(next.abbr || 'O', 260);
     }
 }

@@ -74,7 +74,7 @@ canvas {
 /* 主音符画布挂在这个容器里——完全居中 */
 #score-wrap {
     width: 100%;
-    min-height: 260px;
+    min-height: 100px;
     /* 让它有可居中的高度 */
     display: grid;
     place-items: center;
@@ -93,10 +93,10 @@ canvas {
     bottom: 24px;
     width: clamp(180px, 22vw, 280px);
     height: clamp(180px, 22vw, 280px);
-    border: 1px solid #3b3e46;
+    border: none;
     border-radius: 16px;
-    background: rgba(36, 38, 43, .75);
+    background: rgba(58, 58, 60, 0.75);
     backdrop-filter: blur(2px);
-    z-index: 40;
+    z-index: 60;
     /* 在一切内容之上 */
 }
