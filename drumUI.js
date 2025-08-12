@@ -23,6 +23,12 @@
         },
     ]).map(s => ({ ...s, start: normDeg(s.start), end: normDeg(s.end) }));
 
+    function midAngleDeg(start, end) {
+        // 中点 = start + (end - start) 的圆周差的一半
+        const diff = ((end - start + 360) % 360);
+        return (start + diff / 2) % 360;
+    }
+
     function deg2rad(d) { return d * Math.PI / 180; }
     function normDeg(a) { a = a % 360; return (a < 0) ? a + 360 : a; }
     function inArc(ang, start, end) {
@@ -71,16 +77,30 @@
             // 扇区
             sectors.forEach(sec => {
                 const active = state.flashes.has(sec.abbr);
-                const alpha = active ? 0.85 : 0.35;
+
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.fillStyle = hexToRgba(sec.color, alpha);
                 ctx.arc(0, 0, r * 0.88, deg2rad(sec.start), deg2rad(sec.end), false);
                 ctx.closePath(); ctx.fill();
 
+                // 命中高亮层（发光）
+                if (active) {
+                    ctx.save();
+                    ctx.shadowBlur = Math.max(8, r * 0.18);
+                    ctx.shadowColor = hexToRgba(sec.color, 0.95);
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.beginPath(); ctx.moveTo(0, 0);
+                    ctx.fillStyle = hexToRgba(sec.color, 0.85);
+                    ctx.arc(0, 0, r * 0.90, deg2rad(sec.start), deg2rad(sec.end), false);
+                    ctx.closePath(); ctx.fill();
+                    ctx.restore();
+                }
+
                 // 标签
-                const mid = deg2rad((sec.start + sec.end) / 2);
-                const tx = Math.cos(mid) * r * 0.37, ty = Math.sin(mid) * r * 0.37;
+                const mid = deg2rad(midAngleDeg(sec.start, sec.end));
+                const tx = Math.cos(mid) * r * 0.58;
+                const ty = Math.sin(mid) * r * 0.58;
                 ctx.fillStyle = '#eee';
                 ctx.font = Math.round(r * 0.16) + 'px Inter, system-ui, sans-serif';
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -95,14 +115,16 @@
             if (state.hoverAbbr) {
                 const sec = sectors.find(s => s.abbr === state.hoverAbbr);
                 if (sec) {
-                    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3;
+                    ctx.strokeStyle = 'rgba(255,255,255,.85)';
+                    ctx.lineWidth = 3;
                     ctx.beginPath();
                     ctx.arc(0, 0, r * 0.97, deg2rad(sec.start), deg2rad(sec.end), false);
                     ctx.stroke();
 
                     ctx.fillStyle = '#e6e6e6';
                     ctx.font = Math.round(r * 0.12) + 'px Inter, system-ui, sans-serif';
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
                     ctx.fillText('点击查看教学视频', 0, r * 0.58);
                 }
             }
