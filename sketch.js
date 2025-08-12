@@ -122,10 +122,7 @@ function setup() {
 
 
     //Drum UI
-    let drumX = 1000 - 140;
-    let drumY = 130;
-    let drumR = 110;
-    window.drum = new DrumUI(drumX, drumY, drumR);
+    window.drum = new DrumUI().fitToCanvas(width, height, 10);
 }
 
 /* ------------ Control ------------- */
