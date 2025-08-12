@@ -318,6 +318,14 @@ function someBPMChangeHandler(newBPM) {
 
 /* ------------ Interaction --------- */
 function mousePressed() {
+    if (window.drum && window.drum.isMouseInside() && window.drum.hoverAbbr) {
+        const sec = DRUM_SECTORS.find(s => s.abbr === window.drum.hoverAbbr);
+        if (sec?.link) {
+            window.open(sec.link, '_blank', 'noopener');
+            return;
+        }
+    }
+
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
