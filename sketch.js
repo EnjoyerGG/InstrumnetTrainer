@@ -82,7 +82,7 @@ function setup() {
         }
         metro.enable(metronomeEnabled);
     });
-    select('#metro-toggle').html('打开节拍器');
+    select('#metro-toggle').html('Metronome On');
     metro.enable(false);
 
     /* UI */
