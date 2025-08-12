@@ -197,8 +197,6 @@ function draw() {
     noStroke();
     text(`mic: ${lvl.toFixed(3)} | tm: ${tm}`, 30, 10);
 
-
-
     // 判定线发光
     let glowLevel = lerp(2, 18, judgeLineGlow);
     let alpha = lerp(120, 255, judgeLineGlow);
@@ -319,5 +317,8 @@ function mousePressed() {
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
+        if (window.DrumCanvas?.trigger) {
+            DrumCanvas.trigger('O', 240);
+        }
     }
 }
