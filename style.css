@@ -65,24 +65,38 @@ canvas {
 
 /* 两列布局：左侧谱面，右侧鼓面 */
 .app {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-    gap: 16px;
-    align-items: start;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px 16px 120px;
+    /* 底部预留空间 */
 }
 
-/* 让 p5 画布水平居中 */
+/* 主音符画布挂在这个容器里——完全居中 */
 #score-wrap {
     width: 100%;
+    min-height: 260px;
+    /* 让它有可居中的高度 */
     display: grid;
     place-items: center;
     /* 水平+垂直居中 */
 }
 
-/* 鼓面独立画布的尺寸/位置完全交给 CSS 控制 */
+#score-wrap canvas {
+    /* 保险：阻止内联元素带来的偏移 */
+    display: block;
+}
+
+/* 鼓面：左下角悬浮。只改这两个数就能调大小 */
 #drum-wrap {
-    width: 280px;
-    height: 280px;
+    position: fixed;
+    left: 24px;
+    bottom: 24px;
+    width: clamp(180px, 22vw, 280px);
+    height: clamp(180px, 22vw, 280px);
     border: 1px solid #3b3e46;
     border-radius: 16px;
+    background: rgba(36, 38, 43, .75);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+    /* 在一切内容之上 */
 }
