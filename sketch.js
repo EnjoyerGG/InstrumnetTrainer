@@ -119,6 +119,13 @@ function setup() {
     });
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
+
+
+    //Drum UI
+    let drumX = 1000 - 140;
+    let drumY = 130;
+    let drumR = 110;
+    window.drum = new DrumUI(drumX, drumY, drumR);
 }
 
 /* ------------ Control ------------- */
@@ -172,6 +179,11 @@ function startCountdown() {
 
 /* ------------ Draw Loop ----------- */
 function draw() {
+    //drum UI update
+    if (window.drum) {
+        drum.update(deltaTime);
+    }
+
     background('#3a3a3a');            // 深灰背景
     judgeLineGlow *= 0.9;
     if (judgeLineGlow < 0.01) judgeLineGlow = 0;
@@ -183,6 +195,8 @@ function draw() {
     fill(255);
     noStroke();
     text(`mic: ${lvl.toFixed(3)} | tm: ${tm}`, 30, 10);
+
+
 
     // 判定线发光
     let glowLevel = lerp(2, 18, judgeLineGlow);
@@ -235,6 +249,10 @@ function draw() {
 
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);
+
+    if (window.drum) {
+        window.drum.draw();
+    }
 }
 
 /* ------------ Visualization ------- */
