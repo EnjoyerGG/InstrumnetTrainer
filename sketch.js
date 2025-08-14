@@ -16,6 +16,8 @@ const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
 
 let _emaE = 0, _emaVar = 1, _alphaE = 0.08;
 const MIN_MARGIN = 0.08;
+let ENERGY_Z = 1.9; //默认阈值
+
 
 function preload() {
     chartJSON = loadJSON('assets/tumbao.json');
@@ -30,8 +32,19 @@ function bpmToSpeed(bpm) {
     return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPEED_MIN) / (BPM_MAX - BPM_MIN);
 }
 
+function isMobile() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 /* ------------ Setup --------------- */
 function setup() {
+    if (isMobile()) {
+        pixelDensity(1);       // 降低 GPU 压力
+        frameRate(45);         // 或 30，按你体验调整
+    } else {
+        frameRate(60);
+    }
+
     const cnv = createCanvas(1000, 80);
     cnv.parent('score-wrap');
 
@@ -60,7 +73,7 @@ function setup() {
             const dev = e - _emaE;
             _emaVar = (1 - _alphaE) * _emaVar + _alphaE * (dev * dev);
             const z = dev / Math.sqrt(_emaVar + 1e-6);
-            if (z < 1.9) return;
+            if (z < ENERGY_Z) return;
             if ((margin ?? 0) < MIN_MARGIN) return; // 忽略小于最小边距的结果
 
             // 标签映射更“宽容”：忽略大小写和空格
@@ -79,6 +92,16 @@ function setup() {
                 }
             }
         });
+    });
+
+    select('#diagram-toggle').mousePressed(() => {
+        const el = document.getElementById('drum-wrap');
+        const off = el.classList.toggle('is-hidden');
+        select('#diagram-toggle').html(`Diagram: ${off ? 'Off' : 'On'}`);
+    });
+
+    select('#sens-slider').input(() => {
+        ENERGY_Z = parseFloat(select('#sens-slider').value());
     });
 
     select('#metro-toggle').mousePressed(() => {
@@ -132,6 +155,16 @@ function setup() {
         DrumCanvas.init({ mount: '#drum-wrap' });
     }
 }
+
+async function loadScripts() {
+    if (!window.tf) {
+        await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js'; s.onload = r; document.head.appendChild(s); });
+    }
+    if (!window.speechCommands) {
+        await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.7.0/dist/speech-commands.min.js'; s.onload = r; document.head.appendChild(s); });
+    }
+}
+
 
 /* ------------ Control ------------- */
 async function handleStart() {

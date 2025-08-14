@@ -10,8 +10,8 @@
     <script
         src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
     <!-- load p5.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
 
     <!-- load custom scripts -->
     <script src="rhythmManager.js"></script>
@@ -27,6 +27,11 @@
     <div id="ui">
         <button id="start-btn">Start</button>
         <button id="pause-btn">Pause</button>
+        <label style="margin-left:12px;">Sensitivity
+            <input id="sens-slider" type="range" min="0.8" max="3.0" step="0.1" value="1.9">
+        </label>
+        <button id="diagram-toggle">Diagram: On</button>
+
         <button id="reset-btn">Reset</button>
         <button id="export-btn">Export</button>
         <button id="metro-toggle">Metronome On</button>

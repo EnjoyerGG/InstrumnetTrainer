@@ -1,6 +1,9 @@
 // metronome.js
 class Metronome {
     constructor({ bpm = 120, beatsPerBar = 4 } = {}) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AC({ latencyHint: 'interactive' });
+
         this.bpm = bpm;
         this.beatsPerBar = beatsPerBar;
         this.lastBeat = -1;
