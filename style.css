@@ -100,3 +100,98 @@ canvas {
     z-index: 60;
     /* 在一切内容之上 */
 }
+
+#mic-hud {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    width: 300px;
+    padding: 12px 14px;
+    border: 1px solid #3b3e46;
+    border-radius: 12px;
+    background: rgba(24, 25, 28, .85);
+    backdrop-filter: blur(2px);
+    color: #ddd;
+    z-index: 50;
+    font-size: 12px;
+}
+
+#mic-hud .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#mic-hud .led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #666
+}
+
+#mic-hud .led.ok {
+    background: #22c55e;
+    box-shadow: 0 0 10px #22c55e
+}
+
+#mic-hud .led.warn {
+    background: #f59e0b;
+    box-shadow: 0 0 8px #f59e0b
+}
+
+#mic-hud .led.err {
+    background: #ef4444;
+    box-shadow: 0 0 8px #ef4444
+}
+
+#mic-hud .bars .bar {
+    display: grid;
+    grid-template-columns: 22px 1fr 42px;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+#mic-hud .bars .name {
+    justify-self: start;
+    opacity: .9
+}
+
+#mic-hud .bars .track {
+    height: 14px;
+    background: #1c1d21;
+    border-radius: 8px;
+    overflow: hidden
+}
+
+#mic-hud .bars .fill {
+    height: 100%;
+    width: 0%;
+    transition: width .08s linear
+}
+
+#mic-hud .bars .val {
+    justify-self: end;
+    font-variant-numeric: tabular-nums
+}
+
+#bar-O {
+    background: #54A8FF
+}
+
+#bar-P {
+    background: #FFD166
+}
+
+#bar-T {
+    background: #7BD88F
+}
+
+#bar-S {
+    background: #FF6B6B
+}
+
+#bar-BG {
+    background: #9b87f5
+}

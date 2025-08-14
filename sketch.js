@@ -16,7 +16,149 @@ const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
 
 let _emaE = 0, _emaVar = 1, _alphaE = 0.08;
 const MIN_MARGIN = 0.08;
-let ENERGY_Z = 1.9; //默认阈值
+let ENERGY_Z = 1.6; //默认阈值
+const DEBUG = false;         // 统一开关：需要时改成 true 再看日志
+const ACCENT_MODE = 'score';
+
+let METRO_OFFSET_STEPS = 0;
+function getMetroOffsetMs() { return (METRO_OFFSET_STEPS || 0) * (rm?.noteInterval || 0); }
+
+// —— 按谱面驱动的 WebAudio 预调度 —— //
+let _tickSchedTimer = null;
+const SCHED_AHEAD = 0.12; // 120ms 预调度窗口
+
+// —— WebAudio ↔︎ 谱面时间的对齐 —— //
+let CLOCK_ANCHOR = null; // { ctx: seconds, rm: ms } 在某个时刻的对齐点
+
+// 根据当前速度动态给预调度窗口：慢速更早排、快速保持紧凑
+function getAheadMs() {
+    // 每格(八分音)时长：rm.noteInterval
+    // 窗口 ≈ 0.75 格，限制在 [140ms, 320ms]
+    const win = Math.max(140, Math.min(320, rm.noteInterval * 0.75));
+    return win;
+}
+
+function reanchorClock() {
+    if (!metro?.ctx) return;
+    CLOCK_ANCHOR = { ctx: metro.ctx.currentTime, rm: rm._t() % rm.totalDuration };
+}
+
+function nowMsFromCtx() {
+    if (!CLOCK_ANCHOR) return rm._t() % rm.totalDuration;
+    const dtMs = (metro.ctx.currentTime - CLOCK_ANCHOR.ctx) * 1000;
+    return (CLOCK_ANCHOR.rm + dtMs) % rm.totalDuration;
+}
+
+
+function isStrongForIndex(idx, notes) {
+    if (ACCENT_MODE === 'score') return ((notes[idx]?.accent | 0) === 1);
+    if (ACCENT_MODE === 'quarter') return (idx % 2) === 0;             // 8分音网格：每两格=一拍
+    if (ACCENT_MODE === 'bar') return idx === 0;                   // 仅小节第1个为强
+    return false;
+}
+
+function startScoreTickScheduler() {
+    stopScoreTickScheduler();
+    scheduleTicksOnce._lastIdx = -1;   // 重置上次调度位置
+    scheduleTicksOnce();
+    _tickSchedTimer = setInterval(scheduleTicksOnce, 22);
+}
+function stopScoreTickScheduler() {
+    if (_tickSchedTimer) {
+        clearInterval(_tickSchedTimer);
+        _tickSchedTimer = null;
+    }
+}
+
+function scheduleTicksOnce() {
+    if (!metronomeEnabled || !running || !metro || !metro.isLoaded()) return;
+    const ctxNow = metro.ctx.currentTime;
+    const nowMs = rm._t() % rm.totalDuration;
+    const aheadMs = getAheadMs();
+
+    if (scheduleTicksOnce._lastNowMs != null && nowMs < scheduleTicksOnce._lastNowMs - 5) {
+        scheduleTicksOnce._lastIdx = -1;
+        if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+        scheduleTicksOnce._guardUntil = 0;
+    }
+    scheduleTicksOnce._lastNowMs = nowMs;
+
+    const notes = rm.scoreNotes;
+    if (!notes || !notes.length) return;
+
+    if (typeof scheduleTicksOnce._lastIdx !== 'number') scheduleTicksOnce._lastIdx = -1;
+
+    // 从下一个音符开始，安排落在 [0, aheadMs] 的所有音符
+    // 从下一个音符开始，安排落在 [0, aheadMs] 的所有音符
+    let idx = ((scheduleTicksOnce._lastIdx ?? -1) + 1 + notes.length) % notes.length;
+    let count = 0;
+
+    while (count < notes.length) {
+        const n = notes[idx];
+        // 该音符距离“现在”的毫秒（回环修正）
+        let dt = n.time - nowMs;
+        if (dt < 0) dt += rm.totalDuration;
+        if (dt > aheadMs) break; // 超出预调度窗口
+
+        const sf = rm?.speedFactor || 1;
+        const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
+        const strong = ((n.accent | 0) === 1);          // ★ 严格按 JSON 的 accent
+
+        // —— 去重与保护 —— //
+        if (!scheduleTicksOnce._seen) scheduleTicksOnce._seen = new Map();
+        // 清理过期记录（>1.5s 的安排）
+        for (const [k, t] of scheduleTicksOnce._seen) {
+            if (t < ctxNow - 1.5) scheduleTicksOnce._seen.delete(k);
+        }
+
+        const lastWhen = scheduleTicksOnce._seen.get(idx) ?? -Infinity;
+        const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;       // 40ms 内视为重复
+        const guarded = !!(scheduleTicksOnce._guardUntil && when <= scheduleTicksOnce._guardUntil);
+
+        if (!recentlyScheduled && !guarded) {
+            metro.scheduleAt(when, strong);                         // 真正安排播放
+            scheduleTicksOnce._seen.set(idx, when);                 // 记录这次安排（用于去重）
+        }
+
+        scheduleTicksOnce._lastIdx = idx;                         // 向后推进指针
+        idx = (idx + 1) % notes.length;
+        count++;
+    }
+
+}
+
+// 立刻对“最靠近判定线”的音符打一下（用于改速时相位重锁）
+function forceClickNearestIfCentered(centerMs = 35) {
+    if (!metronomeEnabled || !metro || !metro.isLoaded() || !rm?.scoreNotes?.length) return;
+    const nowTs = performance.now();
+    if (rm.noteInterval >= 450) centerMs = Math.max(centerMs, 60);
+    if (forceClickNearestIfCentered._last && (nowTs - forceClickNearestIfCentered._last) < 280) return;
+    const nowMs = rm._t() % rm.totalDuration;
+
+    // 找到“前一个”和“后一个”音符
+    const notes = rm.scoreNotes;
+    let nextIdx = notes.findIndex(n => n.time >= nowMs);
+    if (nextIdx < 0) nextIdx = 0;
+    const prevIdx = (nextIdx - 1 + notes.length) % notes.length;
+
+    const dNext = Math.abs(notes[nextIdx].time - nowMs);
+    const dPrev = Math.abs(nowMs - notes[prevIdx].time);
+    // 选更近的那个
+    const nearestIdx = (dNext <= dPrev) ? nextIdx : prevIdx;
+    const nearestDist = Math.min(dNext, dPrev);
+
+    // 足够靠近判定线才触发（避免乱敲）
+    if (nearestDist <= centerMs) {
+        const isStrong = ((notes[nearestIdx].accent | 0) === 1);
+        const sf = rm?.speedFactor || 1;
+        const offsetSec = Math.max(0.03, getMetroOffsetMs() / (1000 * sf));
+        metro.scheduleAt(metro.ctx.currentTime + offsetSec, isStrong);
+        // 让预调度从“下一个音符”开始排，避免重复
+        scheduleTicksOnce._lastIdx = nearestIdx;
+        forceClickNearestIfCentered._last = nowTs;
+    }
+}
+
 
 
 function preload() {
@@ -64,17 +206,45 @@ function setup() {
         stableFrames: 1,
         cooldownMs: 120
     }).then(() => {
-        CongaClassifier.onRaw(top => console.log('top5', top));
+        CongaClassifier.onRaw((top, raw) => {
+            if (!raw) return;
+            const { scores, labels, energy } = raw;
+            HUD.energy = energy || 0;
+            HUD.lastFrameTs = performance.now();
+
+            const norm = s => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+            const dict = {};
+            for (let i = 0; i < labels.length; i++) {
+                dict[norm(labels[i])] = scores[i];
+            }
+            const pick = (...names) => names.reduce((m, k) => Math.max(m, dict[norm(k)] || 0), 0);
+            // 四类打击分数（尽量多给几个常见别名）
+            const o = pick('o', 'open');
+            const p = pick('p', 'palm', 'bass');
+            const t = pick('t', 'tip', 'finger');
+            const s = pick('s', 'slap');
+
+            // 背景/未知：优先使用模型里的专用类别；没有就用 1-∑ 兜底
+            let bg = dict['backgroundnoise'] ?? dict['_backgroundnoise_'] ?? dict['noise'] ?? dict['unknown'];
+            if (bg == null) bg = Math.max(0, 1 - (o + p + t + s));
+
+            // 归一化给 HUD
+            const sum = o + p + t + s + bg || 1;
+            HUD.probs = { O: o / sum, P: p / sum, T: t / sum, S: s / sum, BG: bg / sum };
+
+            if (DEBUG) console.log('top5', top);
+            const dd = (HUD.energy ?? 0) - _emaE; _emaE += _alphaE * dd; _emaVar = (1 - _alphaE) * (_emaVar + _alphaE * dd * dd);
+        });
 
         CongaClassifier.onLabelChange(({ label, confidence, margin, energy }) => {
             if (!running) return;
             const e = energy ?? 0;
             _emaE = (1 - _alphaE) * _emaE + _alphaE * e;
             const dev = e - _emaE;
-            _emaVar = (1 - _alphaE) * _emaVar + _alphaE * (dev * dev);
+            _emaVar = (1 - _alphaE) * (_emaVar + _alphaE * dev * dev);
             const z = dev / Math.sqrt(_emaVar + 1e-6);
             if (z < ENERGY_Z) return;
-            if ((margin ?? 0) < MIN_MARGIN) return; // 忽略小于最小边距的结果
+            if (confidence < 0.35 || margin < 0.12) return;
 
             // 标签映射更“宽容”：忽略大小写和空格
             const s = (label || '').toLowerCase().replace(/\s+/g, '');
@@ -112,6 +282,12 @@ function setup() {
             select('#metro-toggle').html('Metronome On');
         }
         metro.enable(metronomeEnabled);
+        if (metronomeEnabled) {
+            scheduleTicksOnce._lastIdx = -1;
+            startScoreTickScheduler();
+        } else {
+            stopScoreTickScheduler();
+        }
     });
     select('#metro-toggle').html('Metronome On');
     metro.enable(false);
@@ -125,6 +301,9 @@ function setup() {
     rm.setSpeedFactor(initSpeed);
     if (CongaClassifier.setCooldown) {
         CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
+    }
+    if (typeof scheduleTicksOnce._lastIdx === 'number') {
+        scheduleTicksOnce._lastIdx = -1;
     }
     rm.noteY = 40;
 
@@ -147,6 +326,46 @@ function setup() {
         metro.setBPM(bpmVal);        // 判定与滚动
         rm.setBPM(bpmVal);        // 判定与滚动
         rm.setSpeedFactor(speedVal); // 视觉速度
+        reanchorClock();
+        if (CongaClassifier.setCooldown) {
+            CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
+        }
+        if (typeof scheduleTicksOnce._lastIdx === 'number') {
+            scheduleTicksOnce._lastIdx = -1;
+            if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear(); // ← 清空已排表
+            scheduleTicksOnce._guardUntil = 0;                             // ← 清掉旧保护时间
+
+        }
+        // —— A) 若红线就在音符附近，立刻敲一下，避免改速瞬间的“静音错觉” —— //
+        forceClickNearestIfCentered(35);
+
+        // —— B) 100ms 防抖：按“下一记谱面音符”补排一次，并设置 guard 防重复 —— //
+        clearTimeout(window._speedDebounce);
+        window._speedDebounce = setTimeout(() => {
+            const notes = rm.scoreNotes || [];
+            if (!notes.length || !metro || !metro.isLoaded()) return;
+
+            const nowMs = rm._t() % rm.totalDuration;
+            let nextIdx = notes.findIndex(n => n.time > nowMs);
+            if (nextIdx < 0) nextIdx = 0;
+
+            let dt = notes[nextIdx].time - nowMs;
+            if (dt < 0) dt += rm.totalDuration;
+
+            const sf = rm?.speedFactor || 1;
+            const when = metro.ctx.currentTime + Math.max(0.03, (dt + getMetroOffsetMs()) / (1000 * sf));
+            const strong = (notes[nextIdx].accent | 0) === 1;
+
+            // 设置保护时间，防止调度器紧接着再排同一记
+            scheduleTicksOnce._guardUntil = when + 0.02;
+            metro.scheduleAt(when, strong);
+
+            // 让预调度从它之后继续
+            scheduleTicksOnce._lastIdx = nextIdx;
+        }, 100);
+
+        // —— C) 能量门限的 EMA 清一次，让灵敏度快速贴合新速度 —— //
+        _emaE = 0; _emaVar = 1;
     });
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
@@ -177,9 +396,21 @@ async function handleStart() {
         }
     }
 
+    if (metro?.ctx && metro.ctx.state !== 'running') {
+        try { await metro.ctx.resume(); } catch (e) { console.warn(e); }
+    }
+    reanchorClock();
+
     try { if (mic && mic.stop) mic.stop(); } catch (e) { console.warn(e); }
 
     try {
+        if (CongaClassifier.setConstraints) {
+            CongaClassifier.setConstraints({
+                echoCancellation: false, noiseSuppression: false,
+                autoGainControl: false
+            });
+        }
+
         CongaClassifier.start();
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
@@ -191,6 +422,11 @@ async function handleStart() {
     startCountdown();
     lastNoteIdx = -1; // 重置音符索引
     metro.reset();
+    metro.useInternalGrid = false;  // 明确用谱面驱动
+    scheduleTicksOnce._lastIdx = -1;
+    if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+    scheduleTicksOnce._guardUntil = 0;
+    startScoreTickScheduler();
 }
 
 function handleReset() {
@@ -200,8 +436,10 @@ function handleReset() {
     rm.reset();
     rm.pause();
     rm.pauseAt = rm.startTime;
-    counting = true;
-    ctStart = millis();
+    stopScoreTickScheduler();
+    scheduleTicksOnce._lastIdx = -1;
+    if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+    scheduleTicksOnce._guardUntil = 0;
     metro.reset();
     CongaClassifier.stop();
     try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
@@ -223,13 +461,6 @@ function draw() {
     if (judgeLineGlow < 0.01) judgeLineGlow = 0;
     drawGrid();
 
-    //麦克风
-    const lvl = mic ? mic.getLevel() : 0;
-    const tm = (window._tmEnergy || 0).toFixed(1);
-    fill(255);
-    noStroke();
-    text(`mic: ${lvl.toFixed(3)} | tm: ${tm}`, 30, 10);
-
     // 判定线发光
     let glowLevel = lerp(2, 18, judgeLineGlow);
     let alpha = lerp(120, 255, judgeLineGlow);
@@ -243,7 +474,16 @@ function draw() {
 
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
-        if (remain <= 0) { counting = false; running = true; rm.resume(); }
+        if (remain <= 0) {
+            counting = false;
+            running = true;
+            rm.resume();
+            reanchorClock();
+            if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
+
+            if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+            scheduleTicksOnce._guardUntil = 0;
+        }
         else drawCountdown(remain);
     }
 
@@ -252,36 +492,12 @@ function draw() {
         rm.checkLoopAndRestart();
 
     }
-
-    if (metronomeEnabled && running && metro.isLoaded()) {
-        let now = rm._t();
-        let totalDuration = rm.totalDuration;
-        let loopNow = now % totalDuration;
-        let notes = rm.scoreNotes;
-
-        if (typeof window.lastLoopNow === "undefined") window.lastLoopNow = 0;
-        if (loopNow < window.lastLoopNow) lastNoteIdx = -1; // 新一圈，重置
-        window.lastLoopNow = loopNow;
-
-        for (let idx = lastNoteIdx + 1; idx < notes.length; idx++) {
-            let n = notes[idx];
-            if (!n) break; // 防止越界
-            if (n.time > loopNow) break;
-            if (metronomeEnabled) {
-                if (n.accent === 1 && metro.strongTick) metro.strongTick.play();
-                else if (n.accent === 0 && metro.weakTick) metro.weakTick.play();
-            }
-        }
-        let nextIdx = notes.findIndex(n => n.time > loopNow);
-        if (nextIdx === -1) nextIdx = notes.length;
-        lastNoteIdx = nextIdx - 1;
-    }
     drawNotesAndFeedback();
 
 
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);
-
+    updateHUDView();
 }
 
 /* ------------ Visualization ------- */
@@ -358,4 +574,42 @@ function mousePressed() {
         if (!next) next = rm.scoreNotes[0];
         DrumCanvas.trigger(next.abbr || 'O', 260);
     }
+}
+
+
+// —— Mic HUD 状态 —— //
+const HUD = {
+    lastFrameTs: 0, energy: 0,
+    probs: { O: 0, P: 0, T: 0, S: 0, BG: 0 }
+};
+function updateHUDView() {
+    const led = document.getElementById('mic-led');
+    const msg = document.getElementById('mic-msg');
+
+    const alive = (CongaClassifier?.micAlive?.() === true);
+    if (!CongaClassifier?.isListening || !CongaClassifier.isListening()) {
+        led.className = 'led err'; msg.textContent = 'not listening';
+    } else if (!alive) {
+        led.className = 'led err'; msg.textContent = 'no data';
+    } else {
+        // 用 HUD.energy 做一份独立 EMA 来算 z 分数
+        if (typeof updateHUDView._emaE !== 'number') { updateHUDView._emaE = 0; updateHUDView._emaVar = 1e-3; }
+        const a = 0.08;
+        const d = (HUD.energy || 0) - updateHUDView._emaE;
+        updateHUDView._emaE += a * d;
+        updateHUDView._emaVar = (1 - a) * (updateHUDView._emaVar + a * d * d);
+        const z = d / Math.sqrt(updateHUDView._emaVar + 1e-6);
+        if (z < 0.3) { led.className = 'led warn'; msg.textContent = 'very low level'; }
+        else if (z < 1.0) { led.className = 'led warn'; msg.textContent = 'low'; }
+        else { led.className = 'led ok'; msg.textContent = 'ok'; }
+    }
+
+    const setW = (id, v) => { const el = document.getElementById(id); if (el) el.style.width = Math.round(v * 100) + '%'; }
+    const setV = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = Math.round(v * 100) + '%'; }
+    const p = HUD.probs;
+    setW('bar-O', p.O); setV('val-O', p.O);
+    setW('bar-P', p.P); setV('val-P', p.P);
+    setW('bar-T', p.T); setV('val-T', p.T);
+    setW('bar-S', p.S); setV('val-S', p.S);
+    setW('bar-BG', p.BG); setV('val-BG', p.BG);
 }

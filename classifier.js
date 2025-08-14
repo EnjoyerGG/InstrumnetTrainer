@@ -7,6 +7,11 @@
         _cooldownMs: 250, _lastEmitTs: 0,
         _pending: { label: null, count: 0 },
         _onLabel: new Set(), _onRaw: new Set(),
+        _lastFrameTs: 0,
+        isListening() { return this._active; },
+        micAlive(timeoutMs = 1500) { return (performance.now() - this._lastFrameTs) < timeoutMs; },
+        _micConstraints: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        setConstraints(c) { this._micConstraints = { ...this._micConstraints, ...c }; },
 
         async init({ modelURL, probabilityThreshold = 0.6, stableFrames = 3, overlapFactor = 0.5, cooldownMs = 250 } = {}) {
             if (!modelURL) throw new Error('modelURL 不能为空');
@@ -37,9 +42,19 @@
             return true;
         },
 
-        start() {
+        async start() {
             if (!this._ready || this._active) return;
             this._active = true;
+
+            // 预热：申请一次带约束的麦克风，提升移动端拾音概率并降低系统延迟
+            if (navigator.mediaDevices?.getUserMedia) {
+                try {
+                    const s = await navigator.mediaDevices.getUserMedia({ audio: this._micConstraints });
+                    s.getTracks().forEach(t => t.stop());
+                } catch (e) { console.warn('getUserMedia with constraints failed', e); }
+            }
+
+
             this._rec.listen(result => {
                 let energy = 0;
                 if (result.spectrogram && result.spectrogram.data) {
@@ -49,7 +64,6 @@
                         sumSq += arr[i] * arr[i];
                     }
                     energy = Math.sqrt(sumSq / arr.length); //RMS
-                    console.log('tmEnergy', energy.toFixed(4));
                     window._tmEnergy = energy;  //让UI能够显示TM能量
                 }
 
@@ -59,7 +73,11 @@
                 // 原始 topN 给到调试
                 const top = idx.slice(0, Math.min(5, idx.length))
                     .map(([v, i]) => ({ label: this._labels[i], confidence: v }));
-                this._onRaw.forEach(fn => { try { fn(top); } catch { } });
+                // 把原始 scores / labels / energy 一起发给 UI（HUD/门控使用）
+                this._onRaw.forEach(fn => {
+                    try { fn(top, { scores, labels: this._labels, energy }); } catch { }
+                });
+                this._lastFrameTs = performance.now(); // 记录最近一帧时间（HUD判活）
 
                 const [s1, i1] = idx[0], [s2] = idx[1] || [0];
                 if (s1 < this._probGate) return; // 置信度门限（外部也可自己再做门控）

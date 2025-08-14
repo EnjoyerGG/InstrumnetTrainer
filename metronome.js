@@ -1,63 +1,81 @@
-// metronome.js
+// metronome.js — WebAudio 预测调度版（稳定、不“慢一拍”）
 class Metronome {
     constructor({ bpm = 120, beatsPerBar = 4 } = {}) {
         const AC = window.AudioContext || window.webkitAudioContext;
         this.ctx = new AC({ latencyHint: 'interactive' });
+        this.bpm = bpm; this.beatsPerBar = beatsPerBar;
 
-        this.bpm = bpm;
-        this.beatsPerBar = beatsPerBar;
-        this.lastBeat = -1;
-        this.enabled = true;
-        this.strongTick = null;
-        this.weakTick = null;
-        this._loaded = false;
-        this._cbList = [];
+        this.lookahead = 0.025;        // 25ms 轮询
+        this.scheduleAheadTime = 0.12; // 120ms 预调度
+        this.nextNoteTime = 0;
+        this.currentStep = 0;          // 八分音为步长
+
+        this.enabled = false;
+        this._timer = null;
+        this.buffers = { weak: null, strong: null };
+        this.useInternalGrid = false;
     }
 
-    preload(strongTickPath, weakTickPath) {
-        this.strongTick = loadSound(strongTickPath, this._onLoaded.bind(this));
-        this.weakTick = loadSound(weakTickPath, this._onLoaded.bind(this));
+    async preload(weakURL, strongURL) {
+        const fetchBuf = async (url) => {
+            const res = await fetch(url); const ab = await res.arrayBuffer();
+            return await this.ctx.decodeAudioData(ab);
+        };
+        this.buffers.weak = await fetchBuf(weakURL);
+        this.buffers.strong = await fetchBuf(strongURL);
+        console.log('Metronome loaded!');
     }
 
-    _onLoaded() {
-        if (this.strongTick && this.weakTick
-            && this.strongTick.isLoaded() && this.weakTick.isLoaded()) {
-            this._loaded = true;
-            this._cbList.forEach(cb => cb());
-            this._cbList = [];
+    _schedule(time, strong = false) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = strong ? this.buffers.strong : this.buffers.weak;
+        src.connect(this.ctx.destination);
+        src.start(time);
+    }
+
+    _advance() {
+        const secPerBeat = 60 / this.bpm;
+        this.nextNoteTime += secPerBeat / 2;  // 八分音
+        this.currentStep = (this.currentStep + 1) % (this.beatsPerBar * 2);
+    }
+
+    _scheduler = () => {
+        const ct = this.ctx.currentTime;
+        while (this.nextNoteTime < ct + this.scheduleAheadTime) {
+            const strong = (this.currentStep % (this.beatsPerBar * 2) === 0);
+            this._schedule(this.nextNoteTime, strong);
+            this._advance();
         }
     }
 
-    onloaded(cb) {
-        if (this._loaded) cb();
-        else this._cbList.push(cb);
+    scheduleAt(whenSec, strong = false) {
+        if (!this.isLoaded()) return;
+        this._schedule(whenSec, strong);
     }
 
-    setBPM(bpm) { this.bpm = bpm; }
-    setBeatsPerBar(n) { this.beatsPerBar = n; }
-    enable(flag) { this.enabled = flag; }
-    reset() { this.lastBeat = -1; }
 
-    // 检查音效是否加载完
-    isLoaded() {
-        return this._loaded;
-    }
+    setBPM(bpm) { this.bpm = Math.max(20, bpm); }
 
-    // 传入全局时间（ms），自动判断是否播放tick
-    tick(currentTimeMs) {
-        if (!this.enabled || !this._loaded) return;
-
-        const noteInterval = 60000 / this.bpm;
-        const curBeat = Math.floor(currentTimeMs / noteInterval);
-
-        if (curBeat !== this.lastBeat) {
-            const barIdx = curBeat % this.beatsPerBar;
-            if (barIdx === 0) this.strongTick.play();
-            else this.weakTick.play();
-            this.lastBeat = curBeat;
+    enable(on) {
+        this.enabled = !!on;
+        if (this.enabled) {
+            this.ctx.resume();
+            if (this.useInternalGrid) {
+                this.nextNoteTime = this.ctx.currentTime + 0.05;
+                this.currentStep = 0;
+                if (!this._timer) this._timer = setInterval(this._scheduler, this.lookahead * 1000);
+            }
+        } else {
+            clearInterval(this._timer); this._timer = null;
         }
     }
+
+    reset() {
+        this.nextNoteTime = this.ctx.currentTime + 0.05;
+        this.currentStep = 0;
+    }
+
+    isLoaded() { return !!(this.buffers.weak && this.buffers.strong); }
+    onloaded(cb) { if (this.isLoaded()) cb(); /* 简化 */ }
 }
-
-// 如果用 script 引入，也支持 window.Metronome = Metronome;
 if (typeof window !== "undefined") window.Metronome = Metronome;

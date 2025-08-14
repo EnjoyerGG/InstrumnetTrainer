@@ -3,11 +3,12 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>Conga Rhythm trainer</title>
     <link rel="stylesheet" href="style.css" />
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-    <script
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script defer
         src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
     <!-- load p5.js -->
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
@@ -57,6 +58,50 @@
         <div id="drum-wrap"></div>
     </div>
 
+    <div id="mic-hud" class="hud">
+        <div class="row">
+            <span class="label">Mic</span>
+            <span id="mic-led" class="led"></span>
+            <span id="mic-msg">idle</span>
+        </div>
+        <div class="bars">
+            <div class="bar">
+                <span class="name">O</span>
+                <div class="track">
+                    <div class="fill" id="bar-O"></div>
+                </div>
+                <span class="val" id="val-O">0%</span>
+            </div>
+            <div class="bar">
+                <span class="name">P</span>
+                <div class="track">
+                    <div class="fill" id="bar-P"></div>
+                </div>
+                <span class="val" id="val-P">0%</span>
+            </div>
+            <div class="bar">
+                <span class="name">T</span>
+                <div class="track">
+                    <div class="fill" id="bar-T"></div>
+                </div>
+                <span class="val" id="val-T">0%</span>
+            </div>
+            <div class="bar">
+                <span class="name">S</span>
+                <div class="track">
+                    <div class="fill" id="bar-S"></div>
+                </div>
+                <span class="val" id="val-S">0%</span>
+            </div>
+            <div class="bar">
+                <span class="name">BG</span>
+                <div class="track">
+                    <div class="fill" id="bar-BG"></div>
+                </div>
+                <span class="val" id="val-BG">0%</span>
+            </div>
+        </div>
+    </div>
 
 
 </body>
