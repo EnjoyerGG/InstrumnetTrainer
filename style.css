@@ -195,3 +195,37 @@ canvas {
 #bar-BG {
     background: #9b87f5
 }
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 让两个滑块占一列，并靠右堆叠 */
+#speed-row,
+#sens-row {
+    flex: 0 0 420px;
+    margin-left: auto;
+}
+
+#sens-row {
+    margin-top: 6px;
+}
+
+/* 小屏幕时自动满宽纵向排 */
+@media (max-width: 768px) {
+
+    #speed-row,
+    #sens-row {
+        flex-basis: 100%;
+        margin-left: 0;
+    }
+}
