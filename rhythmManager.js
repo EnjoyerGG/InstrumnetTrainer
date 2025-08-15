@@ -5,6 +5,7 @@ const PERFECT_WIN = 12;
 const GOOD_WINDOW = 45;
 //const WARMUP_MS = 500;
 const INITIAL_OFFSET = 100; // 让谱面整体右移100ms
+const TAIL_GAP_EIGHTHS = 2;
 
 class RhythmManager {
     constructor() {
@@ -55,7 +56,7 @@ class RhythmManager {
         }
         // 计算总时长
         const N = this.scoreNotes.length;
-        this.totalDuration = N > 0 ? (this.scoreNotes[N - 1].time + this.noteInterval) : 0;
+        this.totalDuration = N > 0 ? (this.scoreNotes[N - 1].time + this.noteInterval * TAIL_GAP_EIGHTHS) : 0;
         this.feedbackStates = this._emptyFeedback();
     }
 
