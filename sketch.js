@@ -7,7 +7,6 @@ let judgeLineGlow = 0; // 红线发光效果
 let metronomeEnabled = false;
 let chartJSON;
 let lastNoteIdx = -1;
-let beatsPerBar = 4; // 每小节的拍数
 let mic;
 const COUNTDOWN_MS = 3000;
 
@@ -25,10 +24,6 @@ function getMetroOffsetMs() { return (METRO_OFFSET_STEPS || 0) * (rm?.noteInterv
 
 // —— 按谱面驱动的 WebAudio 预调度 —— //
 let _tickSchedTimer = null;
-const SCHED_AHEAD = 0.12; // 120ms 预调度窗口
-
-// —— WebAudio ↔︎ 谱面时间的对齐 —— //
-let CLOCK_ANCHOR = null; // { ctx: seconds, rm: ms } 在某个时刻的对齐点
 
 // 根据当前速度动态给预调度窗口：慢速更早排、快速保持紧凑
 function getAheadMs() {
@@ -36,25 +31,6 @@ function getAheadMs() {
     // 窗口 ≈ 0.75 格，限制在 [140ms, 320ms]
     const win = Math.max(140, Math.min(320, rm.noteInterval * 0.75));
     return win;
-}
-
-function reanchorClock() {
-    if (!metro?.ctx) return;
-    CLOCK_ANCHOR = { ctx: metro.ctx.currentTime, rm: rm._t() % rm.totalDuration };
-}
-
-function nowMsFromCtx() {
-    if (!CLOCK_ANCHOR) return rm._t() % rm.totalDuration;
-    const dtMs = (metro.ctx.currentTime - CLOCK_ANCHOR.ctx) * 1000;
-    return (CLOCK_ANCHOR.rm + dtMs) % rm.totalDuration;
-}
-
-
-function isStrongForIndex(idx, notes) {
-    if (ACCENT_MODE === 'score') return ((notes[idx]?.accent | 0) === 1);
-    if (ACCENT_MODE === 'quarter') return (idx % 2) === 0;             // 8分音网格：每两格=一拍
-    if (ACCENT_MODE === 'bar') return idx === 0;                   // 仅小节第1个为强
-    return false;
 }
 
 function startScoreTickScheduler() {
@@ -264,12 +240,6 @@ function setup() {
         });
     });
 
-    select('#diagram-toggle').mousePressed(() => {
-        const el = document.getElementById('drum-wrap');
-        const off = el.classList.toggle('is-hidden');
-        select('#diagram-toggle').html(`Diagram: ${off ? 'Off' : 'On'}`);
-    });
-
     select('#sens-slider').input(() => {
         ENERGY_Z = parseFloat(select('#sens-slider').value());
     });
@@ -326,7 +296,6 @@ function setup() {
         metro.setBPM(bpmVal);        // 判定与滚动
         rm.setBPM(bpmVal);        // 判定与滚动
         rm.setSpeedFactor(speedVal); // 视觉速度
-        reanchorClock();
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
@@ -375,16 +344,6 @@ function setup() {
     }
 }
 
-async function loadScripts() {
-    if (!window.tf) {
-        await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js'; s.onload = r; document.head.appendChild(s); });
-    }
-    if (!window.speechCommands) {
-        await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.7.0/dist/speech-commands.min.js'; s.onload = r; document.head.appendChild(s); });
-    }
-}
-
-
 /* ------------ Control ------------- */
 async function handleStart() {
     if (running || counting) return;
@@ -399,7 +358,6 @@ async function handleStart() {
     if (metro?.ctx && metro.ctx.state !== 'running') {
         try { await metro.ctx.resume(); } catch (e) { console.warn(e); }
     }
-    reanchorClock();
 
     try { if (mic && mic.stop) mic.stop(); } catch (e) { console.warn(e); }
 
@@ -478,7 +436,6 @@ function draw() {
             counting = false;
             running = true;
             rm.resume();
-            reanchorClock();
             if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
@@ -573,12 +530,6 @@ function drawNotesAndFeedback() {
     }
     drawingContext.shadowBlur = 0;
 }
-
-//实时调节BPM
-function someBPMChangeHandler(newBPM) {
-    metro.setBPM(newBPM);
-}
-
 
 /* ------------ Interaction --------- */
 function mousePressed() {
