@@ -22,6 +22,15 @@ const ACCENT_MODE = 'score';
 let METRO_OFFSET_STEPS = 0;
 function getMetroOffsetMs() { return (METRO_OFFSET_STEPS || 0) * (rm?.noteInterval || 0); }
 
+const NOTE_GLYPH = {
+    S: '×',  // Slap
+    O: 'O',  // Open tone
+    T: '▲',  // Tip
+    P: '▼',  // Palm
+    B: 'B'   // Bass
+};
+function glyphForAbbr(ab) { return NOTE_GLYPH[ab] || ab; }
+
 // —— 按谱面驱动的 WebAudio 预调度 —— //
 let _tickSchedTimer = null;
 
@@ -504,7 +513,9 @@ function drawNotesAndFeedback() {
         fill('#eeeeee');
         textSize(12);
         textAlign(CENTER, TOP);
-        text(n.abbr, xN, y + 12);
+        textStyle(BOLD);
+        text(glyphForAbbr(n.abbr), xN, y + 12);
+        textStyle(NORMAL);
 
         // 只在“主循环”才显示反馈
         if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
