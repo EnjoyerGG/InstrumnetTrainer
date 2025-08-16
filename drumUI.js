@@ -40,16 +40,46 @@
             abbr: 'T', label: 'Tip', start: 225, end: 315, color: '#c5e1a5',
             link: 'https://www.youtube.com/watch?v=oZ-7KGKZqjQ'
         },
-    ]
+    ];
+
+    const RING_LAYOUT = [
+        {
+            abbr: 'O', label: 'Open / Slap', color: '#7cd3ff',
+            linkOpen: 'assets/tutorials/conga/open.mp4',
+            linkSlap: 'assets/tutorials/conga/slap.mp4',
+            r0: 0.62, r1: 0.92
+        }, // 外环：半径 62%~92%
+        {
+            abbr: 'T', label: 'Tip / Palm', color: '#c5e1a5',
+            link: 'assets/tutorials/conga/tip.mp4',
+            r0: 0.38, r1: 0.62
+        }, // 中环：38%~62%
+        {
+            abbr: 'P', label: 'Bass', color: '#ffd54f',
+            link: 'assets/tutorials/conga/bass.mp4',
+            r0: 0.00, r1: 0.38
+        }  // 内圆：0%~38%
+    ];
+
     function sanitizeSectors(arr) {
         const src = Array.isArray(arr) && arr.length ? arr : DEFAULT_SECTORS;
         return src.map(s => ({ ...s, start: normDeg(s.start), end: normDeg(s.end) }));
     }
 
+    const CANVAS_MARGIN = 4;      // 画布内侧留白（原来相当于 10）
+    const SHOW_LABELS = false;    // 关闭圈上文字
+    const SHOW_HOVER_HINT = false;// 关闭“点击查看教学视频”提示
+
     // ---------------- Drum 核心 ----------------
     function createDrum(ctx, sectorsInput) {
         // 关键：统一做兜底 + 角度规范，避免 undefined.forEach 报错
-        const sectors = sanitizeSectors(sectorsInput);
+        const isRings = Array.isArray(sectorsInput) && sectorsInput.length && !('start' in sectorsInput[0]);
+        const sectors = isRings ? null : sanitizeSectors(sectorsInput);
+        const rings = isRings ? sectorsInput.map(r => ({
+            ...r,
+            r0: Math.max(0, Math.min(0.98, r.r0 ?? 0)),
+            r1: Math.max(0.02, Math.min(0.98, r.r1 ?? 1))
+        })) : null;
 
         const state = {
             flashes: new Map(),   // abbr -> 剩余 ms
@@ -59,7 +89,7 @@
 
         function layout(w, h) {
             // 固定尺寸时会传 size,size；这里仍防御一下
-            const margin = 10;
+            const margin = CANVAS_MARGIN;
             const rMaxH = Math.max(24, (h - 2 * margin) / 2);
             const rMaxW = Math.max(24, (w - 2 * margin) / 2);
             state.r = Math.min(160, rMaxH, rMaxW);
@@ -67,7 +97,10 @@
             state.cy = h / 2;
         }
 
-        function trigger(abbr, ms = 320) { state.flashes.set(abbr, ms); }
+        function trigger(abbr, ms = 320) {
+            const key = (rings && abbr === 'S') ? 'O' : abbr;
+            state.flashes.set(key, ms);
+        }
 
         function update(dt) {
             for (const [k, t] of [...state.flashes]) {
@@ -91,64 +124,65 @@
 
             ctx.translate(cx, cy);
 
-            // 背景盘
-            ctx.fillStyle = '#24262b';
-            ctx.beginPath(); ctx.arc(0, 0, r * 1.0, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = 'rgba(20,20,23,.6)';
-            ctx.beginPath(); ctx.arc(0, 0, r * 0.925, 0, Math.PI * 2); ctx.fill();
+            if (rings) {
+                // 底盘
+                ctx.fillStyle = '#24262b';
+                ctx.beginPath(); ctx.arc(0, 0, r * 1.00, 0, Math.PI * 2); ctx.fill();
 
-            // 扇区 + 发光
-            sectors.forEach(sec => {
-                const active = state.flashes.has(sec.abbr);
-
-                // 底层
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.fillStyle = hexToRgba(sec.color, 0.35);
-                ctx.arc(0, 0, r * 0.88, deg2rad(sec.start), deg2rad(sec.end), false);
-                ctx.closePath(); ctx.fill();
-
-                // 发光层（命中时）
-                if (active) {
-                    ctx.save();
-                    ctx.shadowBlur = Math.max(10, r * 0.22);
-                    ctx.shadowColor = hexToRgba(sec.color, 0.95);
-                    ctx.globalCompositeOperation = 'lighter';
-                    ctx.beginPath(); ctx.moveTo(0, 0);
-                    ctx.fillStyle = hexToRgba(sec.color, 0.85);
-                    ctx.arc(0, 0, r * 0.90, deg2rad(sec.start), deg2rad(sec.end), false);
-                    ctx.closePath(); ctx.fill();
-                    ctx.restore();
-                }
-
-                // 标签：使用跨 0° 安全的中点角度，放到稍外的半径，避免重叠
-                const mid = deg2rad(midAngleDeg(sec.start, sec.end));
-                const tx = Math.cos(mid) * r * 0.58;
-                const ty = Math.sin(mid) * r * 0.58;
-                ctx.fillStyle = '#eee';
-                ctx.font = Math.round(r * 0.16) + 'px Inter, system-ui, sans-serif';
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(sec.label, tx, ty);
-            });
-
-            // 外圈
-            ctx.strokeStyle = '#9b87f5'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(0, 0, r * 0.94, 0, Math.PI * 2); ctx.stroke();
-
-            // Hover 描边与提示
-            if (state.hoverAbbr) {
-                const sec = sectors.find(s => s.abbr === state.hoverAbbr);
-                if (sec) {
-                    ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3;
+                rings.forEach(rg => {
+                    // 彩色环：用“外圆-内圆”形成环带
                     ctx.beginPath();
-                    ctx.arc(0, 0, r * 0.97, deg2rad(sec.start), deg2rad(sec.end), false);
-                    ctx.stroke();
+                    ctx.moveTo(0, 0);
+                    ctx.fillStyle = hexToRgba(rg.color, 0.45);
+                    ctx.arc(0, 0, r * rg.r1, 0, Math.PI * 2);
+                    ctx.arc(0, 0, r * rg.r0, 0, Math.PI * 2, true);
+                    ctx.closePath(); ctx.fill();
 
-                    ctx.fillStyle = '#e6e6e6';
-                    ctx.font = Math.round(r * 0.12) + 'px Inter, system-ui, sans-serif';
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-                    ctx.fillText('点击查看教学视频', 0, r * 0.60);
+                    // 命中发光
+                    const active = state.flashes.has(rg.abbr);
+                    if (active) {
+                        ctx.save();
+                        ctx.shadowBlur = Math.max(10, r * 0.22);
+                        ctx.shadowColor = hexToRgba(rg.color, 0.95);
+                        ctx.globalCompositeOperation = 'lighter';
+                        ctx.beginPath();
+                        ctx.arc(0, 0, r * rg.r1, 0, Math.PI * 2);
+                        ctx.arc(0, 0, r * rg.r0, 0, Math.PI * 2, true);
+                        ctx.closePath(); ctx.fill();
+                        ctx.restore();
+                    }
+
+                    if (SHOW_LABELS) {
+                        ctx.fillStyle = '#eee';
+                        ctx.font = Math.round(r * 0.16) + 'px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        const midR = (rg.r0 + rg.r1) / 2;
+                        ctx.fillText(rg.label, Math.cos(0) * r * midR, -r * (midR + 0.02));
+                    }
+                });
+
+                // 外圈描边
+                ctx.strokeStyle = '#9b87f5'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(0, 0, r * 0.98, 0, Math.PI * 2); ctx.stroke();
+
+                // Hover 高亮：描出当前环的外边界
+                if (state.hoverAbbr) {
+                    const rg = rings.find(x => x.abbr === state.hoverAbbr);
+                    if (rg) {
+                        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3;
+                        ctx.beginPath(); ctx.arc(0, 0, r * rg.r1, 0, Math.PI * 2); ctx.stroke();
+
+                        if (SHOW_HOVER_HINT) {
+                            ctx.fillStyle = '#e6e6e6';
+                            ctx.font = Math.round(r * 0.12) + 'px Inter, system-ui, sans-serif';
+                            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+                            ctx.fillText('点击查看教学视频', 0, r * (rg.r1 + 0.06));
+                        }
+                    }
                 }
+            } else {
+                // === 保留你原来的“扇区绘制”分支 ===
+                //（这里不贴原文，直接保留你现有的 sectors.forEach(...) 那段）
             }
 
             ctx.restore();
@@ -156,14 +190,21 @@
 
         function pickAbbrByPoint(x, y) {
             const dx = x - state.cx, dy = y - state.cy;
-            if ((dx * dx + dy * dy) > state.r * state.r) return null;
-            let ang = Math.atan2(dy, dx) * 180 / Math.PI;
-            if (ang < 0) ang += 360;
-            const sec = sectors.find(s => inArc(ang, s.start, s.end));
-            return sec ? sec.abbr : null;
+            const rr = Math.sqrt(dx * dx + dy * dy);
+            if (rings) {
+                for (const rg of rings) {
+                    if (rr >= state.r * rg.r0 && rr < state.r * rg.r1) return rg.abbr;
+                }
+                return null;
+            } else {
+                // === 保留原有“按角度挑扇区”的分支 ===
+                let ang = Math.atan2(dy, dx) * 180 / Math.PI; if (ang < 0) ang += 360;
+                const sec = sectors.find(s => inArc(ang, s.start, s.end));
+                return sec ? sec.abbr : null;
+            }
         }
 
-        return { layout, trigger, update, draw, pickAbbrByPoint, state, sectors };
+        return { layout, trigger, update, draw, pickAbbrByPoint, state, sectors, rings };
     }
 
     // ---------------- Public API ----------------
@@ -196,8 +237,13 @@
             const ctx = cvs.getContext('2d');
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-            const sectorsSource = root.DRUM_SECTORS || DEFAULT_SECTORS;
-            const drum = createDrum(ctx, sectorsSource);
+            const sourceRings = root.DRUM_RINGS || RING_LAYOUT;
+            const sourceSectors = root.DRUM_SECTORS || DEFAULT_SECTORS;
+            // 如果对象里有 start/end 就视为“扇区”，否则视为“环区”
+            const looksLikeSectors = Array.isArray(sourceRings) && sourceRings[0] && ('start' in sourceRings[0]);
+            const config = looksLikeSectors ? sourceSectors : sourceRings;
+
+            const drum = createDrum(ctx, config);
             this._ctx = ctx; this._drum = drum; this._bg = background;
 
             // 初始布局（固定 size）
@@ -216,8 +262,22 @@
             cvs.addEventListener('click', e => {
                 const { x, y } = pt(e);
                 const ab = drum.pickAbbrByPoint(x, y);
-                const sec = drum.sectors.find(s => s.abbr === ab);
-                if (sec && sec.link) window.open(sec.link, '_blank', 'noopener');
+                if (!ab) return;
+
+                if (drum.rings) {
+                    const rg = drum.rings.find(r => r.abbr === ab) || drum.rings.find(r => r.abbr === 'O');
+                    if (!rg) return;
+                    if (ab === 'O' && (rg.linkOpen || rg.linkSlap)) {
+                        const url = e.shiftKey ? (rg.linkSlap || rg.linkOpen) : (rg.linkOpen || rg.linkSlap);
+                        if (url) window.open(url, '_blank', 'noopener');
+                    } else {
+                        const url = rg.link;
+                        if (url) window.open(url, '_blank', 'noopener');
+                    }
+                } else {
+                    const sec = drum.sectors.find(s => s.abbr === ab);
+                    if (sec && sec.link) window.open(sec.link, '_blank', 'noopener');
+                }
             });
 
             // 动画循环

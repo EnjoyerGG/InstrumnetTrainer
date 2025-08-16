@@ -371,7 +371,7 @@ function setup() {
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
 
     if (window.DrumCanvas && !window.DrumCanvas._ctx) {
-        DrumCanvas.init({ mount: '#drum-wrap' });
+        DrumCanvas.init({ mount: '#drum-wrap', size: 150, background: '#2f3036' });
     }
 }
 
@@ -493,7 +493,7 @@ function draw() {
 
     }
     drawNotesAndFeedback();
-
+    flashDrumWhenNoteAtLine();
 
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);
@@ -511,6 +511,25 @@ function drawGrid() {
     stroke(255, 255, 255, 60); strokeWeight(1);
     const y = rm.noteY;
     for (const o of [-30, -15, 15, 30]) line(0, y + o, width, y + o);
+}
+
+function flashDrumWhenNoteAtLine() {
+    if (!window.DrumCanvas || !DrumCanvas.trigger || !rm?.scoreNotes?.length) return;
+
+    const notes = rm.getVisibleNotes ? rm.getVisibleNotes() : rm.scoreNotes;
+    const thr = 6;                             // 距红线容差（像素）
+    for (const n of notes) {
+        const x = rm.getScrollX(n._displayTime ?? n.time);
+        if (Math.abs(x - rm.judgeLineX) <= thr) {
+            const ab = (n.abbr || n.type?.[0]?.toUpperCase() || 'O');
+            const key =
+                (ab === 'O' || ab === 'S') ? 'O' :
+                    (ab === 'T') ? 'T' :
+                        (ab === 'P' || ab === 'B') ? 'P' : 'O';
+            DrumCanvas.trigger(key, 220);          // 发光 220ms
+            break;                                 // 一帧一次就够
+        }
+    }
 }
 
 function drawNotesAndFeedback() {
