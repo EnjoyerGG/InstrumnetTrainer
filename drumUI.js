@@ -29,7 +29,7 @@
                 r1: Math.max(0.02, Math.min(0.98, r.r1 ?? 1))
             }));
 
-        const state = { flashes: new Map(), hoverAbbr: null, cx: 0, cy: 0, r: 60 };
+        const state = { flashes: new Map(), hoverAbbr: null, cx: 0, cy: 0, r: 60, edgeFlash: 0 };
 
         function layout(w, h) {
             const margin = CANVAS_MARGIN;
@@ -40,9 +40,14 @@
         }
 
         function trigger(abbr, ms = 320) {
-            // 兼容旧的 'S'，统一点亮外环
-            const key = (abbr === 'S') ? 'O' : abbr;
-            state.flashes.set(key, ms);
+            if (abbr === 'EDGE') {
+                state.edgeFlash = ms;
+                return;
+            }
+            if (abbr === 'S') abbr = 'O';
+            else if (abbr === 'P') abbr = 'T';   // Palm 归中环
+            else if (abbr === 'B') abbr = 'P';   // Bass 归内环（本控件内环的 abbr 是 'P'）
+            state.flashes.set(abbr, ms);
         }
 
         function update(dt) {
@@ -50,6 +55,7 @@
                 const nt = t - dt;
                 (nt <= 0) ? state.flashes.delete(k) : state.flashes.set(k, nt);
             }
+            if (state.edgeFlash > 0) state.edgeFlash = Math.max(0, state.edgeFlash - dt);
         }
 
         function draw(bgColor) {
@@ -103,6 +109,18 @@
             // 外圈描边
             ctx.strokeStyle = '#9b87f5'; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(0, 0, r * 0.98, 0, Math.PI * 2); ctx.stroke();
+            if (state.edgeFlash > 0) {
+                ctx.save();
+                ctx.shadowBlur = Math.max(12, r * 0.35);
+                ctx.shadowColor = '#9b87f5';
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.strokeStyle = '#9b87f5';
+                ctx.lineWidth = Math.max(3, r * 0.06);
+                ctx.beginPath();
+                ctx.arc(0, 0, r * 0.98, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
 
             // Hover 高亮（只描边，不写字）
             if (state.hoverAbbr) {
@@ -214,9 +232,11 @@
             const DEST_URL = 'https://pulsewave.com/classes-workshops/conga-hand-positions-sounds/';
             cvs.addEventListener('click', e => {
                 const { x, y } = pt(e);
-                const ab = drum.pickAbbrByPoint(x, y);
-                if (!ab) return;
+                const dx = x - drum.state.cx, dy = y - drum.state.cy;
+                const rr = Math.hypot(dx, dy);
+                if (rr > drum.state.r * 0.98) return;
                 window.open(DEST_URL, '_blank', 'noopener');
+                drum.trigger('EDGE', 320);
             });
 
             // 动画循环

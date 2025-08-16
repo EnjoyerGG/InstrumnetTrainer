@@ -481,8 +481,8 @@ function flashDrumWhenNoteAtLine() {
             const ab = (n.abbr || n.type?.[0]?.toUpperCase() || 'O');
             const key =
                 (ab === 'O' || ab === 'S') ? 'O' :
-                    (ab === 'T') ? 'T' :
-                        (ab === 'P' || ab === 'B') ? 'P' : 'O';
+                    (ab === 'T' || ab === 'P') ? 'T' :
+                        (ab === 'B') ? 'P' : 'O';
             DrumCanvas.trigger(key, 220);          // 发光 220ms
             break;                                 // 一帧一次就够
         }
@@ -537,12 +537,8 @@ function mousePressed() {
         rm.registerHit();
         judgeLineGlow = 1;
     }
-
-    if (window.DrumCanvas?.trigger && rm.scoreNotes?.length) {
-        const now = rm._t() % rm.totalDuration;
-        let next = rm.scoreNotes.find(n => n.time > now);
-        if (!next) next = rm.scoreNotes[0];
-        DrumCanvas.trigger(next.abbr || 'O', 260);
+    if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
+        DrumCanvas.trigger('EDGE', 360); // 发光时长可调：260~420ms
     }
 }
 
