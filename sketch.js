@@ -29,7 +29,25 @@ const NOTE_GLYPH = {
     P: '▼',  // Palm
     B: 'B'   // Bass
 };
-function glyphForAbbr(ab) { return NOTE_GLYPH[ab] || ab; }
+function glyphForAbbr(ab) {
+    const k = (ab ?? '').toString().toUpperCase();
+    return NOTE_GLYPH[k] || k;
+}
+
+// 两条谱线之间的垂直间距（像素）
+const LANE_GAP = 42;
+
+// 判定：这个音符是否属于“下面那只鼓”
+function isBottomDrum(n) {
+    // 优先看 JSON 是否提供 drum:2；否则用小写 abbr 作为简易标记
+    if (n.drum === 2) return true;
+    const ab = n.abbr || n.type?.[0];
+    return !!ab && (ab === ('' + ab).toLowerCase());
+}
+
+// 取两条谱线的 Y 坐标（以 rm.noteY 为中心上下各一条）
+function laneTopY() { return rm.noteY - LANE_GAP / 2; }
+function laneBottomY() { return rm.noteY + LANE_GAP / 2; }
 
 // —— 按谱面驱动的 WebAudio 预调度 —— //
 let _tickSchedTimer = null;
@@ -172,7 +190,7 @@ function setup() {
         frameRate(60);
     }
 
-    const cnv = createCanvas(1000, 80);
+    const cnv = createCanvas(1000, 120);
     cnv.parent('score-wrap');
 
     rm = new RhythmManager();
@@ -284,7 +302,7 @@ function setup() {
     if (typeof scheduleTicksOnce._lastIdx === 'number') {
         scheduleTicksOnce._lastIdx = -1;
     }
-    rm.noteY = 40;
+    rm.noteY = 60;
 
     select('#start-btn').mousePressed(handleStart);
     select('#pause-btn').mousePressed(() => {
@@ -433,7 +451,7 @@ function draw() {
     let alpha = lerp(120, 255, judgeLineGlow);
     drawingContext.save();
     drawingContext.shadowBlur = glowLevel;
-    drawingContext.shadowColor = 'rgba(255,30,30,0.8)';
+    drawingContext.shadowColor = 'rgba(165, 99, 212, 0.8)';
     stroke(255, 0, 0, alpha);
     strokeWeight(judgeLineGlow > 0.2 ? 4 : 1.5);
     line(rm.judgeLineX, 0, rm.judgeLineX, height);
@@ -473,10 +491,14 @@ function drawCountdown(remain) {
     textSize(80); fill(255, 87, 34, alpha);
     textAlign(CENTER, CENTER); text(n, width / 2, height / 2);
 }
+
 function drawGrid() {
-    stroke(255, 255, 255, 60); strokeWeight(1);
-    const y = rm.noteY;
-    for (const o of [-30, -15, 15, 30]) line(0, y + o, width, y + o);
+    stroke(255, 255, 255, 60);
+    strokeWeight(1);
+    const yTop = laneTopY();
+    const yBot = laneBottomY();
+    line(0, yTop, width, yTop);   // 上路中线
+    line(0, yBot, width, yBot);   // 下路中线
 }
 
 function flashDrumWhenNoteAtLine() {
@@ -487,11 +509,12 @@ function flashDrumWhenNoteAtLine() {
     for (const n of notes) {
         const x = rm.getScrollX(n._displayTime ?? n.time);
         if (Math.abs(x - rm.judgeLineX) <= thr) {
-            const ab = (n.abbr || n.type?.[0]?.toUpperCase() || 'O');
+            const abRaw = n.abbr || n.type?.[0] || 'O';
+            const AB = abRaw.toString().toUpperCase(); // 大小写无关
             const key =
-                (ab === 'O' || ab === 'S') ? 'O' :
-                    (ab === 'T' || ab === 'P') ? 'T' :
-                        (ab === 'B') ? 'P' : 'O';
+                (AB === 'O' || AB === 'S') ? 'O' :
+                    (AB === 'T' || AB === 'P') ? 'T' :
+                        (AB === 'B') ? 'P' : 'O';
             DrumCanvas.trigger(key, 220);          // 发光 220ms
             break;                                 // 一帧一次就够
         }
@@ -504,7 +527,7 @@ function drawNotesAndFeedback() {
     drawingContext.shadowColor = '#888';
     for (const n of notes) {
         const xN = rm.getScrollX(n._displayTime ?? n.time);
-        const y = rm.noteY;
+        const y = isBottomDrum(n) ? laneBottomY() : laneTopY();
         fill(n.accent === 1 ? 'gold' : color(200, 180));
         noStroke();
         ellipse(xN, y, 20);   // 灰音符
