@@ -91,14 +91,13 @@ canvas {
     position: fixed;
     left: 24px;
     bottom: 24px;
-    width: clamp(180px, 22vw, 280px);
-    height: clamp(180px, 22vw, 280px);
+    width: auto;
+    height: auto;
+    padding: 4px;
     border: none;
-    border-radius: 16px;
     background: rgba(58, 58, 60, 0.75);
     backdrop-filter: blur(2px);
     z-index: 60;
-    /* 在一切内容之上 */
 }
 
 #mic-hud {
