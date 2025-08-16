@@ -35,7 +35,7 @@ function glyphForAbbr(ab) {
 }
 
 // 两条谱线之间的垂直间距（像素）
-const LANE_GAP = 42;
+const LANE_GAP = 30;
 
 // 判定：这个音符是否属于“下面那只鼓”
 function isBottomDrum(n) {
@@ -302,7 +302,7 @@ function setup() {
     if (typeof scheduleTicksOnce._lastIdx === 'number') {
         scheduleTicksOnce._lastIdx = -1;
     }
-    rm.noteY = 60;
+    rm.noteY = 50;
 
     select('#start-btn').mousePressed(handleStart);
     select('#pause-btn').mousePressed(() => {
