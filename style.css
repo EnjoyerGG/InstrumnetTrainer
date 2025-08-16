@@ -228,3 +228,20 @@ canvas {
         margin-left: 0;
     }
 }
+
+#drum-tooltip {
+    position: fixed;
+    /* 用视口坐标，直接跟随 clientX/Y */
+    display: none;
+    /* 默认隐藏，JS 控制显示 */
+    padding: 6px 8px;
+    font-size: 12px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(0, 0, 0, .85);
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .28);
+    pointer-events: none;
+    z-index: 9999;
+}
