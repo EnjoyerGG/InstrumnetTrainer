@@ -202,8 +202,37 @@ function setup() {
     mic = new p5.AudioIn();
     mic.start();
     if (window.SampleUI && !window.__samplerInit) {
-        SampleUI.init({ mount: '#sampler-wrap', width: 340, height: 110, mic, overlap: 0.35 });
+        const savedOffset = Number(localStorage.getItem('splOffset'));
+        const hasOffset = Number.isFinite(savedOffset) && savedOffset !== 0;
+
+        SampleUI.init({
+            width: 380,
+            height: 230,
+            spanSec: 65,
+            dbMin: hasOffset ? 0 : -80,
+            dbMax: hasOffset ? 120 : 0
+        });
+        if (SampleUI.dockNearRightHud) {
+            SampleUI.dockNearRightHud({ side: 'left', gap: 10, align: 'middle' });
+        }
         SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
+        SampleUI.setupAudio({
+            levelMode: 'peak',
+            workletPath: './meter-processor.js',
+            offsetDb: hasOffset ? savedOffset : 0
+        });
+
+        // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
+        if (!hasOffset) {
+            setTimeout(async () => {
+                // 先保证 mic/ctx 已经跑起来 1 秒左右再校准
+                try {
+                    await SampleUI.calibrateSPL(45, 1.5);  // 这里的 45 是经验值，可按你房间改成 40~50
+                } catch (e) { console.warn('auto calibrate fail', e); }
+                SampleUI.setScale(0, 120);               // ★ 切换到 SPL 刻度
+            }, 1200);
+        }
+
         window.__samplerInit = true;       // 防止重复初始化
     }
 

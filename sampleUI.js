@@ -1,264 +1,395 @@
+// levelMeter.js — 1:1 声音有效值折线（65s）
+// 依赖：meter-processor.js（AudioWorklet，已在你的项目里）
+// API: LevelMeter.init({...}); LevelMeter.setupAudio({...}); LevelMeter.update(); LevelMeter.reset();
+
 (function (root) {
     const dpr = () => (window.devicePixelRatio || 1);
 
-    function colorForDb(db) {
-        const t = Math.max(0, Math.min(1, (db + 80) / 80));
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        if (t < 0.25) {
-            r = 0;
-            g = 0;
-            b = 80 + 700 * t;
-        } else if (t < 0.5) {
-            r = 0;
-            g = 200 * (t - 0.25) / 0.25;
-            b = 255;
-        } else if (t < 0.75) {
-            r = 180 * (t - 0.5) / 0.25;
-            g = 200;
-            b = 255 - 80 * (t - 0.75) / 0.25;
-        } else {
-            r = 180 + 60 * (t - 0.75) / 0.25;
-            g = 200 + 55 * (t - 0.75) / 0.25;
-            b = 175;
-        }
-        return `rgb(${r | 0},${g | 0},${b | 0})`;
-    }
+    const LevelMeter = {
+        // DOM
+        _wrap: null, _top: null,
+        _canvas: null, _ctx: null,
+        _grid: null, _gctx: null,
+        _trace: null, _tctx: null,
 
-    const SampleUI = {
-        _wrap: null,
-        _specCanvas: null,
-        _specCtx: null,
-        _barsWrap: null,
-        _fft: null,
-        _mic: null,
-        _running: false,
-        _lastColAt: 0,
-        _fftSize: 1024,
-        _overlap: 0.5,     // 0~0.9
-        _hopMs: 0,         // 根据 overlap 动态计算
-        _colX: 0,          // 当前绘制列 x
-        _bgDb: -90,        // 背景 dB（用于裁剪）
-        _dbMax: -10,
-        _bufCanvas: null,      // 离屏缓冲
-        _bootFilled: false,    // 首帧是否已铺满
+        // 状态
+        _running: true,
+        _lastDb: null, _maxDb: -Infinity, _minDb: Infinity, _sumDb: 0, _nDb: 0,
+        _spanSec: 65,            // 时间窗 65 s
+        _dbMin: 0, _dbMax: 120,  // 纵轴范围（dBFS 或校准后的 dB）
+        _colPeriodMs: 200,       // 每列时间间隔（自动算）
+        _lastColTime: 0,         // 上次落新列的时间
+        _rmsSmooth: 0.40,        // 折线轻微平滑，越小越“抖”
+        _yNow: null,
 
-        init({ mount = '#sampler-wrap', width = 280, height = 84, mic = null, overlap = 0.5 } = {}) {
+
+
+        // 音频
+        _usePeak: true,
+        _meterNode: null,
+
+        // --------------- 初始化 UI --------------- //
+        init({
+            mount,
+            width = 360,
+            height = 230,
+            spanSec = 65,
+            dbMin = 0,
+            dbMax = 120,
+            rmsSmoothing = 0.30
+        } = {}) {
+            this._spanSec = spanSec;
+            this._dbMin = dbMin; this._dbMax = dbMax;
+            this._rmsSmooth = rmsSmoothing;
+
+            // 容器
             this._wrap = typeof mount === 'string' ? document.querySelector(mount) : mount;
-            if (!this._wrap) {
-                this._wrap = document.createElement('div');
-                this._wrap.id = 'sampler-wrap';
-                document.body.appendChild(this._wrap);
-            }
-            this._wrap.classList.add('sampler');
-
-            // 顶部行：开关 + overlap
-            const top = document.createElement('div');
-            top.className = 'sampler-top';
-            top.innerHTML = `
-        <label class="sampler-switch">
-          <input type="checkbox" id="sampler-toggle">
-          <span>Input</span><span class="onoff">OFF</span>
-        </label>
-        <div class="sampler-overlap">
-          <span>Overlap:</span>
-          <input type="range" id="overlap-slider" min="0" max="0.9" step="0.05" value="${overlap}">
-          <input type="number" id="overlap-num" min="0" max="0.9" step="0.05" value="${overlap}">
-        </div>
+            if (!this._wrap) { this._wrap = document.createElement('div'); this._wrap.id = 'level-wrap'; document.body.appendChild(this._wrap); }
+            this._wrap.className = 'lm-panel';
+            this._wrap.style.cssText = `
+        position: fixed; right: 16px; bottom: 16px;
+        background: rgba(30,30,35,.95); border-radius: 14px;
+        box-shadow: 0 6px 24px rgba(0,0,0,.45); padding: 12px 12px 10px 12px;
+        color:#e9eef5; font: 14px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial; z-index:1000;
       `;
-            this._wrap.appendChild(top);
 
-            // 频谱图画布
-            const spec = document.createElement('canvas');
-            spec.width = Math.round(width * dpr());
-            spec.height = Math.round(height * dpr());
-            spec.style.width = width + 'px';
-            spec.style.height = height + 'px';
-            spec.className = 'sampler-spec';
-            this._wrap.appendChild(spec);
-            this._specCanvas = spec;
-            this._specCtx = spec.getContext('2d');
-            this._specCtx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
-            this._specCtx.fillStyle = '#111'; this._specCtx.fillRect(0, 0, width, height);
+            // 顶栏：清除 + 大数字 + 绿灯 + 统计
+            this._top = document.createElement('div');
+            this._top.className = 'lm-top';
+            this._top.innerHTML = `
+        <button id="lm-clear" style="background:#f2f2f2;color:#111;border:0;border-radius:10px;padding:8px 16px;font-weight:700;margin-right:8px">清除</button>
+        <span id="lm-big" style="font-weight:800;font-size:42px;letter-spacing:1px;vertical-align:middle;">--.-</span>
+        <span style="margin-left:4px;font-size:18px;opacity:.85">dB</span>
+        <span id="lm-led" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:10px;background:#29d44d;box-shadow:0 0 6px #29d44d;"></span>
+        <span id="lm-stats" style="float:right;opacity:.85;font-weight:600">最大: --.- dB | 平均: --.- dB | 最小: --.- dB</span>
+      `;
+            this._wrap.appendChild(this._top);
+            this._big = this._top.querySelector('#lm-big');
+            this._stats = this._top.querySelector('#lm-stats');
+            this._top.querySelector('#lm-clear').addEventListener('click', () => this.reset());
 
-            // 输出条
-            const bars = document.createElement('div');
-            bars.className = 'sampler-bars';
-            this._wrap.appendChild(bars);
-            this._barsWrap = bars;
+            // 画布
+            const d = dpr();
+            this._canvas = document.createElement('canvas');
+            this._canvas.width = Math.round(width * d);
+            this._canvas.height = Math.round(height * d);
+            this._canvas.style.width = width + 'px';
+            this._canvas.style.height = height + 'px';
+            this._canvas.style.borderRadius = '10px';
+            this._wrap.appendChild(this._canvas);
+            this._ctx = this._canvas.getContext('2d');
+            this._ctx.setTransform(d, 0, 0, d, 0, 0);
+            this._ctx.imageSmoothingEnabled = false;
 
-            // 事件
-            const toggle = top.querySelector('#sampler-toggle');
-            const onoff = top.querySelector('.onoff');
-            toggle.addEventListener('change', async () => {
-                onoff.textContent = toggle.checked ? 'ON' : 'OFF';
-                this._running = toggle.checked;
-                if (toggle.checked) {
-                    // 唤醒 p5 声音引擎（有的浏览器必须在用户手势后 resume）
-                    try {
-                        if (root.userStartAudio) await root.userStartAudio();
-                        else if (root.getAudioContext) await root.getAudioContext().resume();
-                    } catch (e) { /* 忽略 */ }
-                    // 确保 FFT 真正接上 mic
-                    if (this._mic && this._mic.start) this._mic.start();
-                    if (this._fft && this._mic) this._fft.setInput(this._mic);
-                }
-            });
+            // 网格层
+            this._grid = document.createElement('canvas');
+            this._grid.width = this._canvas.width;
+            this._grid.height = this._canvas.height;
+            this._gctx = this._grid.getContext('2d');
+            this._gctx.setTransform(d, 0, 0, d, 0, 0);
+            this._gctx.imageSmoothingEnabled = false;
 
-            const slider = top.querySelector('#overlap-slider');
-            const num = top.querySelector('#overlap-num');
-            const setOverlap = (v) => {
-                const val = Math.max(0, Math.min(0.9, parseFloat(v) || 0));
-                this._overlap = val;
-                slider.value = num.value = String(val);
-                // hop = frame * (1 - overlap)
-                const sr = (root.getAudioContext ? root.getAudioContext().sampleRate : 44100) || 44100;
-                const frameMs = this._fftSize / sr * 1000;
-                this._hopMs = Math.max(8, frameMs * (1 - this._overlap));
-            };
-            slider.addEventListener('input', () => setOverlap(slider.value));
-            num.addEventListener('input', () => setOverlap(num.value));
-            setOverlap(overlap);
+            // 折线层（左移 1px 滚动）
+            this._trace = document.createElement('canvas');
+            this._trace.width = this._canvas.width;
+            this._trace.height = this._canvas.height;
+            this._tctx = this._trace.getContext('2d');
+            this._tctx.setTransform(d, 0, 0, d, 0, 0);
+            this._tctx.imageSmoothingEnabled = false;
 
-            // 音频输入（复用 p5 mic，如果提供）
-            this._mic = mic || (root.mic || null);
-            this._fft = new p5.FFT(0.8, this._fftSize);
-            if (this._mic) this._fft.setInput(this._mic);
+            // 计算列周期: 每列 = spanSec / width 秒
+            this._colPeriodMs = (this._spanSec * 1000) / width;
+            this._Wpx = width;                     // 以 CSS 像素计
+            this._ys = new Float32Array(width);    // 存每列的 y 像素
+            this._writeIdx = 0;                    // 写入指针（0..W-1）
+            this._filled = false;                  // 是否已经写满一圈
 
-            // 初始 bars（会被 setBars 覆盖）
-            this.setBars([{ label: 'Background', value: 0.7, color: '#f39c12' }]);
-
-            // 默认不开启，等外部把 running 传进来或手动点开关
-            this._running = false;
-            toggle.checked = false; onoff.textContent = 'OFF';
-
-            const placeLeftOfHud = () => {
-                const hud = document.getElementById('mic-hud');
-                if (!hud || !this._wrap) return;
-                const r = hud.getBoundingClientRect();
-                const vw = window.innerWidth, vh = window.innerHeight;
-                const gap = 14;
-                // 面板右侧贴 HUD 左侧：right = (窗口宽 - HUD.left) + gap
-                const right = Math.max(8, vw - r.left + gap);
-                // 面板底部跟 HUD 同一条底边：bottom = (窗口高 - HUD.bottom) + gap
-                const bottom = Math.max(8, vh - r.bottom + gap);
-                Object.assign(this._wrap.style, { position: 'fixed', top: 'auto', right: right + 'px', bottom: bottom + 'px', left: 'auto' });
-            };
-            placeLeftOfHud();
-            window.addEventListener('resize', placeLeftOfHud);
+            this._drawGrid();
+            this.reset();
             return this;
         },
 
-        // 每帧调用；仅当显式传入 running 时才覆盖内部状态
-        update(opts) {
-            if (opts && typeof opts.running === 'boolean') this._running = opts.running;
-            if (!this._running || !this._fft) return;
+        // --------------- 音频链（AudioWorklet + 兜底） --------------- //
+        async setupAudio({ levelMode = 'peak', offsetDb = 0, workletPath = 'meter-processor.js' } = {}) {
+            this._offsetDb = offsetDb;
 
-            const now = performance.now();
-            if (now - this._lastColAt < this._hopMs) return;
-            this._lastColAt = now;
+            const AC = window.AudioContext || window.webkitAudioContext;
+            const ctx = (window.getAudioContext && window.getAudioContext()) || new AC();
 
-            const ctx = this._specCtx;
-            const cvs = this._specCanvas;
-            const _dpr = (window.devicePixelRatio || 1);
-
-            const w = cvs.width / _dpr;      // CSS 像素宽
-            const h = cvs.height / _dpr;     // CSS 像素高
-            const wp = cvs.width;            // 设备像素宽
-            const hp = cvs.height;           // 设备像素高
-
-            // 1) 取一帧频谱并转 dB
-            const spectrum = this._fft.analyze();               // 0..255
-            const dbs = spectrum.map(v => 20 * Math.log10((v / 255) || 1e-4));
-            const bins = dbs.length;
-
-            // 2) 首帧：直接把同一列“铺满整幅”，避免左侧长期黑
-            if (!this._bootFilled) {
-                for (let x = 0; x < w; x++) {
-                    for (let i = 0; i < bins; i++) {
-                        const db = Math.max(this._bgDb, Math.min(this._dbMax, dbs[i]));
-                        ctx.fillStyle = colorForDb(db);
-                        const y = h - Math.round((i / bins) * h);
-                        ctx.fillRect(x, y, 1, Math.ceil(h / bins) + 1);
-                    }
-                }
-                this._bootFilled = true;
-                return; // 下一帧再进入滚动
-            }
-
-            // 3) 用离屏缓冲把整张图向左平移 1px（HiDPI 安全）
-            if (!this._bufCanvas || this._bufCanvas.width !== wp || this._bufCanvas.height !== hp) {
-                this._bufCanvas = document.createElement('canvas');
-                this._bufCanvas.width = wp;
-                this._bufCanvas.height = hp;
-            }
-            const bctx = this._bufCanvas.getContext('2d');
-            bctx.clearRect(0, 0, wp, hp);
-            bctx.drawImage(cvs, 0, 0); // 先把当前画面拷到离屏
-
-            // 源矩形用“设备像素”，目标用“CSS 像素”
-            const sx = 1 * _dpr;            // 左移 1 个 CSS 像素
-            const sw = wp - sx;
-            ctx.drawImage(this._bufCanvas, sx, 0, sw, hp, 0, 0, w - 1, h);
-
-            // 4) 在最右侧补上一列新数据
-            for (let i = 0; i < bins; i++) {
-                const db = Math.max(this._bgDb, Math.min(this._dbMax, dbs[i]));
-                ctx.fillStyle = colorForDb(db);
-                const y = h - Math.round((i / bins) * h);
-                ctx.fillRect(w - 1, y, 1, Math.ceil(h / bins) + 1);
-            }
-
-            // 5) 可选：最右侧浅色竖网格
-            ctx.fillStyle = 'rgba(255,255,255,0.04)';
-            ctx.fillRect(w - 1, 0, 1, h);
-        },
-
-        // 设置输出条（和你右下角百分比同步）
-        // items: [{label:'Background', value:0.7, color:'#f39c12'}, ...]
-        setBars(items = []) {
-            if (!this._barsWrap) return;
-            this._barsWrap.innerHTML = '';
-            items.forEach(it => {
-                const row = document.createElement('div');
-                row.className = 'bar-row';
-                row.innerHTML = `
-          <span class="bar-label" title="${it.label}">${it.label}</span>
-          <div class="bar-outer">
-            <div class="bar-inner" style="width:${Math.round((it.value || 0) * 100)}%; background:${it.color || '#6ab8ff'}"></div>
-          </div>
-          <span class="bar-val">${Math.round((it.value || 0) * 100)}%</span>
-        `;
-                this._barsWrap.appendChild(row);
+            // 麦克风
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 }
             });
-        },
+            const src = ctx.createMediaStreamSource(stream);
 
-        pause() { this._running = false; const t = this._wrap.querySelector('#sampler-toggle'); if (t) t.checked = false; const o = this._wrap.querySelector('.onoff'); if (o) o.textContent = 'OFF'; },
-        resume() {
-            this._running = true;
-            const t = this._wrap.querySelector('#sampler-toggle'); if (t) t.checked = true;
-            const o = this._wrap.querySelector('.onoff'); if (o) o.textContent = 'ON';
-            // —— 关键：即使是代码触发 resume，也要真正接上音频 —— //
-            try {
-                if (window.userStartAudio) userStartAudio();
-                else if (window.getAudioContext) getAudioContext().resume();
-            } catch (e) { }
-            if (this._mic && this._mic.start) this._mic.start();
-            if (this._fft && this._mic) this._fft.setInput(this._mic);
-        },
-        reset() {
-            // 清空画布
-            if (this._specCtx) {
-                const w = this._specCanvas.width / dpr(), h = this._specCanvas.height / dpr();
-                this._specCtx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
-                this._specCtx.fillStyle = '#111'; this._specCtx.fillRect(0, 0, w, h);
+            // A-weight 近似
+            const hp20 = ctx.createBiquadFilter();
+            hp20.type = 'highpass';
+            hp20.frequency.value = 20;
+            hp20.Q.value = 0.5;
+            const peq1k = ctx.createBiquadFilter();
+            peq1k.type = 'peaking';
+            peq1k.frequency.value = 1000;
+            peq1k.Q.value = 1.0;
+            peq1k.gain.value = -1.3;
+            const hs4k = ctx.createBiquadFilter();
+            hs4k.type = 'highshelf';
+            hs4k.frequency.value = 3800;
+            hs4k.gain.value = 0.0;   // 或 -1.5，保持总体接近 0 dB
+
+            const sink = ctx.createGain();
+            sink.gain.value = 0;
+            this._usePeak = (levelMode === 'peak');
+
+            let workletOk = false;
+            if (ctx.audioWorklet && ctx.audioWorklet.addModule) {
+                try {
+                    const url = new URL(workletPath, window.location.href).href;
+                    await ctx.audioWorklet.addModule(url);
+                    const meter = new AudioWorkletNode(ctx, 'meter-processor', {
+                        processorOptions: { timeConstantFast: 0.125, offsetDb }
+                    });
+                    src.connect(hp20); hp20.connect(peq1k); peq1k.connect(hs4k); hs4k.connect(meter); meter.connect(sink); sink.connect(ctx.destination);
+                    meter.port.onmessage = (ev) => {
+                        if (ev.data && ev.data.type === 'setOffset') return;
+                        const { fastDb, peakDb } = ev.data;
+                        let db = this._usePeak ? peakDb : fastDb;
+                        db = Math.max(this._dbMin, Math.min(this._dbMax, db));   // ★ 夹紧
+                        this._setDb(db);
+                    };
+                    this._meterNode = meter;
+                    if (this._meterNode && this._meterNode.port) {
+                        this._meterNode.port.postMessage({ type: 'setOffset', value: this._offsetDb });
+                    }
+                    try { if (root.userStartAudio) await root.userStartAudio(); else await ctx.resume(); } catch (e) { }
+                    workletOk = true;
+                } catch (e) { console.warn('[AudioWorklet] 加载失败，使用 ScriptProcessor 兜底', e); }
             }
-            this._bootFilled = false;
+
+            if (!workletOk) {
+                const node = ctx.createScriptProcessor(1024, 1, 1);
+                const alphaFromDt = (dt, tau = 0.125) => Math.exp(-dt / tau);
+                let rms2Fast = 0, peakHold = 0;
+                node.onaudioprocess = (e) => {
+                    const inBuf = e.inputBuffer.getChannelData(0);
+                    let sum = 0, peak = 0;
+                    for (let i = 0; i < inBuf.length; i++) { const x = inBuf[i], ax = Math.abs(x); sum += x * x; if (ax > peak) peak = ax; }
+                    const rms2Block = sum / inBuf.length;
+                    const dt = inBuf.length / ctx.sampleRate;
+                    const alpha = alphaFromDt(dt, 0.125);
+                    rms2Fast = rms2Fast * alpha + rms2Block * (1 - alpha);
+                    peakHold = Math.max(peak, peakHold * 0.95);
+
+                    const EPS = 1e-6;
+                    let fastDb = 20 * Math.log10(Math.sqrt(rms2Fast) + EPS) + this._offsetDb;
+                    let peakDb = 20 * Math.log10(peakHold + EPS) + this._offsetDb;
+                    fastDb = Math.max(this._dbMin, Math.min(this._dbMax, fastDb));
+                    peakDb = Math.max(this._dbMin, Math.min(this._dbMax, peakDb));
+                    this._setDb(this._usePeak ? peakDb : fastDb);
+                };
+                src.connect(hp20); hp20.connect(peq1k); peq1k.connect(hs4k); hs4k.connect(node); node.connect(sink); sink.connect(ctx.destination);
+                try { if (root.userStartAudio) await root.userStartAudio(); else await ctx.resume(); } catch (e) { }
+            }
+
+            this._running = true;
         },
 
-        // 可选：换麦克风（如果需要）
-        setMic(mic) { this._mic = mic; if (this._fft) this._fft.setInput(mic); }
+        _setDb(db) {
+            // 大数字 & 统计
+            this._lastDb = db;
+            if (isFinite(db)) {
+                this._big.textContent = db.toFixed(1);
+                this._maxDb = Math.max(this._maxDb, db);
+                this._minDb = Math.min(this._minDb, db);
+                this._sumDb += db; this._nDb++;
+                const avg = this._sumDb / this._nDb;
+                this._stats.textContent = `最大: ${this._maxDb.toFixed(1)} dB | 平均: ${avg.toFixed(1)} dB | 最小: ${this._minDb.toFixed(1)} dB`;
+            }
+        },
+
+        // --------------- 每帧更新（按列落点 + 左移 1px） --------------- //
+        update() {
+            if (!this._running) return;
+            const now = performance.now();
+            if (now - this._lastColTime < this._colPeriodMs) {
+                // 仍然合成（把网格和已有折线画出去）
+                this._composite();
+                return;
+            }
+            this._lastColTime = now;
+
+            const W = this._Wpx;
+            const H = this._canvas.height / dpr();
+
+            // 1) dB → y（略做平滑）
+            if (this._lastDb != null) {
+                const t = Math.max(0, Math.min(1, (this._lastDb - this._dbMin) / (this._dbMax - this._dbMin)));
+                const yNow = (H - 1) * (1 - t);
+                this._yNow = (this._yNow == null) ? yNow : this._yNow * this._rmsSmooth + yNow * (1 - this._rmsSmooth);
+
+                // 2) 推入环形缓冲（最新点）
+                this._ys[this._writeIdx] = this._yNow;
+                this._writeIdx = (this._writeIdx + 1) % W;
+                if (!this._filled && this._writeIdx === 0) this._filled = true;
+            }
+
+            // 3) 重画整条线（不再用位图平移）
+            const ctx = this._tctx;
+            ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, W, H);
+
+            const n = this._filled ? W : this._writeIdx;
+            if (n > 1) {
+                const start = this._filled ? this._writeIdx : 0; // 最旧点在 start
+                ctx.beginPath();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#ff3b30';
+
+                for (let i = 0; i < n; i++) {
+                    const idx = (start + i) % W;   // 缓冲真实位置
+                    const x = i;                   // 屏幕 x（从左到右）
+                    const y = Math.round(this._ys[idx] || (H - 1));
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            // 4) 合成到最终画布
+            this._composite();
+        },
+
+        _composite() {
+            const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
+            this._ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+            this._ctx.imageSmoothingEnabled = false;
+            this._ctx.clearRect(0, 0, W, H);
+            this._ctx.drawImage(this._grid, 0, 0, W, H);
+            this._ctx.drawImage(this._trace, 0, 0, W, H);
+        },
+
+        // --------------- 网格（纵轴 dB，横轴时间 65s，1s/5s 栅格） --------------- //
+        _drawGrid() {
+            const g = this._gctx;
+            const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
+            g.clearRect(0, 0, W, H);
+            g.fillStyle = '#0f1114'; g.fillRect(0, 0, W, H);
+
+            // 横向(dB) 每 10 dB 一根，20 dB 加粗并标注
+            for (let dB = this._dbMin; dB <= this._dbMax; dB += 10) {
+                const t = (dB - this._dbMin) / (this._dbMax - this._dbMin);
+                const y = Math.round((H - 1) * (1 - t)) + .5;
+                g.beginPath();
+                g.strokeStyle = (dB % 20 === 0) ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
+                g.lineWidth = 1; g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+                if (dB % 20 === 0) {
+                    g.fillStyle = 'rgba(220,230,240,.85)';
+                    g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+                    g.fillText(String(dB), 4, y - 4);
+                }
+            }
+
+            // 纵向(时间) 每 1s 一根，5s 加粗并标注
+            const pxPerSec = W / this._spanSec;
+            for (let s = 0; s <= this._spanSec; s++) {
+                const x = Math.round(W - s * pxPerSec) + .5; // 右 → 左，0 在最右侧
+                const major = (s % 5 === 0);
+                g.beginPath();
+                g.strokeStyle = major ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
+                g.lineWidth = 1; g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+                if (major && s !== 0) {
+                    g.fillStyle = 'rgba(220,230,240,.85)';
+                    g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+                    g.fillText(`${s}s`, Math.max(0, x - 12), H - 6);
+                }
+            }
+
+            // 左上角刻度名
+            g.fillStyle = 'rgba(220,230,240,.85)';
+            g.font = 'bold 13px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+            g.fillText('dB', 6, 16);
+        },
+
+        // --------------- 控制 --------------- //
+        pause() { this._running = false; },
+        resume() { this._running = true; },
+        reset() {
+            const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
+            this._tctx.clearRect(0, 0, W, H);
+            this._lastDb = null;
+            this._yNow = null;
+            this._maxDb = -Infinity;
+            this._minDb = Infinity;
+            this._sumDb = 0;
+            this._nDb = 0;
+            this._big.textContent = '--.-';
+            this._stats.textContent = `最大: --.- dB | 平均: --.- dB | 最小: --.- dB`;
+            this._lastColTime = 0;
+
+            if (this._ys) this._ys.fill(0);
+            this._writeIdx = 0; this._filled = false;
+
+            this._composite();
+        },
+
+        setScale(dbMin, dbMax) {
+            this._dbMin = dbMin; this._dbMax = dbMax;
+            this._drawGrid();    // 重画网格文字与线
+            this._composite();   // 叠到前台
+        },
+
+        calibrateSPL: async function (targetDb = 94, seconds = 2) {
+            const t0 = performance.now();
+            let sum = 0, n = 0;
+            while (performance.now() - t0 < seconds * 1000) {
+                if (this._lastDb != null) { sum += this._lastDb; n++; }
+                await new Promise(r => setTimeout(r, 16)); // 约 60 FPS 取样
+            }
+            if (!n) return;
+            const measured = sum / n;
+            this._offsetDb = targetDb - measured;                // 计算平移量
+            try { localStorage.setItem('splOffset', String(this._offsetDb)); } catch (e) { }
+
+            // 通知 worklet 即时生效；兜底分支会在下一块音频里使用 this._offsetDb
+            if (this._meterNode && this._meterNode.port) {
+                this._meterNode.port.postMessage({ type: 'setOffset', value: this._offsetDb });
+            }
+        }
     };
-    root.SampleUI = SampleUI;
+
+
+
+    if (root.SampleUI) return; // 已有的话就别重复挂
+    root.SampleUI = {
+        // 旧代码会传 { mount:'#sampler-wrap', width, height, mic, overlap }
+        init(opts = {}) {
+            const {
+                mount,
+                width = 380,
+                height = 230,
+                spanSec = 65,
+                dbMin = -80,             // ★ 默认改为 dBFS 常用区间
+                dbMax = 0,
+                rmsSmoothing = 0.30 } = opts;
+            LevelMeter.init({
+                // 不传 mount 就会自动固定在右下角；如果你想继续放在 #sampler-wrap，就传 mount
+                mount: mount || undefined,
+                width, height,
+                spanSec, dbMin, dbMax, rmsSmoothing
+            });
+            return this;
+        },
+        setupAudio(opts) { return LevelMeter.setupAudio(opts); },
+        resume() { LevelMeter.resume(); },
+        pause() { LevelMeter.pause(); },
+        reset() { LevelMeter.reset(); },
+        update() { LevelMeter.update(); },
+        setBars() { }, setMic() { },
+
+        calibrateSPL(targetDb, sec) { return LevelMeter.calibrateSPL(targetDb, sec); },
+        setScale(min, max) { return LevelMeter.setScale(min, max); },
+
+    };
+
+    root.LevelMeter = LevelMeter;
 })(window);
