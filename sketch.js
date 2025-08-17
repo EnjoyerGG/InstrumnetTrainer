@@ -201,6 +201,11 @@ function setup() {
     });
     mic = new p5.AudioIn();
     mic.start();
+    if (window.SampleUI && !window.__samplerInit) {
+        SampleUI.init({ mount: '#sampler-wrap', width: 340, height: 110, mic, overlap: 0.35 });
+        SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
+        window.__samplerInit = true;       // 防止重复初始化
+    }
 
     CongaClassifier.init({
         modelURL: 'models/conga/',
@@ -235,6 +240,20 @@ function setup() {
             const sum = o + p + t + s + bg || 1;
             HUD.probs = { O: o / sum, P: p / sum, T: t / sum, S: s / sum, BG: bg / sum };
 
+            // 同步到上方面板的 Output 条
+            if (window.SampleUI) {
+                SampleUI.setBars([
+                    { label: 'Background / Noise', value: HUD.probs.BG, color: '#f39c12' },
+                    { label: 'Open / Slap', value: Math.max(HUD.probs.O, HUD.probs.S), color: '#6ab8ff' },
+                    { label: 'Tip / Palm', value: Math.max(HUD.probs.T, HUD.probs.P), color: '#2ecc71' }
+                    // 需要也可以把五条都展示：
+                    // { label: 'Open', value: HUD.probs.O, color: '#6ab8ff' },
+                    // { label: 'Slap', value: HUD.probs.S, color: '#e74c3c' },
+                    // { label: 'Tip',  value: HUD.probs.T, color: '#2ecc71' },
+                    // { label: 'Palm', value: HUD.probs.P, color: '#9b59b6' },
+                ]);
+            }
+
             if (DEBUG) console.log('top5', top);
             const dd = (HUD.energy ?? 0) - _emaE; _emaE += _alphaE * dd; _emaVar = (1 - _alphaE) * (_emaVar + _alphaE * dd * dd);
         });
@@ -251,18 +270,22 @@ function setup() {
 
             // 标签映射更“宽容”：忽略大小写和空格
             const s = (label || '').toLowerCase().replace(/\s+/g, '');
+            // 先得到“记谱标签”
             const abbr =
                 s.includes('open') ? 'O' :
-                    (s.includes('palm') || s.includes('bass')) ? 'P' :
+                    s.includes('slap') ? 'S' :
                         (s.includes('tip') || s.includes('finger')) ? 'T' :
-                            s.includes('slap') ? 'S' : null;
-
+                            s.includes('palm') ? 'T' :         // Palm 归中环
+                                s.includes('bass') ? 'B' : null;   // Bass 单独标出
             if (abbr) {
                 rm.registerHit(abbr);
                 judgeLineGlow = 1;
-                if (window.DrumCanvas?.trigger) {
-                    DrumCanvas.trigger(abbr, 320);
-                }
+                // 再把“记谱标签”映射到鼓面三环：O/S→外；T→中；B→内(=P)
+                const ringKey =
+                    (abbr === 'O' || abbr === 'S') ? 'O' :
+                        (abbr === 'T') ? 'T' :
+                            (abbr === 'B') ? 'P' : 'O';
+                if (window.DrumCanvas?.trigger) DrumCanvas.trigger(ringKey, 320);
             }
         });
     });
@@ -307,6 +330,7 @@ function setup() {
     select('#start-btn').mousePressed(handleStart);
     select('#pause-btn').mousePressed(() => {
         running = false;
+        if (window.SampleUI) SampleUI.pause();
         counting = false;
         rm.pause();
         CongaClassifier.stop();
@@ -386,7 +410,11 @@ async function handleStart() {
         try { await metro.ctx.resume(); } catch (e) { console.warn(e); }
     }
 
-    try { if (mic && mic.stop) mic.stop(); } catch (e) { console.warn(e); }
+    try {
+        await mic.start();
+        if (window.SampleUI && SampleUI.setMic) SampleUI.setMic(mic);
+        if (window.SampleUI) SampleUI.resume();
+    } catch (e) { console.warn(e); }
 
     try {
         if (CongaClassifier.setConstraints) {
@@ -405,6 +433,7 @@ async function handleStart() {
     }
 
     startCountdown();
+    if (window.SampleUI) SampleUI.resume();
     lastNoteIdx = -1; // 重置音符索引
     metro.reset();
     metro.useInternalGrid = false;  // 明确用谱面驱动
@@ -428,6 +457,7 @@ function handleReset() {
     metro.reset();
     CongaClassifier.stop();
     try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
+    if (window.SampleUI) { SampleUI.reset(); SampleUI.pause(); }
 }
 
 function startCountdown() {
@@ -463,6 +493,7 @@ function draw() {
             counting = false;
             running = true;
             rm.resume();
+            if (window.SampleUI) SampleUI.resume();
             if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
@@ -482,6 +513,10 @@ function draw() {
     const { hit, miss } = rm.getStats();
     select('#status').html(`Hits ${hit} | Miss ${miss}`);
     updateHUDView();
+
+    if (window.SampleUI) {
+        SampleUI.update(); // running 为你已有的全局布尔：开始/暂停
+    }
 }
 
 /* ------------ Visualization ------- */
