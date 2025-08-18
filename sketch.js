@@ -232,6 +232,7 @@ function setup() {
             workletPath: './meter-processor.js',
             offsetDb: savedOffset
         });
+        SampleUI.nudgeOffset(-20);
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
         if (!hasOffset) {
@@ -240,7 +241,7 @@ function setup() {
                 try {
                     await SampleUI.calibrateSPL(45, 1.5);  // 这里的 45 是经验值，可按你房间改成 40~50
                 } catch (e) { console.warn('auto calibrate fail', e); }
-                SampleUI.setScale(0, 120);               // ★ 切换到 SPL 刻度
+                SampleUI.setScale(20, 100);               // ★ 切换到 SPL 刻度
             }, 1200);
         }
         window.__samplerInit = true;       // 防止重复初始化

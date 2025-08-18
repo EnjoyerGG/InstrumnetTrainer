@@ -19,7 +19,7 @@
         _lastDb: null, _dispDb: null,
         _maxDb: -Infinity, _minDb: Infinity, _sumDb: 0, _nDb: 0,
         _spanSec: 65,
-        _dbMin: 0, _dbMax: 120,
+        _dbMin: 20, _dbMax: 100,
         _colPeriodMs: 200, _lastColTime: 0,
         _rmsSmooth: 0.40,
         _yNow: null,
@@ -35,14 +35,14 @@
             width = 360,
             height = 230,
             spanSec = 65,
-            dbMin = 0,
-            dbMax = 120,
+            dbMin = 20,
+            dbMax = 100,
             rmsSmoothing = 0.30
         } = {}) {
             this._spanSec = spanSec;
             this._dbMin = dbMin; this._dbMax = dbMax;
             this._rmsSmooth = rmsSmoothing;
-            this._pad = { left: 36, right: 10, top: 8, bottom: 22 };
+            this._pad = { left: 36, right: 10, top: 8, bottom: 8 };
 
             // 容器：嵌入式（如果没传 mount，就直接加到 <body> 末尾）
             this._wrap = typeof mount === 'string' ? document.querySelector(mount) : mount;
@@ -265,26 +265,6 @@
                     g.fillText(String(dB), x0 - 6, y);   // 画在外侧
                 }
             }
-
-            // 纵向 时间（左→右：5s,10s,...）
-            const pxPerSec = w / this._spanSec;
-            let lastLabelX = -1e9; const MIN_GAP = 26;
-            for (let s = 0; s <= this._spanSec; s++) {
-                const x = x0 + Math.round(s * pxPerSec) + .5;
-                const major = (s % 5 === 0);
-                g.beginPath();
-                g.strokeStyle = major ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
-                g.lineWidth = 1; g.moveTo(x, y0); g.lineTo(x, y0 + h); g.stroke();
-                if (major && s !== 0) {
-                    const tx = Math.max(x0 + 14, Math.min(x0 + w - 14, x));
-                    if (tx - lastLabelX >= MIN_GAP) {
-                        g.fillStyle = 'rgba(220,230,240,.85)'; g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-                        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-                        g.fillText(`${s}s`, tx, y0 + h - 6);
-                        lastLabelX = tx;
-                    }
-                }
-            }
         },
 
         reset() {
@@ -315,13 +295,25 @@
             this._offsetDb = targetDb - measured;
             try { localStorage.setItem('splOffset', String(this._offsetDb)); } catch { }
             if (this._meterNode?.port) this._meterNode.port.postMessage({ type: 'setOffset', value: this._offsetDb });
+        },
+
+        setOffsetDb(db) {
+            this._offsetDb = db;
+            try { localStorage.setItem('splOffset', String(db)); } catch { }
+            // Worklet 路径需要通知处理器；ScriptProcessor 路径会直接读取 this._offsetDb
+            if (this._meterNode?.port) {
+                this._meterNode.port.postMessage({ type: 'setOffset', value: db });
+            }
+        },
+        nudgeOffset(deltaDb) {
+            this.setOffsetDb((this._offsetDb || 0) + deltaDb);
         }
     };
 
     if (root.SampleUI) return;
     root.SampleUI = {
         init(opts = {}) {
-            const { mount, width = 380, height = 230, spanSec = 65, dbMin = 0, dbMax = 120, rmsSmoothing = 0.30 } = opts;
+            const { mount, width = 380, height = 230, spanSec = 65, dbMin = 20, dbMax = 100, rmsSmoothing = 0.30 } = opts;
             LevelMeter.init({ mount, width, height, spanSec, dbMin, dbMax, rmsSmoothing });
             return this;
         },
@@ -332,9 +324,12 @@
         resume: () => LevelMeter.resume(),
         setScale: (a, b) => LevelMeter.setScale(a, b),
         calibrateSPL: (t, s) => LevelMeter.calibrateSPL(t, s),
+        setOffsetDb: (db) => LevelMeter.setOffsetDb(db),
+        nudgeOffset: (d) => LevelMeter.nudgeOffset(d),
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
         setBars: () => { }, setMic: () => { }
+
     };
 
     root.LevelMeter = LevelMeter;
