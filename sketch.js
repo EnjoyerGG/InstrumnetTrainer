@@ -210,7 +210,8 @@ function setup() {
             height: 230,
             spanSec: 65,
             dbMin: hasOffset ? 0 : -80,
-            dbMax: hasOffset ? 120 : 0
+            dbMax: hasOffset ? 120 : 0,
+            dock: 'left'
         });
         if (SampleUI.dockNearRightHud) {
             SampleUI.dockNearRightHud({ side: 'left', gap: 10, align: 'middle' });

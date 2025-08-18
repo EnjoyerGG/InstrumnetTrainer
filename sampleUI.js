@@ -36,18 +36,20 @@
             spanSec = 65,
             dbMin = 0,
             dbMax = 120,
-            rmsSmoothing = 0.30
+            rmsSmoothing = 0.30,
+            dock = 'right'
         } = {}) {
             this._spanSec = spanSec;
             this._dbMin = dbMin; this._dbMax = dbMax;
             this._rmsSmooth = rmsSmoothing;
+            this._pad = { left: 36, right: 10, top: 8, bottom: 22 };
 
             // 容器
             this._wrap = typeof mount === 'string' ? document.querySelector(mount) : mount;
             if (!this._wrap) { this._wrap = document.createElement('div'); this._wrap.id = 'level-wrap'; document.body.appendChild(this._wrap); }
             this._wrap.className = 'lm-panel';
             this._wrap.style.cssText = `
-        position: fixed; right: 16px; bottom: 16px;
+        position: fixed; ${dock === 'left' ? 'left' : 'right'}: 16px; bottom: 16px;
         background: rgba(30,30,35,.95); border-radius: 14px;
         box-shadow: 0 6px 24px rgba(0,0,0,.45); padding: 12px 12px 10px 12px;
         color:#e9eef5; font: 14px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial; z-index:1000;
@@ -58,7 +60,7 @@
             this._top.className = 'lm-top';
             this._top.innerHTML = `
         <button id="lm-clear" style="background:#f2f2f2;color:#111;border:0;border-radius:10px;padding:8px 16px;font-weight:700;margin-right:8px">清除</button>
-        <span id="lm-big" style="font-weight:800;font-size:42px;letter-spacing:1px;vertical-align:middle;">--.-</span>
+        <span id="lm-big" style="font-weight:800;font-size:36px;min-width:110px;display:inline-block;letter-spacing:1px;vertical-align:middle;">--.-</span>
         <span style="margin-left:4px;font-size:18px;opacity:.85">dB</span>
         <span id="lm-led" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:10px;background:#29d44d;box-shadow:0 0 6px #29d44d;"></span>
         <span id="lm-stats" style="float:right;opacity:.85;font-weight:600">最大: --.- dB | 平均: --.- dB | 最小: --.- dB</span>
@@ -98,11 +100,16 @@
             this._tctx.imageSmoothingEnabled = false;
 
             // 计算列周期: 每列 = spanSec / width 秒
-            this._colPeriodMs = (this._spanSec * 1000) / width;
-            this._Wpx = width;                     // 以 CSS 像素计
-            this._ys = new Float32Array(width);    // 存每列的 y 像素
+            this._innerX = this._pad.left;
+            this._innerY = this._pad.top;
+            this._innerW = Math.max(10, width - this._pad.left - this._pad.right);
+            this._innerH = Math.max(10, height - this._pad.top - this._pad.bottom);
+
+            this._Wpx = Math.round(this._innerW);                     // 以 CSS 像素计
+            this._ys = new Float32Array(this._Wpx);    // 存每列的 y 像素
             this._writeIdx = 0;                    // 写入指针（0..W-1）
             this._filled = false;                  // 是否已经写满一圈
+            this._colPeriodMs = (this._spanSec * 1000) / this._Wpx;
 
             this._drawGrid();
             this.reset();
@@ -198,12 +205,14 @@
             // 大数字 & 统计
             this._lastDb = db;
             if (isFinite(db)) {
-                this._big.textContent = db.toFixed(1);
+                if (this._dispDb == null) this._dispDb = db;
+                this._dispDb = this._dispDb * 0.88 + db * 0.12;
+                this._big.textContent = this._dispDb.toFixed(1);
                 this._maxDb = Math.max(this._maxDb, db);
                 this._minDb = Math.min(this._minDb, db);
                 this._sumDb += db; this._nDb++;
                 const avg = this._sumDb / this._nDb;
-                this._stats.textContent = `最大: ${this._maxDb.toFixed(1)} dB | 平均: ${avg.toFixed(1)} dB | 最小: ${this._minDb.toFixed(1)} dB`;
+                this._stats.textContent = `Max: ${this._maxDb.toFixed(1)} dB | Average: ${avg.toFixed(1)} dB | Min: ${this._minDb.toFixed(1)} dB`;
             }
         },
 
@@ -224,7 +233,8 @@
             // 1) dB → y（略做平滑）
             if (this._lastDb != null) {
                 const t = Math.max(0, Math.min(1, (this._lastDb - this._dbMin) / (this._dbMax - this._dbMin)));
-                const yNow = (H - 1) * (1 - t);
+                const Hline = this._innerH;
+                const yNow = (Hline - 1) * (1 - t);
                 this._yNow = (this._yNow == null) ? yNow : this._yNow * this._rmsSmooth + yNow * (1 - this._rmsSmooth);
 
                 // 2) 推入环形缓冲（最新点）
@@ -235,27 +245,31 @@
 
             // 3) 重画整条线（不再用位图平移）
             const ctx = this._tctx;
+            const Wc = this._canvas.width / dpr(), Hc = this._canvas.height / dpr();
+            const x0 = this._innerX, y0 = this._innerY;
+            const w = this._innerW, h = this._innerH;
+
             ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
             ctx.imageSmoothingEnabled = false;
-            ctx.clearRect(0, 0, W, H);
+            ctx.clearRect(0, 0, Wc, Hc);
 
-            const n = this._filled ? W : this._writeIdx;
+            const n = this._filled ? this._Wpx : this._writeIdx;
             if (n > 1) {
-                const start = this._filled ? this._writeIdx : 0; // 最旧点在 start
+                const start = this._filled ? this._writeIdx : 0;
                 ctx.beginPath();
                 ctx.lineWidth = 1;
                 ctx.strokeStyle = '#ff3b30';
 
                 for (let i = 0; i < n; i++) {
-                    const idx = (start + i) % W;   // 缓冲真实位置
-                    const x = i;                   // 屏幕 x（从左到右）
-                    const y = Math.round(this._ys[idx] || (H - 1));
+                    const idx = (start + i) % this._Wpx;
+                    const x = x0 + i;                             // ★ 内框内逐像素
+                    const y = y0 + Math.round(this._ys[idx] || (h - 1));
                     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                 }
                 ctx.stroke();
             }
 
-            // 4) 合成到最终画布
+            // 4) 合成到前台
             this._composite();
         },
 
@@ -271,66 +285,119 @@
         // --------------- 网格（纵轴 dB，横轴时间 65s，1s/5s 栅格） --------------- //
         _drawGrid() {
             const g = this._gctx;
-            const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
-            g.clearRect(0, 0, W, H);
-            g.fillStyle = '#0f1114'; g.fillRect(0, 0, W, H);
+            const W = this._canvas.width / dpr();
+            const H = this._canvas.height / dpr();
 
-            // 横向(dB) 每 10 dB 一根，20 dB 加粗并标注
+            const x0 = this._innerX, y0 = this._innerY;
+            const w = this._innerW, h = this._innerH;
+
+            // 清空
+            g.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+            g.clearRect(0, 0, W, H);
+
+            // 外框
+            g.strokeStyle = 'rgba(230,230,235,.28)';
+            g.lineWidth = 6;
+            g.beginPath();
+            g.roundRect(x0 - 6, y0 - 6, w + 12, h + 12, 10);
+            g.stroke();
+
+            // 背景
+            g.fillStyle = 'rgba(16,17,19,.85)';
+            g.fillRect(x0, y0, w, h);
+
+            // ===== 横向(dB)网格与标签（Y 轴在外侧）=====
             for (let dB = this._dbMin; dB <= this._dbMax; dB += 10) {
                 const t = (dB - this._dbMin) / (this._dbMax - this._dbMin);
-                const y = Math.round((H - 1) * (1 - t)) + .5;
+                const y = y0 + Math.round((h - 1) * (1 - t)) + .5;
+
                 g.beginPath();
                 g.strokeStyle = (dB % 20 === 0) ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
-                g.lineWidth = 1; g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+                g.lineWidth = 1;
+                g.moveTo(x0, y);
+                g.lineTo(x0 + w, y);
+                g.stroke();
+
                 if (dB % 20 === 0) {
+                    // ★ 把数字画到“外侧”：在内框左边界外 6px，右对齐
                     g.fillStyle = 'rgba(220,230,240,.85)';
                     g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-                    g.fillText(String(dB), 4, y - 4);
+                    g.textAlign = 'right';
+                    g.textBaseline = 'middle';
+                    g.fillText(String(dB), x0 - 6, y);
                 }
             }
 
-            // 纵向(时间) 每 1s 一根，5s 加粗并标注
-            const pxPerSec = W / this._spanSec;
+            // ===== 纵向(时间)网格与标签（左→右：5s,10s,...,60s）=====
+            const pxPerSec = w / this._spanSec;
+            let lastLabelX = -1e9;
+            const MIN_GAP = 26; // 标签最小间距
+
             for (let s = 0; s <= this._spanSec; s++) {
-                const x = Math.round(W - s * pxPerSec) + .5; // 右 → 左，0 在最右侧
+                const x = x0 + Math.round(s * pxPerSec) + .5;   // ★ 左→右递增
                 const major = (s % 5 === 0);
+
                 g.beginPath();
                 g.strokeStyle = major ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
-                g.lineWidth = 1; g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+                g.lineWidth = 1;
+                g.moveTo(x, y0);
+                g.lineTo(x, y0 + h);
+                g.stroke();
+
                 if (major && s !== 0) {
-                    g.fillStyle = 'rgba(220,230,240,.85)';
-                    g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-                    g.fillText(`${s}s`, Math.max(0, x - 12), H - 6);
+                    const tx = Math.max(x0 + 14, Math.min(x0 + w - 14, x));
+                    if (tx - lastLabelX >= MIN_GAP) {
+                        g.fillStyle = 'rgba(220,230,240,.85)';
+                        g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+                        g.textAlign = 'center';
+                        g.textBaseline = 'alphabetic';
+                        g.fillText(`${s}s`, tx, y0 + h - 6);   // ★ 5s→60s 从左到右递增
+                        lastLabelX = tx;
+                    }
                 }
             }
-
-            // 左上角刻度名
-            g.fillStyle = 'rgba(220,230,240,.85)';
-            g.font = 'bold 13px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-            g.fillText('dB', 6, 16);
         },
 
-        // --------------- 控制 --------------- //
-        pause() { this._running = false; },
-        resume() { this._running = true; },
         reset() {
-            const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
-            this._tctx.clearRect(0, 0, W, H);
+            // 统计清零
             this._lastDb = null;
-            this._yNow = null;
+            this._dispDb = null;
             this._maxDb = -Infinity;
             this._minDb = Infinity;
             this._sumDb = 0;
             this._nDb = 0;
-            this._big.textContent = '--.-';
-            this._stats.textContent = `最大: --.- dB | 平均: --.- dB | 最小: --.- dB`;
-            this._lastColTime = 0;
 
+            // 顶部显示复位
+            if (this._big) this._big.textContent = '--.-';
+            if (this._stats) this._stats.textContent = 'Max: --.- dB | Average: --.- dB | Min: --.- dB';
+
+            // 环形缓冲清空
             if (this._ys) this._ys.fill(0);
-            this._writeIdx = 0; this._filled = false;
+            this._writeIdx = 0;
+            this._filled = false;
+            this._yNow = null;
 
+            // 清折线层并重绘网格/合成
+            const W = this._canvas.width / (window.devicePixelRatio || 1);
+            const H = this._canvas.height / (window.devicePixelRatio || 1);
+            this._tctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+            this._tctx.clearRect(0, 0, W, H);
+            this._drawGrid();
             this._composite();
         },
+
+        pause() {
+            this._running = false;
+            const led = this._top?.querySelector('#lm-led');
+            if (led) { led.style.background = '#e74c3c'; led.style.boxShadow = '0 0 6px #e74c3c'; }
+        },
+
+        resume() {
+            this._running = true;
+            const led = this._top?.querySelector('#lm-led');
+            if (led) { led.style.background = '#29d44d'; led.style.boxShadow = '0 0 6px #29d44d'; }
+        },
+
 
         setScale(dbMin, dbMax) {
             this._dbMin = dbMin; this._dbMax = dbMax;
@@ -370,19 +437,22 @@
                 spanSec = 65,
                 dbMin = -80,             // ★ 默认改为 dBFS 常用区间
                 dbMax = 0,
-                rmsSmoothing = 0.30 } = opts;
+                rmsSmoothing = 0.30,
+                dock = 'right'
+            } = opts;
             LevelMeter.init({
                 // 不传 mount 就会自动固定在右下角；如果你想继续放在 #sampler-wrap，就传 mount
                 mount: mount || undefined,
                 width, height,
-                spanSec, dbMin, dbMax, rmsSmoothing
+                spanSec, dbMin, dbMax, rmsSmoothing,
+                dock
             });
             return this;
         },
         setupAudio(opts) { return LevelMeter.setupAudio(opts); },
-        resume() { LevelMeter.resume(); },
-        pause() { LevelMeter.pause(); },
-        reset() { LevelMeter.reset(); },
+        resume() { return LevelMeter.resume(); },
+        pause() { return LevelMeter.pause(); },
+        reset() { return LevelMeter.reset(); },
         update() { LevelMeter.update(); },
         setBars() { }, setMic() { },
 
