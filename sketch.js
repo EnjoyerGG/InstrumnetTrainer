@@ -193,6 +193,11 @@ function setup() {
     const cnv = createCanvas(1000, 120);
     cnv.parent('score-wrap');
 
+    const elTotals = select('#totals');
+    if (elTotals) elTotals.style('display', 'none');
+    const elStatus = select('#status');
+    if (elStatus) elStatus.style('display', 'none');
+
     const meterSlot = createDiv();
     meterSlot.id('meter-slot');
     meterSlot.parent(cnv.parent());          // 和画布同一个父容器
@@ -544,7 +549,17 @@ function draw() {
     flashDrumWhenNoteAtLine();
 
     const { hit, miss } = rm.getStats();
-    select('#status').html(`Hits ${hit} | Miss ${miss}`);
+
+    // —— 右下角一行统计：Notes | Hits | Miss —— //
+    const info = `Notes ${rm.scoreNotes.length} | Hits ${hit} | Miss ${miss}`;
+    noStroke();
+    fill(240);
+    textSize(16);
+    textAlign(RIGHT, BOTTOM);
+    // laneBottomY() 是下路中线；往上留 8px，不压线
+    text(info, width - 12, laneBottomY() + 40);
+
+    // 其他 HUD 仍照常更新
     updateHUDView();
 
     if (window.SampleUI) {
