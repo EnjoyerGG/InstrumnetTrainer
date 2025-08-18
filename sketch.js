@@ -213,34 +213,36 @@ function setup() {
     mic = new p5.AudioIn();
     mic.start();
     if (window.SampleUI && !window.__samplerInit) {
-        const savedOffset = Number(localStorage.getItem('splOffset')) || 0;
-        const hasOffset = Number.isFinite(savedOffset) && savedOffset !== 0;
+        let savedOffset = Number(localStorage.getItem('splOffset'));
+        const legacyOffset = Math.abs(savedOffset - (-20)) < 0.6;  // 识别旧的 -20dB
+        if (!Number.isFinite(savedOffset) || legacyOffset || Math.abs(savedOffset) > 10) {
+            try { localStorage.removeItem('splOffset'); } catch { }
+            savedOffset = 0;
+        }
+        const hasOffset = savedOffset !== 0;
 
         SampleUI.init({
             mount: meterSlot.elt,
             width: width,
             height: 230,
             spanSec: 65,
-            dbMin: 0,
-            dbMax: 120,
-            rmsSmoothing: 0.30
+            dbMin: 20,
+            dbMax: 100,
+            rmsSmoothing: 0.30,
+            hudInCanvas: true,
+            hudCorner: 'br'
         });
 
         SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
         SampleUI.setupAudio({
-            levelMode: 'peak',
+            levelMode: 'rms',
             workletPath: './meter-processor.js',
             offsetDb: savedOffset
         });
-        SampleUI.nudgeOffset(-20);
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
         if (!hasOffset) {
             setTimeout(async () => {
-                // 先保证 mic/ctx 已经跑起来 1 秒左右再校准
-                try {
-                    await SampleUI.calibrateSPL(45, 1.5);  // 这里的 45 是经验值，可按你房间改成 40~50
-                } catch (e) { console.warn('auto calibrate fail', e); }
                 SampleUI.setScale(20, 100);               // ★ 切换到 SPL 刻度
             }, 1200);
         }
@@ -481,6 +483,16 @@ async function handleStart() {
     if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
     scheduleTicksOnce._guardUntil = 0;
     startScoreTickScheduler();
+
+    setTimeout(async () => {
+        try {
+            // 先清历史偏置，确保这次一定校准成功
+            try { localStorage.removeItem('splOffset'); } catch { }
+            if (window.SampleUI?.setOffsetDb) SampleUI.setOffsetDb(0);
+            await SampleUI.calibrateSPL(45, 1.5);   // 没声校准器就先对齐到 ~45 dB
+            SampleUI.setScale(20, 100);             // 维持你要的 SPL 刻度
+        } catch (e) { console.warn('calibrate after start failed', e); }
+    }, 1200);
 }
 
 function handleReset() {

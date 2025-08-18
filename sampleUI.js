@@ -16,7 +16,7 @@
 
         // 状态
         _running: true,
-        _lastDb: null, _dispDb: null,
+        _lastDb: null, _dispDb: null, _lastDbRaw: null, _floorTicks: 0,
         _maxDb: -Infinity, _minDb: Infinity, _sumDb: 0, _nDb: 0,
         _spanSec: 65,
         _dbMin: 20, _dbMax: 100,
@@ -37,11 +37,15 @@
             spanSec = 65,
             dbMin = 20,
             dbMax = 100,
-            rmsSmoothing = 0.30
+            rmsSmoothing = 0.30,
+            hudInCanvas = false,
+            hudCorner = 'br'
         } = {}) {
             this._spanSec = spanSec;
             this._dbMin = dbMin; this._dbMax = dbMax;
             this._rmsSmooth = rmsSmoothing;
+            this._hudInCanvas = !!hudInCanvas;
+            this._hudCorner = hudCorner;   // 'br' | 'tr' | 'bl' | 'tl'
             this._pad = { left: 36, right: 10, top: 8, bottom: 8 };
 
             // 容器：嵌入式（如果没传 mount，就直接加到 <body> 末尾）
@@ -68,6 +72,7 @@
             this._big = this._top.querySelector('#lm-big');
             this._stats = this._top.querySelector('#lm-stats');
             this._top.querySelector('#lm-clear').addEventListener('click', () => this.reset());
+            if (this._hudInCanvas && this._stats) this._stats.style.display = 'none';
 
             // 画布
             const d = dpr();
@@ -135,8 +140,9 @@
                     meter.port.onmessage = (ev) => {
                         if (!ev.data) return;
                         const { fastDb, peakDb } = ev.data;
-                        let db = this._usePeak ? peakDb : fastDb;
-                        db = Math.max(this._dbMin, Math.min(this._dbMax, db));
+                        const dbRaw = this._usePeak ? peakDb : fastDb; // 未夹限
+                        this._lastDbRaw = dbRaw;
+                        const db = Math.max(this._dbMin, Math.min(this._dbMax, dbRaw));
                         this._setDb(db);
                     };
                     this._meterNode = meter;
@@ -160,10 +166,12 @@
                     rms2Fast = rms2Fast * alpha + rms2Block * (1 - alpha);
                     peakHold = Math.max(peak, peakHold * 0.95);
                     const EPS = 1e-6;
-                    let fastDb = 20 * Math.log10(Math.sqrt(rms2Fast) + EPS) + this._offsetDb;
-                    let peakDb = 20 * Math.log10(peakHold + EPS) + this._offsetDb;
-                    fastDb = Math.max(this._dbMin, Math.min(this._dbMax, fastDb));
-                    peakDb = Math.max(this._dbMin, Math.min(this._dbMax, peakDb));
+
+                    const fastDbRaw = 20 * Math.log10(Math.sqrt(rms2Fast) + EPS) + this._offsetDb;
+                    const peakDbRaw = 20 * Math.log10(peakHold + EPS) + this._offsetDb;
+                    const fastDb = Math.max(this._dbMin, Math.min(this._dbMax, fastDbRaw));
+                    const peakDb = Math.max(this._dbMin, Math.min(this._dbMax, peakDbRaw));
+                    this._lastDbRaw = this._usePeak ? peakDbRaw : fastDbRaw;
                     this._setDb(this._usePeak ? peakDb : fastDb);
                 };
                 src.connect(hp20); hp20.connect(peq1k); peq1k.connect(hs4k); hs4k.connect(node); node.connect(sink); sink.connect(ctx.destination);
@@ -184,7 +192,25 @@
             this._minDb = Math.min(this._minDb, db);
             this._sumDb += db; this._nDb++;
             const avg = this._sumDb / this._nDb;
-            this._stats.textContent = `Max: ${this._maxDb.toFixed(1)} dB | Average: ${avg.toFixed(1)} dB | Min: ${this._minDb.toFixed(1)} dB`;
+            const s = `Max: ${this._maxDb.toFixed(1)} dB | Average: ${avg.toFixed(1)} dB | Min: ${this._minDb.toFixed(1)} dB`;
+            this._statsStr = s;
+            if (this._stats) this._stats.textContent = s;
+
+
+            // —— 卡在量程下限时的“自救”：连着多帧都 <= dbMin ≈ 认为贴地 —— //
+            if (db <= this._dbMin + 0.2) {
+                this._floorTicks = (this._floorTicks || 0) + 1;
+                if (this._floorTicks > 30) {                // ~半秒~1秒（取决于回调频率）
+                    const raw = this._lastDbRaw;
+                    if (Number.isFinite(raw)) {
+                        const target = 45;                      // 先把背景抬到 ~45 dB
+                        this.setOffsetDb((this._offsetDb || 0) + (target - raw));
+                    }
+                    this._floorTicks = 0;
+                }
+            } else {
+                this._floorTicks = 0;
+            }
         },
 
         /* -------------------- 每帧更新 -------------------- */
@@ -236,8 +262,25 @@
             this._ctx.clearRect(0, 0, W, H);
             this._ctx.drawImage(this._grid, 0, 0, W, H);
             this._ctx.drawImage(this._trace, 0, 0, W, H);
+            if (this._hudInCanvas && this._statsStr) this._drawHUD();
         },
 
+        _drawHUD() {
+            const ctx = this._ctx;
+            const pad = 8;
+            let x = this._innerX + this._innerW - pad;
+            let y = this._innerY + this._innerH - pad;
+            if (this._hudCorner === 'tr') { x = this._innerX + this._innerW - pad; y = this._innerY + pad; }
+            else if (this._hudCorner === 'tl') { x = this._innerX + pad; y = this._innerY + pad; }
+            else if (this._hudCorner === 'bl') { x = this._innerX + pad; y = this._innerY + this._innerH - pad; }
+            ctx.save();
+            ctx.textAlign = (x > this._innerX + this._innerW / 2) ? 'right' : 'left';
+            ctx.textBaseline = (y > this._innerY + this._innerH / 2) ? 'bottom' : 'top';
+            ctx.font = '600 12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+            ctx.fillStyle = 'rgba(220,230,240,.88)';
+            ctx.fillText(this._statsStr, x, y);
+            ctx.restore();
+        },
         /* -------------------- 网格 -------------------- */
         _drawGrid() {
             const g = this._gctx;
@@ -287,7 +330,8 @@
         async calibrateSPL(targetDb = 94, seconds = 2) {
             const t0 = performance.now(); let sum = 0, n = 0;
             while (performance.now() - t0 < seconds * 1000) {
-                if (this._lastDb != null) { sum += this._lastDb; n++; }
+                const v = (this._lastDbRaw ?? this._lastDb);
+                if (Number.isFinite(v)) { sum += v; n++; }
                 await new Promise(r => setTimeout(r, 16));
             }
             if (!n) return;
@@ -312,11 +356,7 @@
 
     if (root.SampleUI) return;
     root.SampleUI = {
-        init(opts = {}) {
-            const { mount, width = 380, height = 230, spanSec = 65, dbMin = 20, dbMax = 100, rmsSmoothing = 0.30 } = opts;
-            LevelMeter.init({ mount, width, height, spanSec, dbMin, dbMax, rmsSmoothing });
-            return this;
-        },
+        init(opts = {}) { LevelMeter.init(opts); return this; },
         setupAudio: (opts) => LevelMeter.setupAudio(opts),
         update: () => LevelMeter.update(),
         reset: () => LevelMeter.reset(),
