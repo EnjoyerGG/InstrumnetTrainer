@@ -73,7 +73,9 @@
 
             // 底盘
             ctx.fillStyle = '#24262b';
-            ctx.beginPath(); ctx.arc(0, 0, r * 1.00, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 1.00, 0, Math.PI * 2);
+            ctx.fill();
 
             rings.forEach(rg => {
                 // 环带
@@ -105,6 +107,44 @@
                     ctx.fillText(rg.label, 0, -r * (midR + 0.02));
                 }
             });
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#e8eaef';
+            ctx.shadowColor = 'rgba(0,0,0,.55)';
+            ctx.shadowBlur = Math.max(2, r * 0.02);
+
+            // 取各环对象（你的 rings 里每个有 abbr, r0, r1，半径比例）
+            const rgInner = rings.find(x => x.abbr === 'P'); // yellow core
+            const rgMid = rings.find(x => x.abbr === 'T'); // green ring
+            const rgOuter = rings.find(x => x.abbr === 'O'); // blue ring
+
+            // 环中心半径（r0~r1 的中点）和厚度
+            const midR = (rg) => r * ((rg.r0 + rg.r1) / 2);
+            const thk = (rg) => r * Math.max(0.01, (rg.r1 - rg.r0));
+
+            // 根据环厚度自适应字号（0.6 倍厚度，且不低于 10px）
+            const fontPxInner = rgInner ? Math.max(10, Math.round(thk(rgInner) * 0.60)) : 12;
+            const fontPxMid = rgMid ? Math.max(10, Math.round(thk(rgMid) * 0.60)) : 12;
+            const fontPxOuter = rgOuter ? Math.max(10, Math.round(thk(rgOuter) * 0.60)) : 12;
+
+            // B（黄心）
+            if (rgInner) {
+                ctx.font = `700 ${fontPxInner}px Inter, system-ui, sans-serif`; // ★ 加粗
+                ctx.fillText('B', 0, midR(rgInner));
+            }
+            // T/P（绿环）
+            if (rgMid) {
+                ctx.font = `700 ${fontPxMid}px Inter, system-ui, sans-serif`;
+                ctx.fillText('T/P', 0, midR(rgMid));
+            }
+            // O/S（蓝环）
+            if (rgOuter) {
+                ctx.font = `700 ${fontPxOuter}px Inter, system-ui, sans-serif`;
+                ctx.fillText('O/S', 0, midR(rgOuter));
+            }
+            ctx.restore();
 
             // 外圈描边
             ctx.strokeStyle = '#9b87f5'; ctx.lineWidth = 2;
