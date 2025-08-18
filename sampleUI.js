@@ -33,6 +33,7 @@
 
         //用于调整速度倍率
         _speedMul: 1,
+        _sampleMul: 1,
 
         /* -------------------- 初始化 UI -------------------- */
         init({
@@ -241,7 +242,7 @@
         update() {
             if (!this._running) return;
             const now = performance.now();
-            const effPeriod = this._colPeriodMs / Math.max(0.05, this._speedMul);
+            const effPeriod = this._colPeriodMs / (Math.max(0.05, this._speedMul) * Math.max(0.05, this._sampleMul));
             if (now - this._lastColTime < effPeriod) { this._composite(); return; }
             this._lastColTime = now;
 
@@ -378,6 +379,8 @@
             }
         },
 
+        setSampleRateMul(m = 1) { this._sampleMul = Math.max(0.05, Number(m) || 1); },
+
         reset() {
             this._lastDb = this._dispDb = null;
             this._maxDb = -Infinity;
@@ -505,6 +508,7 @@
         nudgeOffset: (d) => LevelMeter.nudgeOffset(d),
         resize: (w, h) => LevelMeter.resize(w, h),
         setSpeedFactor: (sf) => LevelMeter.setSpeedFactor(sf),
+        setSampleRateMul: (m) => LevelMeter.setSampleRateMul(m),
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
         setBars: () => { },

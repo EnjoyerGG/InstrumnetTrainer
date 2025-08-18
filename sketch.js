@@ -292,7 +292,6 @@ function setup() {
         const hasOffset = savedOffset !== 0;
 
         SampleUI.init({
-            //mount: meterSlot.elt,
             headless: true,
             width: width,
             height: METER_H,
@@ -309,8 +308,8 @@ function setup() {
             workletPath: './meter-processor.js',
             offsetDb: Number(localStorage.getItem('splOffset')) || 0
         }).then(() => {
-            // 开机即采样，但先不写折线
             SampleUI.pause();
+            SampleUI.setSampleRateMul(25);
         });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
