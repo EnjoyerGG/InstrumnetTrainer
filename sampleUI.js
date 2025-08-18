@@ -23,6 +23,8 @@
         _colPeriodMs: 200, _lastColTime: 0,
         _rmsSmooth: 0.40,
         _yNow: null,
+        _renderRect: null,
+        _clearRect: null,
 
         // 音频
         _usePeak: true,
@@ -39,13 +41,18 @@
             dbMax = 100,
             rmsSmoothing = 0.30,
             hudInCanvas = false,
-            hudCorner = 'br'
+            hudCorner = 'br',
+            headless = true,
+            clearInCanvas = true
+
         } = {}) {
             this._spanSec = spanSec;
             this._dbMin = dbMin; this._dbMax = dbMax;
             this._rmsSmooth = rmsSmoothing;
             this._hudInCanvas = !!hudInCanvas;
             this._hudCorner = hudCorner;   // 'br' | 'tr' | 'bl' | 'tl'
+            this._clearInCanvas = !!clearInCanvas;
+            this._headless = !!headless;
             this._pad = { left: 36, right: 10, top: 8, bottom: 8 };
 
             // 容器：嵌入式（如果没传 mount，就直接加到 <body> 末尾）
@@ -73,6 +80,9 @@
             this._stats = this._top.querySelector('#lm-stats');
             this._top.querySelector('#lm-clear').addEventListener('click', () => this.reset());
             if (this._hudInCanvas && this._stats) this._stats.style.display = 'none';
+            if (this._headless) {        // ★ 整个自带面板隐藏，只作为离屏渲染
+                this._wrap.style.display = 'none';
+            }
 
             // 画布
             const d = dpr();
@@ -268,18 +278,59 @@
         _drawHUD() {
             const ctx = this._ctx;
             const pad = 8;
-            let x = this._innerX + this._innerW - pad;
-            let y = this._innerY + this._innerH - pad;
-            if (this._hudCorner === 'tr') { x = this._innerX + this._innerW - pad; y = this._innerY + pad; }
-            else if (this._hudCorner === 'tl') { x = this._innerX + pad; y = this._innerY + pad; }
-            else if (this._hudCorner === 'bl') { x = this._innerX + pad; y = this._innerY + this._innerH - pad; }
+            const xR = this._innerX + this._innerW - pad;
+            const yT = this._innerY + pad;
+            const xL = this._innerX + pad;
+            const yB = this._innerY + this._innerH - pad;
+
+            // —— 右上：清除按钮 + 大号 dB + 绿灯 —— //
+            // 清除按钮
+            if (this._clearInCanvas) {
+                const btnW = 64, btnH = 34, r = 8;
+                const bx = xR - btnW; const by = yT;
+                ctx.save();
+                ctx.fillStyle = 'rgba(255,255,255,0.94)';
+                ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(bx + r, by);
+                ctx.arcTo(bx + btnW, by, bx + btnW, by + btnH, r);
+                ctx.arcTo(bx + btnW, by + btnH, bx, by + btnH, r);
+                ctx.arcTo(bx, by + btnH, bx, by, r);
+                ctx.arcTo(bx, by, bx + btnW, by, r);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#111';
+                ctx.font = '600 16px -apple-system,Segoe UI,Roboto';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('清除', bx + btnW / 2, by + btnH / 2);
+                ctx.restore();
+                this._clearRect = { x: bx, y: by, w: btnW, h: btnH };
+            }
+            // 大号 dB 与绿灯（在按钮左边 8px 处）
+            const big = (this._dispDb != null) ? this._dispDb.toFixed(1) : '--.-';
             ctx.save();
-            ctx.textAlign = (x > this._innerX + this._innerW / 2) ? 'right' : 'left';
-            ctx.textBaseline = (y > this._innerY + this._innerH / 2) ? 'bottom' : 'top';
-            ctx.font = '600 12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-            ctx.fillStyle = 'rgba(220,230,240,.88)';
-            ctx.fillText(this._statsStr, x, y);
+            ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+            ctx.font = '800 36px -apple-system,Segoe UI,Roboto';
+            ctx.fillStyle = 'rgba(235,240,245,.98)';
+            const bigX = (this._clearRect ? this._clearRect.x - 8 : xR);
+            ctx.fillText(big, bigX, yT);
+            // “dB”
+            ctx.font = '600 18px -apple-system,Segoe UI,Roboto';
+            ctx.fillStyle = 'rgba(225,230,240,.85)';
+            ctx.fillText('dB', bigX + 8, yT + 6);
+            // 绿灯
+            ctx.beginPath(); ctx.fillStyle = '#29d44d';
+            ctx.arc(bigX + 42, yT + 16, 5, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
+
+            // —— 右下：统计行 —— //
+            if (this._statsStr) {
+                ctx.save();
+                ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+                ctx.font = '600 12px -apple-system,Segoe UI,Roboto';
+                ctx.fillStyle = 'rgba(220,230,240,.88)';
+                ctx.fillText(this._statsStr, xR, yB);
+                ctx.restore();
+            }
         },
         /* -------------------- 网格 -------------------- */
         _drawGrid() {
@@ -325,6 +376,25 @@
         pause() { this._running = false; const led = this._top?.querySelector('#lm-led'); if (led) { led.style.background = '#e74c3c'; led.style.boxShadow = '0 0 6px #e74c3c'; } },
         resume() { this._running = true; const led = this._top?.querySelector('#lm-led'); if (led) { led.style.background = '#29d44d'; led.style.boxShadow = '0 0 6px #29d44d'; } },
 
+        renderTo(ctx, x, y, w, h) {
+            this._composite(); // 先合成
+            const W = this._canvas.width / (window.devicePixelRatio || 1);
+            const H = this._canvas.height / (window.devicePixelRatio || 1);
+            const dw = w ?? W, dh = h ?? H;
+            ctx.drawImage(this._canvas, x, y, dw, dh);
+            this._renderRect = { x, y, w: dw, h: dh };
+        },
+        pointerDown(px, py) {
+            const rr = this._renderRect, cr = this._clearRect; if (!rr || !cr) return false;
+            const sx = this._canvas.width / (window.devicePixelRatio || 1) / rr.w;
+            const sy = this._canvas.height / (window.devicePixelRatio || 1) / rr.h;
+            const ix = (px - rr.x) * sx, iy = (py - rr.y) * sy;
+            if (ix >= cr.x && ix <= cr.x + cr.w && iy >= cr.y && iy <= cr.y + cr.h) {
+                this.reset(); return true;
+            }
+            return false;
+        },
+
         setScale(min, max) { this._dbMin = min; this._dbMax = max; this._drawGrid(); this._composite(); },
 
         async calibrateSPL(targetDb = 94, seconds = 2) {
@@ -359,6 +429,8 @@
         init(opts = {}) { LevelMeter.init(opts); return this; },
         setupAudio: (opts) => LevelMeter.setupAudio(opts),
         update: () => LevelMeter.update(),
+        renderTo: (...a) => LevelMeter.renderTo(...a),
+        pointerDown: (...a) => LevelMeter.pointerDown(...a),
         reset: () => LevelMeter.reset(),
         pause: () => LevelMeter.pause(),
         resume: () => LevelMeter.resume(),

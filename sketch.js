@@ -190,7 +190,9 @@ function setup() {
         frameRate(60);
     }
 
-    const cnv = createCanvas(1000, 120);
+    //const cnv = createCanvas(1000, 120);
+    const NOTES_H = 170, GAP = 16, METER_H = 230;
+    const cnv = createCanvas(1000, NOTES_H + GAP + METER_H);
     cnv.parent('score-wrap');
 
     const elTotals = select('#totals');
@@ -198,11 +200,11 @@ function setup() {
     const elStatus = select('#status');
     if (elStatus) elStatus.style('display', 'none');
 
-    const meterSlot = createDiv();
-    meterSlot.id('meter-slot');
-    meterSlot.parent(cnv.parent());          // 和画布同一个父容器
-    meterSlot.style('width', width + 'px');
-    meterSlot.style('margin-top', '10px');   // 画布与面板之间的垂直间距
+    // const meterSlot = createDiv();
+    // meterSlot.id('meter-slot');
+    // meterSlot.parent(cnv.parent());          // 和画布同一个父容器
+    // meterSlot.style('width', width + 'px');
+    // meterSlot.style('margin-top', '10px');   // 画布与面板之间的垂直间距
 
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);   // 读取 JSON
@@ -222,9 +224,10 @@ function setup() {
         const hasOffset = savedOffset !== 0;
 
         SampleUI.init({
-            mount: meterSlot.elt,
+            //mount: meterSlot.elt,
+            headless: true,
             width: width,
-            height: 230,
+            height: METER_H,
             spanSec: 65,
             dbMin: 20,
             dbMax: 100,
@@ -576,7 +579,10 @@ function draw() {
     updateHUDView();
 
     if (window.SampleUI) {
-        SampleUI.update(); // running 为你已有的全局布尔：开始/暂停
+        SampleUI.update();
+        const NOTES_H = 170, GAP = 16;               // 与 setup 保持一致
+        const meterY = NOTES_H + GAP;
+        SampleUI.renderTo(drawingContext, 0, meterY, width, height - meterY);
     }
 }
 
@@ -663,6 +669,7 @@ function drawNotesAndFeedback() {
 
 /* ------------ Interaction --------- */
 function mousePressed() {
+    if (window.SampleUI && SampleUI.pointerDown(mouseX, mouseY)) return;
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
