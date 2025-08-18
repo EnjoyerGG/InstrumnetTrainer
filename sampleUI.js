@@ -350,9 +350,12 @@
                 g.strokeStyle = (dB % 20 === 0) ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
                 g.lineWidth = 1; g.moveTo(x0, y); g.lineTo(x0 + w, y); g.stroke();
                 if (dB % 20 === 0) {
-                    g.fillStyle = 'rgba(220,230,240,.85)'; g.font = '12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
-                    g.textAlign = 'right'; g.textBaseline = 'middle';
-                    g.fillText(String(dB), x0 - 6, y);   // 画在外侧
+                    g.fillStyle = 'rgba(220,230,240,.85)';
+                    g.font = '700 12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
+                    g.textAlign = 'right';
+                    g.textBaseline = 'middle';
+                    const LABEL_GAP = 12;
+                    g.fillText(String(dB), x0 - LABEL_GAP, y);   // 画在外侧
                 }
             }
         },
