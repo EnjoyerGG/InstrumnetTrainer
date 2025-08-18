@@ -91,16 +91,19 @@
             this._canvas.height = Math.round(height * d);
             Object.assign(this._canvas.style, { width: `${width}px`, height: `${height}px`, borderRadius: '10px' });
             this._wrap.appendChild(this._canvas);
-            this._ctx = this._canvas.getContext('2d'); this._ctx.setTransform(d, 0, 0, d, 0, 0); this._ctx.imageSmoothingEnabled = false;
+            this._ctx = this._canvas.getContext('2d');
+            this._ctx.setTransform(d, 0, 0, d, 0, 0); this._ctx.imageSmoothingEnabled = false;
 
             // 网格层
             this._grid = document.createElement('canvas');
-            this._grid.width = this._canvas.width; this._grid.height = this._canvas.height;
+            this._grid.width = this._canvas.width;
+            this._grid.height = this._canvas.height;
             this._gctx = this._grid.getContext('2d'); this._gctx.setTransform(d, 0, 0, d, 0, 0); this._gctx.imageSmoothingEnabled = false;
 
             // 折线层
             this._trace = document.createElement('canvas');
-            this._trace.width = this._canvas.width; this._trace.height = this._canvas.height;
+            this._trace.width = this._canvas.width;
+            this._trace.height = this._canvas.height;
             this._tctx = this._trace.getContext('2d'); this._tctx.setTransform(d, 0, 0, d, 0, 0); this._tctx.imageSmoothingEnabled = false;
 
             // 内框尺寸
@@ -338,9 +341,13 @@
             g.clearRect(0, 0, W, H);
 
             // 外框 + 背景
-            g.strokeStyle = 'rgba(230,230,235,.28)'; g.lineWidth = 6;
-            g.beginPath(); g.roundRect(x0 - 6, y0 - 6, w + 12, h + 12, 10); g.stroke();
-            g.fillStyle = 'rgba(16,17,19,.85)'; g.fillRect(x0, y0, w, h);
+            g.strokeStyle = 'rgba(230,230,235,.28)';
+            g.lineWidth = 6;
+            g.beginPath();
+            g.roundRect(x0 - 6, y0 - 6, w + 12, h + 12, 10);
+            g.stroke();
+            g.fillStyle = 'rgba(16,17,19,.85)';
+            g.fillRect(x0, y0, w, h);
 
             // 横向 dB
             for (let dB = this._dbMin; dB <= this._dbMax; dB += 10) {
@@ -348,7 +355,10 @@
                 const y = y0 + Math.round((h - 1) * (1 - t)) + .5;
                 g.beginPath();
                 g.strokeStyle = (dB % 20 === 0) ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.10)';
-                g.lineWidth = 1; g.moveTo(x0, y); g.lineTo(x0 + w, y); g.stroke();
+                g.lineWidth = 1;
+                g.moveTo(x0, y);
+                g.lineTo(x0 + w, y);
+                g.stroke();
                 if (dB % 20 === 0) {
                     g.fillStyle = 'rgba(220,230,240,.85)';
                     g.font = '700 12px -apple-system,Segoe UI,Roboto,Helvetica,Arial';
@@ -362,7 +372,10 @@
 
         reset() {
             this._lastDb = this._dispDb = null;
-            this._maxDb = -Infinity; this._minDb = Infinity; this._sumDb = 0; this._nDb = 0;
+            this._maxDb = -Infinity;
+            this._minDb = Infinity;
+            this._sumDb = 0;
+            this._nDb = 0;
             if (this._big) this._big.textContent = '--.-';
             if (this._stats) this._stats.textContent = 'Max: --.- dB | Average: --.- dB | Min: --.- dB';
             if (this._ys) this._ys.fill(0);
@@ -435,7 +448,8 @@
             this._trace.width = W; this._trace.height = H;
 
             // 重新计算内框 & 采样列数
-            this._innerX = this._pad.left; this._innerY = this._pad.top;
+            this._innerX = this._pad.left;
+            this._innerY = this._pad.top;
             this._innerW = Math.max(10, w - this._pad.left - this._pad.right);
             this._innerH = Math.max(10, h - this._pad.top - this._pad.bottom);
             this._Wpx = Math.round(this._innerW);
