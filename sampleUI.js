@@ -117,6 +117,10 @@
 
             this._drawGrid();
             this.reset();
+            if (this._pendingSize) {
+                const { w, h } = this._pendingSize; this._pendingSize = null;
+                this.resize(w, h);
+            }
             return this;
         },
 
@@ -309,17 +313,18 @@
             const big = (this._dispDb != null) ? this._dispDb.toFixed(1) : '--.-';
             ctx.save();
             ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-            ctx.font = '800 36px -apple-system,Segoe UI,Roboto';
+
+            ctx.font = '800 52px -apple-system,Segoe UI,Roboto';
             ctx.fillStyle = 'rgba(235,240,245,.98)';
-            const bigX = (this._clearRect ? this._clearRect.x - 8 : xR);
+            const bigX = (this._clearRect ? this._clearRect.x - 12 : xR);
             ctx.fillText(big, bigX, yT);
             // “dB”
-            ctx.font = '600 18px -apple-system,Segoe UI,Roboto';
-            ctx.fillStyle = 'rgba(225,230,240,.85)';
+            ctx.font = '700 22px -apple-system,Segoe UI,Roboto';
+            ctx.fillStyle = 'rgba(225,230,240,.90)';
             ctx.fillText('dB', bigX + 8, yT + 6);
             // 绿灯
             ctx.beginPath(); ctx.fillStyle = '#29d44d';
-            ctx.arc(bigX + 42, yT + 16, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.arc(bigX + 56, yT + 18, 5, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
 
             // —— 右下：统计行 —— //
@@ -421,6 +426,30 @@
         },
         nudgeOffset(deltaDb) {
             this.setOffsetDb((this._offsetDb || 0) + deltaDb);
+        },
+
+        resize(w, h) {
+            if (!this._canvas) { this._pendingSize = { w, h }; return; }
+            const d = (window.devicePixelRatio || 1);
+            if (!w || !h) return;
+            const W = Math.round(w * d), H = Math.round(h * d);
+            if (this._canvas.width === W && this._canvas.height === H) return; // 尺寸未变
+
+            // 重设三层画布尺寸
+            this._canvas.width = W; this._canvas.height = H;
+            this._grid.width = W; this._grid.height = H;
+            this._trace.width = W; this._trace.height = H;
+
+            // 重新计算内框 & 采样列数
+            this._innerX = this._pad.left; this._innerY = this._pad.top;
+            this._innerW = Math.max(10, w - this._pad.left - this._pad.right);
+            this._innerH = Math.max(10, h - this._pad.top - this._pad.bottom);
+            this._Wpx = Math.round(this._innerW);
+            this._ys = new Float32Array(this._Wpx);
+            this._writeIdx = 0; this._filled = false;
+            this._colPeriodMs = (this._spanSec * 1000) / this._Wpx;
+
+            this._drawGrid();
         }
     };
 
@@ -438,6 +467,7 @@
         calibrateSPL: (t, s) => LevelMeter.calibrateSPL(t, s),
         setOffsetDb: (db) => LevelMeter.setOffsetDb(db),
         nudgeOffset: (d) => LevelMeter.nudgeOffset(d),
+        resize: (...a) => LevelMeter.resize(...a),
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
         setBars: () => { }, setMic: () => { }

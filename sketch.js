@@ -181,6 +181,67 @@ function isMobile() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
+
+const GRID = { pad: 10, topHRatio: 0.5 };   // 上半占总高 1/2
+const RECT = { top: {}, amp: {}, drum: {}, mic: {} };
+let _canvasHost;
+
+function layoutRects(cnv) {
+    const topH = Number.isFinite(GRID.topHpx)
+        ? GRID.topHpx
+        : Math.round(height * GRID.topHRatio);
+    const botY = topH, botH = height - topH;
+
+    const col0 = Math.round(width * 0.5);     // 左 1/2
+    const col1 = Math.round(width * 0.25);    // 中 1/4
+    const col2 = width - col0 - col1;         // 右 1/4
+
+    RECT.top = { x: 0, y: 0, w: width, h: topH };
+
+    RECT.amp = {
+        x: GRID.pad, y: botY + GRID.pad,
+        w: col0 - GRID.pad * 2, h: botH - GRID.pad * 2
+    };
+    if (window.SampleUI?.resize) {
+        SampleUI.resize(RECT.amp.w, RECT.amp.h);  // ★ 使内部画布与槽位一致
+    }
+
+    RECT.drum = {
+        x: col0 + GRID.pad, y: botY + GRID.pad,
+        w: col1 - GRID.pad * 2, h: botH - GRID.pad * 2
+    };
+
+    RECT.mic = {
+        x: col0 + col1 + GRID.pad, y: botY + GRID.pad,
+        w: col2 - GRID.pad * 2, h: botH - GRID.pad * 2
+    };
+
+    // —— 把两个 DOM 面板摆到中/右两格 —— //
+    const hostRect = _canvasHost.elt.getBoundingClientRect();
+    const cvsRect = cnv.elt.getBoundingClientRect();
+    const offX = cvsRect.left - hostRect.left;
+    const offY = cvsRect.top - hostRect.top;
+
+    // 鼓面（等宽高，居中）
+    const drumWrap = document.getElementById('drum-wrap');
+    if (drumWrap) {
+        const size = Math.floor(Math.min(RECT.drum.w, RECT.drum.h));
+        drumWrap.style.left = (RECT.drum.x + offX + (RECT.drum.w - size) / 2) + 'px';
+        drumWrap.style.top = (RECT.drum.y + offY + (RECT.drum.h - size) / 2) + 'px';
+        drumWrap.style.width = size + 'px';
+        drumWrap.style.height = size + 'px';
+    }
+
+    // Mic HUD（充满右 1/4 区）
+    const micHud = document.getElementById('mic-hud');
+    if (micHud) {
+        micHud.style.left = (RECT.mic.x + offX) + 'px';
+        micHud.style.top = (RECT.mic.y + offY) + 'px';
+        micHud.style.width = RECT.mic.w + 'px';
+        micHud.style.height = RECT.mic.h + 'px';
+    }
+}
+
 /* ------------ Setup --------------- */
 function setup() {
     if (isMobile()) {
@@ -191,9 +252,16 @@ function setup() {
     }
 
     //const cnv = createCanvas(1000, 120);
-    const NOTES_H = 170, GAP = 16, METER_H = 230;
+    const NOTES_H = 120, GAP = 16, METER_H = 230;
     const cnv = createCanvas(1000, NOTES_H + GAP + METER_H);
     cnv.parent('score-wrap');
+    GRID.topHpx = NOTES_H;
+    _canvasHost = select('#score-wrap');      // 主容器（父节点）
+    select('#mic-hud').parent(_canvasHost);   // 把 mic HUD 放进主容器
+    select('#drum-wrap').parent(_canvasHost); // 把鼓面放进主容器
+
+    layoutRects(cnv);
+    window.addEventListener('resize', () => layoutRects(cnv));
 
     const elTotals = select('#totals');
     if (elTotals) elTotals.style('display', 'none');
@@ -538,8 +606,8 @@ function draw() {
     drawingContext.shadowColor = 'rgba(165, 99, 212, 0.8)';
     stroke(255, 0, 0, alpha);
     strokeWeight(judgeLineGlow > 0.2 ? 4 : 1.5);
-    line(rm.judgeLineX, 0, rm.judgeLineX, height);
-    drawingContext.restore();
+    const splitY = RECT.amp.y - GRID.pad;  // 下半 HUD 顶边 = 分界线
+    line(rm.judgeLineX, 0, rm.judgeLineX, splitY - 1);
 
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
@@ -580,10 +648,17 @@ function draw() {
 
     if (window.SampleUI) {
         SampleUI.update();
-        const NOTES_H = 170, GAP = 16;               // 与 setup 保持一致
-        const meterY = NOTES_H + GAP;
-        SampleUI.renderTo(drawingContext, 0, meterY, width, height - meterY);
+        SampleUI.renderTo(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
+
+    // ===== 分隔线（横向 1 条 + 纵向 2 条）=====
+    stroke(220); strokeWeight(2);
+    line(0, RECT.amp.y - GRID.pad, width, RECT.amp.y - GRID.pad);               // 上下分界
+    line(RECT.drum.x - GRID.pad, RECT.amp.y - GRID.pad, RECT.drum.x - GRID.pad, height); // 左/中
+    line(RECT.mic.x - GRID.pad, RECT.amp.y - GRID.pad, RECT.mic.x - GRID.pad, height); // 中/右
+
+    // —— 每帧确保两个 DOM HUD 跟随布局 —— //
+    layoutRects(this._renderer ? this._renderer : { elt: document.querySelector('canvas') });
 }
 
 /* ------------ Visualization ------- */
