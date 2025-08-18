@@ -165,7 +165,12 @@
                     const url = new URL(workletPath, window.location.href).href;
                     await ctx.audioWorklet.addModule(url);
                     const meter = new AudioWorkletNode(ctx, 'meter-processor', { processorOptions: { timeConstantFast: 0.125, offsetDb } });
-                    src.connect(hp20); hp20.connect(peq1k); peq1k.connect(hs4k); hs4k.connect(meter); meter.connect(sink); sink.connect(ctx.destination);
+                    src.connect(hp20);
+                    hp20.connect(peq1k);
+                    peq1k.connect(hs4k);
+                    hs4k.connect(meter);
+                    meter.connect(sink);
+                    sink.connect(ctx.destination);
                     meter.port.onmessage = (ev) => {
                         if (!ev.data) return;
                         const { fastDb, peakDb } = ev.data;

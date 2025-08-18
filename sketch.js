@@ -309,7 +309,7 @@ function setup() {
             offsetDb: Number(localStorage.getItem('splOffset')) || 0
         }).then(() => {
             SampleUI.pause();
-            SampleUI.setSampleRateMul(25);
+            SampleUI.setSampleRateMul(50);
         });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
