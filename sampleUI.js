@@ -48,12 +48,23 @@
             this._wrap = typeof mount === 'string' ? document.querySelector(mount) : mount;
             if (!this._wrap) { this._wrap = document.createElement('div'); this._wrap.id = 'level-wrap'; document.body.appendChild(this._wrap); }
             this._wrap.className = 'lm-panel';
+
+            // 有 mount ⇒ 嵌入式；无 mount ⇒ 仍用悬浮
+            const isFloating = !mount;
+
             this._wrap.style.cssText = `
-        position: fixed; ${dock === 'left' ? 'left' : 'right'}: 16px; bottom: 16px;
-        background: rgba(30,30,35,.95); border-radius: 14px;
-        box-shadow: 0 6px 24px rgba(0,0,0,.45); padding: 12px 12px 10px 12px;
-        color:#e9eef5; font: 14px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial; z-index:1000;
-      `;
+                ${isFloating
+                    ? `position: fixed; ${dock === 'left' ? 'left' : 'right'}: 16px; bottom: 16px;`
+                    : `position: relative; width:${width + 24}px; margin:8px 0 0 0;`
+                }
+                background: rgba(30,30,35,.95);
+                border-radius: 14px;
+                box-shadow: 0 6px 24px rgba(0,0,0,.45);
+                padding: 12px 12px 10px 12px;
+                color:#e9eef5;
+                font: 14px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial;
+                z-index:1000;
+                `;
 
             // 顶栏：清除 + 大数字 + 绿灯 + 统计
             this._top = document.createElement('div');

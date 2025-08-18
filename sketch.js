@@ -193,6 +193,12 @@ function setup() {
     const cnv = createCanvas(1000, 120);
     cnv.parent('score-wrap');
 
+    const meterSlot = createDiv();
+    meterSlot.id('meter-slot');
+    meterSlot.parent(cnv.parent());          // 和画布同一个父容器
+    meterSlot.style('width', width + 'px');
+    meterSlot.style('margin-top', '10px');   // 画布与面板之间的垂直间距
+
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);   // 读取 JSON
     metro.onloaded(() => {
@@ -202,25 +208,24 @@ function setup() {
     mic = new p5.AudioIn();
     mic.start();
     if (window.SampleUI && !window.__samplerInit) {
-        const savedOffset = Number(localStorage.getItem('splOffset'));
+        const savedOffset = Number(localStorage.getItem('splOffset')) || 0;
         const hasOffset = Number.isFinite(savedOffset) && savedOffset !== 0;
 
         SampleUI.init({
-            width: 380,
+            mount: meterSlot.elt,
+            width: width,
             height: 230,
             spanSec: 65,
-            dbMin: hasOffset ? 0 : -80,
-            dbMax: hasOffset ? 120 : 0,
-            dock: 'left'
+            dbMin: 0,
+            dbMax: 120,
+            rmsSmoothing: 0.30
         });
-        if (SampleUI.dockNearRightHud) {
-            SampleUI.dockNearRightHud({ side: 'left', gap: 10, align: 'middle' });
-        }
+
         SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
         SampleUI.setupAudio({
             levelMode: 'peak',
             workletPath: './meter-processor.js',
-            offsetDb: hasOffset ? savedOffset : 0
+            offsetDb: savedOffset
         });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
