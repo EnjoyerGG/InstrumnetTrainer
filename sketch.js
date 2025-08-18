@@ -444,6 +444,7 @@ function setup() {
     select('#pause-btn').mousePressed(() => {
         running = false;
         if (window.SampleUI) SampleUI.pause();
+        if (window.SampleUI) SampleUI.reset();
         counting = false;
         rm.pause();
         CongaClassifier.stop();
@@ -526,7 +527,7 @@ async function handleStart() {
     try {
         await mic.start();
         if (window.SampleUI && SampleUI.setMic) SampleUI.setMic(mic);
-        if (window.SampleUI) SampleUI.resume();
+        if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
     } catch (e) { console.warn(e); }
 
     try {

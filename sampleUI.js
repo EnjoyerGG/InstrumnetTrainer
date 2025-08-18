@@ -41,9 +41,9 @@
             dbMax = 100,
             rmsSmoothing = 0.30,
             hudInCanvas = false,
-            hudCorner = 'br',
+            hudCorner = 'tl',
             headless = true,
-            clearInCanvas = true
+            clearInCanvas = false
 
         } = {}) {
             this._spanSec = spanSec;
@@ -282,61 +282,52 @@
         _drawHUD() {
             const ctx = this._ctx;
             const pad = 8;
-            const xR = this._innerX + this._innerW - pad;
-            const yT = this._innerY + pad;
             const xL = this._innerX + pad;
+            const yT = this._innerY + pad;
+            const xR = this._innerX + this._innerW - pad;         // 供统计用
             const yB = this._innerY + this._innerH - pad;
 
-            // —— 右上：清除按钮 + 大号 dB + 绿灯 —— //
-            // 清除按钮
-            if (this._clearInCanvas) {
-                const btnW = 64, btnH = 34, r = 8;
-                const bx = xR - btnW; const by = yT;
-                ctx.save();
-                ctx.fillStyle = 'rgba(255,255,255,0.94)';
-                ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(bx + r, by);
-                ctx.arcTo(bx + btnW, by, bx + btnW, by + btnH, r);
-                ctx.arcTo(bx + btnW, by + btnH, bx, by + btnH, r);
-                ctx.arcTo(bx, by + btnH, bx, by, r);
-                ctx.arcTo(bx, by, bx + btnW, by, r);
-                ctx.closePath(); ctx.fill(); ctx.stroke();
-                ctx.fillStyle = '#111';
-                ctx.font = '600 16px -apple-system,Segoe UI,Roboto';
-                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText('清除', bx + btnW / 2, by + btnH / 2);
-                ctx.restore();
-                this._clearRect = { x: bx, y: by, w: btnW, h: btnH };
-            }
-            // 大号 dB 与绿灯（在按钮左边 8px 处）
+            // —— 左上：大号 dB + 单位 + 绿灯 —— //
             const big = (this._dispDb != null) ? this._dispDb.toFixed(1) : '--.-';
-            ctx.save();
-            ctx.textAlign = 'right'; ctx.textBaseline = 'top';
 
-            ctx.font = '800 52px -apple-system,Segoe UI,Roboto';
+            ctx.save();
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            // 小一号的数字
+            ctx.font = '800 28px -apple-system,Segoe UI,Roboto';
             ctx.fillStyle = 'rgba(235,240,245,.98)';
-            const bigX = (this._clearRect ? this._clearRect.x - 12 : xR);
-            ctx.fillText(big, bigX, yT);
-            // “dB”
-            ctx.font = '700 22px -apple-system,Segoe UI,Roboto';
-            ctx.fillStyle = 'rgba(225,230,240,.90)';
-            ctx.fillText('dB', bigX + 8, yT + 6);
-            // 绿灯
-            ctx.beginPath(); ctx.fillStyle = '#29d44d';
-            ctx.arc(bigX + 56, yT + 18, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillText(big, xL, yT);
+
+            // dB 单位
+            const wBig = ctx.measureText(big).width;
+            ctx.font = '700 16px -apple-system,Segoe UI,Roboto';
+            ctx.fillStyle = 'rgba(225,230,240,.92)';
+            ctx.fillText('dB', xL + wBig + 6, yT + 2);
+
+            // 绿点
+            const wDB = ctx.measureText('dB').width;
+            ctx.beginPath();
+            ctx.fillStyle = '#29d44d';
+            ctx.arc(xL + wBig + 6 + wDB + 10, yT + 12, 4, 0, Math.PI * 2);
+            ctx.fill();
             ctx.restore();
 
             // —— 右下：统计行 —— //
             if (this._statsStr) {
                 ctx.save();
-                ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
                 ctx.font = '600 12px -apple-system,Segoe UI,Roboto';
                 ctx.fillStyle = 'rgba(220,230,240,.88)';
                 ctx.fillText(this._statsStr, xR, yB);
                 ctx.restore();
             }
+
+            // 画布清除按钮已取消：不再设置 this._clearRect
+            this._clearRect = null;
         },
+
         /* -------------------- 网格 -------------------- */
         _drawGrid() {
             const g = this._gctx;
@@ -467,10 +458,11 @@
         calibrateSPL: (t, s) => LevelMeter.calibrateSPL(t, s),
         setOffsetDb: (db) => LevelMeter.setOffsetDb(db),
         nudgeOffset: (d) => LevelMeter.nudgeOffset(d),
-        resize: (...a) => LevelMeter.resize(...a),
+        resize: (w, h) => LevelMeter.resize(w, h),
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
-        setBars: () => { }, setMic: () => { }
+        setBars: () => { },
+        setMic: () => { }
 
     };
 
