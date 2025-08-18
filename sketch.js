@@ -303,13 +303,13 @@ function setup() {
             hudInCanvas: true,
             hudCorner: 'br'
         });
-
-        SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
-        SampleUI.setupAudio({
-            levelMode: 'rms',
-            workletPath: './meter-processor.js',
-            offsetDb: savedOffset
-        });
+        SampleUI.pause();
+        //SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
+        // SampleUI.setupAudio({
+        //     levelMode: 'rms',
+        //     workletPath: './meter-processor.js',
+        //     offsetDb: savedOffset
+        // });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
         if (!hasOffset) {
@@ -527,6 +527,15 @@ async function handleStart() {
     try {
         await mic.start();
         if (window.SampleUI && SampleUI.setMic) SampleUI.setMic(mic);
+        // 仅第一次创建音频链
+        if (!window.__meterAudioReady) {
+            await SampleUI.setupAudio({
+                levelMode: 'rms',
+                workletPath: './meter-processor.js',
+                offsetDb: Number(localStorage.getItem('splOffset')) || 0
+            });
+            window.__meterAudioReady = true;
+        }
         if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
     } catch (e) { console.warn(e); }
 
@@ -667,7 +676,9 @@ function drawCountdown(remain) {
     const n = Math.ceil(remain / 1000);
     const alpha = map(remain % 1000, 999, 0, 255, 0);
     textSize(80); fill(255, 87, 34, alpha);
-    textAlign(CENTER, CENTER); text(n, width / 2, height / 2);
+    textAlign(CENTER, CENTER);
+    const cy = RECT.top.y + RECT.top.h / 2;   // 上半区域中心
+    text(n, width / 2, cy);
 }
 
 function drawGrid() {
