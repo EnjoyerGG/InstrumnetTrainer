@@ -295,13 +295,13 @@
             ctx.textBaseline = 'top';
 
             // 小一号的数字
-            ctx.font = '800 28px -apple-system,Segoe UI,Roboto';
+            ctx.font = '800 22px -apple-system,Segoe UI,Roboto';
             ctx.fillStyle = 'rgba(235,240,245,.98)';
             ctx.fillText(big, xL, yT);
 
             // dB 单位
             const wBig = ctx.measureText(big).width;
-            ctx.font = '700 16px -apple-system,Segoe UI,Roboto';
+            ctx.font = '700 19px -apple-system,Segoe UI,Roboto';
             ctx.fillStyle = 'rgba(225,230,240,.92)';
             ctx.fillText('dB', xL + wBig + 6, yT + 2);
 
@@ -309,7 +309,7 @@
             const wDB = ctx.measureText('dB').width;
             ctx.beginPath();
             ctx.fillStyle = '#29d44d';
-            ctx.arc(xL + wBig + 6 + wDB + 10, yT + 12, 4, 0, Math.PI * 2);
+            ctx.arc(xL + wBig + 6 + wDB + 10, yT + 10, 4, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
 
@@ -318,7 +318,7 @@
                 ctx.save();
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'bottom';
-                ctx.font = '600 12px -apple-system,Segoe UI,Roboto';
+                ctx.font = '600 15px -apple-system,Segoe UI,Roboto';
                 ctx.fillStyle = 'rgba(220,230,240,.88)';
                 ctx.fillText(this._statsStr, xR, yB);
                 ctx.restore();
