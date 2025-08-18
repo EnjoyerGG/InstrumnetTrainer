@@ -303,13 +303,15 @@ function setup() {
             hudInCanvas: true,
             hudCorner: 'br'
         });
-        SampleUI.pause();
-        //SampleUI.resume();                 // 让开关立刻变成 ON，防止黑屏
-        // SampleUI.setupAudio({
-        //     levelMode: 'rms',
-        //     workletPath: './meter-processor.js',
-        //     offsetDb: savedOffset
-        // });
+
+        SampleUI.setupAudio({
+            levelMode: 'rms',
+            workletPath: './meter-processor.js',
+            offsetDb: Number(localStorage.getItem('splOffset')) || 0
+        }).then(() => {
+            // 开机即采样，但先不写折线
+            SampleUI.pause();
+        });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
         if (!hasOffset) {
@@ -432,6 +434,7 @@ function setup() {
     select('#bpm-val').html(Math.round(initBpm));
     rm.setBPM(initBpm);
     rm.setSpeedFactor(initSpeed);
+    SampleUI.setSpeedFactor(initSpeed);
     if (CongaClassifier.setCooldown) {
         CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
     }
@@ -444,7 +447,7 @@ function setup() {
     select('#pause-btn').mousePressed(() => {
         running = false;
         if (window.SampleUI) SampleUI.pause();
-        if (window.SampleUI) SampleUI.reset();
+        //if (window.SampleUI) SampleUI.reset();
         counting = false;
         rm.pause();
         CongaClassifier.stop();
@@ -461,6 +464,7 @@ function setup() {
         metro.setBPM(bpmVal);        // 判定与滚动
         rm.setBPM(bpmVal);        // 判定与滚动
         rm.setSpeedFactor(speedVal); // 视觉速度
+        SampleUI.setSpeedFactor(speedVal);
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
@@ -529,11 +533,11 @@ async function handleStart() {
         if (window.SampleUI && SampleUI.setMic) SampleUI.setMic(mic);
         // 仅第一次创建音频链
         if (!window.__meterAudioReady) {
-            await SampleUI.setupAudio({
-                levelMode: 'rms',
-                workletPath: './meter-processor.js',
-                offsetDb: Number(localStorage.getItem('splOffset')) || 0
-            });
+            // await SampleUI.setupAudio({
+            //     levelMode: 'rms',
+            //     workletPath: './meter-processor.js',
+            //     offsetDb: Number(localStorage.getItem('splOffset')) || 0
+            // });
             window.__meterAudioReady = true;
         }
         if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
@@ -589,8 +593,15 @@ function handleReset() {
     scheduleTicksOnce._guardUntil = 0;
     metro.reset();
     CongaClassifier.stop();
-    try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
-    if (window.SampleUI) { SampleUI.reset(); SampleUI.pause(); }
+    try {
+        if (mic && mic.start) mic.start();
+    } catch (e) {
+        console.warn(e);
+    }
+    if (window.SampleUI) {
+        SampleUI.reset();
+        SampleUI.pause();
+    }
 }
 
 function startCountdown() {

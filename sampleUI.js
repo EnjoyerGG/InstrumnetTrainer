@@ -31,6 +31,9 @@
         _meterNode: null,
         _offsetDb: 0,
 
+        //用于调整速度倍率
+        _speedMul: 1,
+
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -230,11 +233,16 @@
             }
         },
 
+        setSpeedFactor(sf = 1) {
+            this._speedMul = Math.max(0.05, Number(sf) || 1);
+        },
+
         /* -------------------- 每帧更新 -------------------- */
         update() {
             if (!this._running) return;
             const now = performance.now();
-            if (now - this._lastColTime < this._colPeriodMs) { this._composite(); return; }
+            const effPeriod = this._colPeriodMs / Math.max(0.05, this._speedMul);
+            if (now - this._lastColTime < effPeriod) { this._composite(); return; }
             this._lastColTime = now;
 
             // dB→y
@@ -379,14 +387,34 @@
             if (this._big) this._big.textContent = '--.-';
             if (this._stats) this._stats.textContent = 'Max: --.- dB | Average: --.- dB | Min: --.- dB';
             if (this._ys) this._ys.fill(0);
-            this._writeIdx = 0; this._filled = false; this._yNow = null;
+            this._writeIdx = 0;
+            this._filled = false;
+            this._yNow = null;
             const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
-            this._tctx.setTransform(dpr(), 0, 0, dpr(), 0, 0); this._tctx.clearRect(0, 0, W, H);
-            this._drawGrid(); this._composite();
+            this._tctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+            this._tctx.clearRect(0, 0, W, H);
+            this._drawGrid();
+            this._composite();
+            this._lastColTime = performance.now();
         },
 
-        pause() { this._running = false; const led = this._top?.querySelector('#lm-led'); if (led) { led.style.background = '#e74c3c'; led.style.boxShadow = '0 0 6px #e74c3c'; } },
-        resume() { this._running = true; const led = this._top?.querySelector('#lm-led'); if (led) { led.style.background = '#29d44d'; led.style.boxShadow = '0 0 6px #29d44d'; } },
+        pause() {
+            this._running = false;
+            const led = this._top?.querySelector('#lm-led');
+            if (led) {
+                led.style.background = '#e74c3c';
+                led.style.boxShadow = '0 0 6px #e74c3c';
+            }
+        },
+        resume() {
+            this._running = true;
+            this._lastColTime = performance.now();
+            const led = this._top?.querySelector('#lm-led');
+            if (led) {
+                led.style.background = '#29d44d';
+                led.style.boxShadow = '0 0 6px #29d44d';
+            }
+        },
 
         renderTo(ctx, x, y, w, h) {
             this._composite(); // 先合成
@@ -476,6 +504,7 @@
         setOffsetDb: (db) => LevelMeter.setOffsetDb(db),
         nudgeOffset: (d) => LevelMeter.nudgeOffset(d),
         resize: (w, h) => LevelMeter.resize(w, h),
+        setSpeedFactor: (sf) => LevelMeter.setSpeedFactor(sf),
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
         setBars: () => { },
