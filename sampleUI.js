@@ -296,7 +296,9 @@
             const n = this._filled ? this._Wpx : this._writeIdx;
             if (n > 1) {
                 const start = this._filled ? this._writeIdx : 0;
-                ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = '#ff3b30';
+                ctx.beginPath();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ff3b30';
                 for (let i = 0; i < n; i++) {
                     const idx = (start + i) % this._Wpx;
                     const x = x0 + i;
