@@ -252,7 +252,7 @@ function setup() {
     }
 
     //const cnv = createCanvas(1000, 120);
-    const NOTES_H = 120, GAP = 16, METER_H = 230;
+    const NOTES_H = 120, GAP = 16, METER_H = 160;
     const cnv = createCanvas(1000, NOTES_H + GAP + METER_H);
     cnv.parent('score-wrap');
     GRID.topHpx = NOTES_H;
