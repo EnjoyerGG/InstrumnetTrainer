@@ -238,7 +238,6 @@ function setup() {
                 SampleUI.setScale(0, 120);               // ★ 切换到 SPL 刻度
             }, 1200);
         }
-
         window.__samplerInit = true;       // 防止重复初始化
     }
 
@@ -505,8 +504,7 @@ function startCountdown() {
 
 /* ------------ Draw Loop ----------- */
 function draw() {
-
-    background('#3a3a3a');            // 深灰背景
+    background('#3a3a3a');
     judgeLineGlow *= 0.9;
     if (judgeLineGlow < 0.01) judgeLineGlow = 0;
     drawGrid();
