@@ -539,7 +539,7 @@ async function handleStart() {
             // });
             window.__meterAudioReady = true;
         }
-        if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
+        //if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
     } catch (e) { console.warn(e); }
 
     try {
@@ -568,15 +568,17 @@ async function handleStart() {
     scheduleTicksOnce._guardUntil = 0;
     startScoreTickScheduler();
 
-    setTimeout(async () => {
-        try {
-            // 先清历史偏置，确保这次一定校准成功
-            try { localStorage.removeItem('splOffset'); } catch { }
-            if (window.SampleUI?.setOffsetDb) SampleUI.setOffsetDb(0);
-            await SampleUI.calibrateSPL(45, 1.5);   // 没声校准器就先对齐到 ~45 dB
-            SampleUI.setScale(20, 100);             // 维持你要的 SPL 刻度
-        } catch (e) { console.warn('calibrate after start failed', e); }
-    }, 1200);
+    if (!window.__didOnceCalib) {
+        setTimeout(async () => {
+            try {
+                localStorage.removeItem('splOffset');
+                if (window.SampleUI?.setOffsetDb) SampleUI.setOffsetDb(0);
+                await SampleUI.calibrateSPL(45, 1.5);
+                SampleUI.setScale(20, 100);
+            } catch (e) { }
+        }, 1200);
+        window.__didOnceCalib = true;
+    }
 }
 
 function handleReset() {

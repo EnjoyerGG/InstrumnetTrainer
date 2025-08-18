@@ -35,6 +35,14 @@
         _speedMul: 1,
         _sampleMul: 1,
 
+        _baseDb: null,          // 背景(基线)估计
+        _baseAlpha: 0.995,      // 背景平滑 (越接近1越慢)
+        _baseRiseCap: 0.25,     // 背景每帧最多上升(dB)，防止被峰值带着跑
+        _gateDb: 3.8,           // 门限：低于“背景+门限”时按背景画（=平线）
+        _sAtk: 0.60,            // 上冲(打击)时的系数（小=快）
+        _sRel: 0.92,            // 回落时的系数（大=慢）
+        _resumeGuardUntil: 0,   // 恢复后的“写列禁入”时间戳
+
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -248,9 +256,27 @@
 
             // dB→y
             if (this._lastDb != null) {
-                const t = Math.max(0, Math.min(1, (this._lastDb - this._dbMin) / (this._dbMax - this._dbMin)));
+                // 恢复保护：保护期只合成 HUD，不推进折线
+                const now = performance.now();
+                if (now < this._resumeGuardUntil) { this._composite(); return; }
+
+                // 背景估计（对上行限速，避免被峰值带着跑）
+                if (this._baseDb == null) this._baseDb = this._lastDb;
+                const noPeak = Math.min(this._lastDb, this._baseDb + this._baseRiseCap);
+                this._baseDb = this._baseDb * this._baseAlpha + noPeak * (1 - this._baseAlpha);
+
+                // 门限：小于 背景+gate 时，按背景绘制（平线）
+                const drawDb = (this._lastDb >= this._baseDb + this._gateDb) ? this._lastDb : this._baseDb;
+
+                // 映射到像素
+                const t = Math.max(0, Math.min(1, (drawDb - this._dbMin) / (this._dbMax - this._dbMin)));
                 const yNow = (this._innerH - 1) * (1 - t);
-                this._yNow = (this._yNow == null) ? yNow : this._yNow * this._rmsSmooth + yNow * (1 - this._rmsSmooth);
+
+                // 非对称平滑：上冲（y减小）快、回落慢
+                if (this._yNow == null) this._yNow = yNow;
+                const rising = yNow < this._yNow;            // dB↑ ⇒ y↓
+                const s = rising ? this._sAtk : this._sRel;
+                this._yNow = this._yNow * s + yNow * (1 - s);
 
                 // 推入环形缓冲
                 this._ys[this._writeIdx] = this._yNow;
@@ -270,7 +296,7 @@
             const n = this._filled ? this._Wpx : this._writeIdx;
             if (n > 1) {
                 const start = this._filled ? this._writeIdx : 0;
-                ctx.beginPath(); ctx.lineWidth = 1; ctx.strokeStyle = '#ff3b30';
+                ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = '#ff3b30';
                 for (let i = 0; i < n; i++) {
                     const idx = (start + i) % this._Wpx;
                     const x = x0 + i;
@@ -412,6 +438,7 @@
         resume() {
             this._running = true;
             this._lastColTime = performance.now();
+            this._resumeGuardUntil = performance.now() + 400;
             const led = this._top?.querySelector('#lm-led');
             if (led) {
                 led.style.background = '#29d44d';
