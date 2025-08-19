@@ -56,6 +56,12 @@
         _med3: [null, null, null],
         _med3Idx: 0,
         _prevDrawDb: null,
+
+        // —— 外部击打门控（来自 TM） —— //
+        _tmHoldUntil: 0,
+        _tmLabel: 'BG',
+        _tmConf: 0,
+        _tmBoostDb: 3.5,   // 命中时轻微提升绘制值（让峰更像“命中”）
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -260,6 +266,12 @@
             }
         },
 
+        setExternalHit(label, conf, holdMs = 140) {
+            this._tmLabel = label || 'BG';
+            this._tmConf = conf || 0;
+            this._tmHoldUntil = performance.now() + (holdMs | 0);
+        },
+
         setSpeedFactor(sf = 1) {
             this._speedMul = Math.max(0.05, Number(sf) || 1);
         },
@@ -275,7 +287,6 @@
             // —— dB → y（事件态/基线分离 + 迟滞 + 硬跳）——
             if (this._lastDb != null) {
                 // 恢复保护：倒计时恢复后的若干毫秒不推进列，避免竖针
-                const wasEvent = this._eventActive;
                 const nowT = performance.now();
                 if (nowT < this._resumeGuardUntil) { this._composite(); return; }
 
@@ -292,10 +303,14 @@
                 const gateUp = this._baseDb + this._gateDb;
                 const gateDown = this._baseDb + this._gateDb * this._gateDownK;
 
+                // 来自 TM 的外部门控（在 hold 期内始终认为命中）
+                const tmActive = (performance.now() < this._tmHoldUntil) && (this._tmLabel && this._tmLabel !== 'BG');
+
+                const wasEvent = this._eventActive;
                 if (!this._eventActive) {
-                    if (this._lastDb >= gateUp) this._eventActive = true;      // 进入事件
+                    if (tmActive || this._lastDb >= gateUp) this._eventActive = true;
                 } else {
-                    if (this._lastDb < gateDown) this._eventActive = false;     // 退出事件
+                    if (!tmActive && this._lastDb < gateDown) this._eventActive = false;
                 }
                 const edgeSnap = (wasEvent !== this._eventActive);
 
@@ -306,6 +321,7 @@
 
                 // —— 去刺：只在“非事件态”做 —— //
                 let drawDb;
+                if (tmActive) drawDb += this._tmBoostDb;
                 if (!this._eventActive) {
                     // (a) 3 点中值（median-of-3），消单列刺
                     if (this._med3[0] == null) this._med3 = [candDb, candDb, candDb];
@@ -601,6 +617,8 @@
         resize: (w, h) => LevelMeter.resize(w, h),
         setSpeedFactor: (sf) => LevelMeter.setSpeedFactor(sf),
         setSampleRateMul: (m) => LevelMeter.setSampleRateMul(m),
+        setExternalHit: (label, conf, hold) => LevelMeter.setExternalHit(label, conf, hold),
+
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
         setBars: () => { },

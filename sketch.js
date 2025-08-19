@@ -400,6 +400,9 @@ function setup() {
                         (abbr === 'T') ? 'T' :
                             (abbr === 'B') ? 'P' : 'O';
                 if (window.DrumCanvas?.trigger) DrumCanvas.trigger(ringKey, 320);
+                if (window.SampleUI?.setExternalHit) {
+                    SampleUI.setExternalHit(label, confidence, 140);
+                }
             }
         });
     });
