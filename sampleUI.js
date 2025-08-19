@@ -51,6 +51,11 @@
         _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
         _sBase: 0.55,            // 基线态的平滑（越小越快，保留自然抖动）
         _sEvent: 0.22,
+
+        _despikeDb: 6.0,       // 去刺阈值：单列最大允许向下跳幅（dB）
+        _med3: [null, null, null],
+        _med3Idx: 0,
+        _prevDrawDb: null,
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -294,30 +299,46 @@
                 }
                 const edgeSnap = (wasEvent !== this._eventActive);
 
-                // 3) 目标 dB：事件态用“真值”，基线态用“平滑后的 lastDb”（保留细小波动）
-                const drawDb = this._eventActive
+                // 3) 候选 dB：事件态=真值；基线态=轻平滑（保留自然抖动）
+                let candDb = this._eventActive
                     ? this._lastDb
                     : (this._lastDb * (1 - this._sBase) + this._baseDb * this._sBase);
+
+                // —— 去刺：只在“非事件态”做 —— //
+                let drawDb;
+                if (!this._eventActive) {
+                    // (a) 3 点中值（median-of-3），消单列刺
+                    if (this._med3[0] == null) this._med3 = [candDb, candDb, candDb];
+                    this._med3Idx = (this._med3Idx + 1) % 3;
+                    this._med3[this._med3Idx] = candDb;
+                    const [a, b, c] = this._med3;
+                    const med = (a > b) ? ((b > c) ? b : (a > c ? c : a))
+                        : ((a > c) ? a : (b > c ? c : b));
+
+                    // (b) 最大向下跳幅夹限（两列刺）
+                    const prev = (this._prevDrawDb != null) ? this._prevDrawDb : med;
+                    const maxDrop = this._despikeDb || 6.0;
+                    drawDb = (prev - med > maxDrop) ? (prev - maxDrop) : med;
+                } else {
+                    drawDb = candDb; // 事件态保持锋利
+                }
+                this._prevDrawDb = drawDb;
 
                 // 4) 映射到像素
                 const t = Math.max(0, Math.min(1, (drawDb - this._dbMin) / (this._dbMax - this._dbMin)));
                 const yTarget = (this._innerH - 1) * (1 - t);
 
-                // 5) 平滑 + 硬跳
+                // 5) 平滑 / 硬贴
                 if (this._yNow == null) this._yNow = yTarget;
 
-                // 进入/退出事件的瞬间都“贴边”：保证上下沿都锋利
-                // （上一行 _eventActive 已经按门限做了切换，这里配合 snapPx）
-                if (edgeSnap || this._eventActive) {
+                // 进入/退出事件边沿直接贴目标；事件态内也贴（刀口）；
+                // 基线态按原来的轻平滑（已去刺，不会再直插）
+                const dy = Math.abs(yTarget - this._yNow);
+                if ((wasEvent !== this._eventActive) || this._eventActive || dy >= this._snapPx) {
                     this._yNow = yTarget;
                 } else {
-                    const dy = Math.abs(yTarget - this._yNow);
-                    if (dy >= this._snapPx) {
-                        this._yNow = yTarget;                    // 大跳仍硬贴
-                    } else {
-                        const s = this._eventActive ? this._sEvent : this._sBase;
-                        this._yNow = this._yNow * s + yTarget * (1 - s);  // 常态轻/快平滑
-                    }
+                    const s = this._sBase;               // 非事件：轻平滑
+                    this._yNow = this._yNow * s + yTarget * (1 - s);
                 }
 
                 // 6) 推入环形缓冲
