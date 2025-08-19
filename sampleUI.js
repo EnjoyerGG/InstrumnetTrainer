@@ -36,13 +36,21 @@
         _sampleMul: 1,
 
         _baseDb: null,          // 背景(基线)估计
-        _baseAlpha: 0.995,      // 背景平滑 (越接近1越慢)
-        _baseRiseCap: 0.25,     // 背景每帧最多上升(dB)，防止被峰值带着跑
-        _gateDb: 3.8,           // 门限：低于“背景+门限”时按背景画（=平线）
-        _sAtk: 0.60,            // 上冲(打击)时的系数（小=快）
-        _sRel: 0.92,            // 回落时的系数（大=慢）
+        _baseAlpha: 0.97,      // 背景平滑 (越接近1越慢)
+        _baseRiseCap: 0.8,     // 背景每帧最多上升(dB)，防止被峰值带着跑
+        _gateDb: 3.2,           // 门限：低于“背景+门限”时按背景画（=平线）
+        _sAtk: 0.50,            // 上冲(打击)时的系数（小=快）
+        _sRel: 0.50,            // 回落时的系数（大=慢）
+        _baseFallAlpha: 0.78,
+        _snapPx: 3,
         _resumeGuardUntil: 0,   // 恢复后的“写列禁入”时间戳
 
+        _eventActive: false,
+        _gateDownK: 0.35,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
+        _eventS: 0.35,         // 事件态跟随系数（越小越快）
+        _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
+        _sBase: 0.55,            // 基线态的平滑（越小越快，保留自然抖动）
+        _sEvent: 0.22,
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -259,31 +267,60 @@
             if (now - this._lastColTime < effPeriod) { this._composite(); return; }
             this._lastColTime = now;
 
-            // dB→y
+            // —— dB → y（事件态/基线分离 + 迟滞 + 硬跳）——
             if (this._lastDb != null) {
-                // 恢复保护：保护期只合成 HUD，不推进折线
-                const now = performance.now();
-                if (now < this._resumeGuardUntil) { this._composite(); return; }
+                // 恢复保护：倒计时恢复后的若干毫秒不推进列，避免竖针
+                const wasEvent = this._eventActive;
+                const nowT = performance.now();
+                if (nowT < this._resumeGuardUntil) { this._composite(); return; }
 
-                // 背景估计（对上行限速，避免被峰值带着跑）
+                // 1) 背景估计：上升限速 + 下降快跟随
                 if (this._baseDb == null) this._baseDb = this._lastDb;
-                const noPeak = Math.min(this._lastDb, this._baseDb + this._baseRiseCap);
-                this._baseDb = this._baseDb * this._baseAlpha + noPeak * (1 - this._baseAlpha);
+                if (this._lastDb >= this._baseDb) {
+                    const noPeak = Math.min(this._lastDb, this._baseDb + this._baseRiseCap);
+                    this._baseDb = this._baseDb * this._baseAlpha + noPeak * (1 - this._baseAlpha);
+                } else {
+                    this._baseDb = this._baseDb * this._baseFallAlpha + this._lastDb * (1 - this._baseFallAlpha);
+                }
 
-                // 门限：小于 背景+gate 时，按背景绘制（平线）
-                const drawDb = (this._lastDb >= this._baseDb + this._gateDb) ? this._lastDb : this._baseDb;
+                // 2) 带“迟滞”的门限：避免来回抖动
+                const gateUp = this._baseDb + this._gateDb;
+                const gateDown = this._baseDb + this._gateDb * this._gateDownK;
 
-                // 映射到像素
+                if (!this._eventActive) {
+                    if (this._lastDb >= gateUp) this._eventActive = true;      // 进入事件
+                } else {
+                    if (this._lastDb < gateDown) this._eventActive = false;     // 退出事件
+                }
+                const edgeSnap = (wasEvent !== this._eventActive);
+
+                // 3) 目标 dB：事件态用“真值”，基线态用“平滑后的 lastDb”（保留细小波动）
+                const drawDb = this._eventActive
+                    ? this._lastDb
+                    : (this._lastDb * (1 - this._sBase) + this._baseDb * this._sBase);
+
+                // 4) 映射到像素
                 const t = Math.max(0, Math.min(1, (drawDb - this._dbMin) / (this._dbMax - this._dbMin)));
-                const yNow = (this._innerH - 1) * (1 - t);
+                const yTarget = (this._innerH - 1) * (1 - t);
 
-                // 非对称平滑：上冲（y减小）快、回落慢
-                if (this._yNow == null) this._yNow = yNow;
-                const rising = yNow < this._yNow;            // dB↑ ⇒ y↓
-                const s = rising ? this._sAtk : this._sRel;
-                this._yNow = this._yNow * s + yNow * (1 - s);
+                // 5) 平滑 + 硬跳
+                if (this._yNow == null) this._yNow = yTarget;
 
-                // 推入环形缓冲
+                // 进入/退出事件的瞬间都“贴边”：保证上下沿都锋利
+                // （上一行 _eventActive 已经按门限做了切换，这里配合 snapPx）
+                if (edgeSnap || this._eventActive) {
+                    this._yNow = yTarget;
+                } else {
+                    const dy = Math.abs(yTarget - this._yNow);
+                    if (dy >= this._snapPx) {
+                        this._yNow = yTarget;                    // 大跳仍硬贴
+                    } else {
+                        const s = this._eventActive ? this._sEvent : this._sBase;
+                        this._yNow = this._yNow * s + yTarget * (1 - s);  // 常态轻/快平滑
+                    }
+                }
+
+                // 6) 推入环形缓冲
                 this._ys[this._writeIdx] = this._yNow;
                 this._writeIdx = (this._writeIdx + 1) % this._Wpx;
                 if (!this._filled && this._writeIdx === 0) this._filled = true;
