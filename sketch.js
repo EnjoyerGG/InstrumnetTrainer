@@ -437,6 +437,8 @@ function setup() {
     rm.setBPM(initBpm);
     rm.setSpeedFactor(initSpeed);
     SampleUI.setSpeedFactor(initSpeed);
+    SampleUI.setBPM(initBpm);
+    SampleUI.useBeatGrid(true, initBpm, 4);
     if (CongaClassifier.setCooldown) {
         CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
     }
@@ -466,6 +468,8 @@ function setup() {
         metro.setBPM(bpmVal);        // 判定与滚动
         rm.setBPM(bpmVal);        // 判定与滚动
         rm.setSpeedFactor(speedVal); // 视觉速度
+        SampleUI.setBPM(bpmVal);           // 用 BPM 直接驱动折线写入速率
+        SampleUI.useBeatGrid(true, bpmVal, 4);
         SampleUI.setSpeedFactor(speedVal);
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));

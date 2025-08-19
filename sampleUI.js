@@ -62,6 +62,13 @@
         _tmLabel: 'BG',
         _tmConf: 0,
         _tmBoostDb: 3.5,   // 命中时轻微提升绘制值（让峰更像“命中”）
+
+        _useBeatGrid: false,
+        _beatBPM: 120,
+        _beatsPerBar: 4,
+
+        _markers: [],        // {x, life, color, _ts}
+        _lastMarkT: 0,       // 上次更新标记的时间戳
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -234,6 +241,39 @@
             this._running = true;
         },
 
+        setBPM(bpm, baseBpm = 120) {
+            const b = (bpm || baseBpm);
+            this._beatBPM = b;
+            this._speedMul = Math.max(0.05, b / baseBpm);
+            this._drawGrid();           // 速度变化时重画网格
+        },
+
+
+        // 打开/关闭按拍网格
+        useBeatGrid(on = true, bpm = 120, beatsPerBar = 4) {
+            this._useBeatGrid = !!on;
+            this._beatBPM = bpm | 0;
+            this._beatsPerBar = beatsPerBar | 0;
+            this._drawGrid();
+        },
+
+        // 每秒推进多少列（折线速度，给网格/标记共用）
+        _colsPerSec() {
+            return (this._innerW / this._spanSec)
+                * Math.max(0.05, this._speedMul)
+                * Math.max(0.05, this._sampleMul);
+        },
+
+        // 以后做“音符判定”时，往 HUD 打一条竖线（从最右侧入场）
+        pushMarker(color = '#a64fd6', lifeMs = 380) {
+            this._markers.push({
+                x: this._innerX + this._innerW - 1,
+                life: lifeMs,
+                color,
+                _ts: performance.now()
+            });
+        },
+
         _setDb(db) {
             this._lastDb = db;
             if (!isFinite(db)) return;
@@ -387,6 +427,38 @@
                 ctx.stroke();
             }
             this._composite();
+
+            // === 判定标记（随折线速度向左移动） ===
+            if (this._markers.length) {
+                const now = performance.now();
+                if (!this._lastMarkT) this._lastMarkT = now;
+                const dt = (now - this._lastMarkT) / 1000;    // s
+                this._lastMarkT = now;
+
+                const v = this._colsPerSec(); // px/s
+                const ctx = this._tctx;
+
+                for (let i = this._markers.length - 1; i >= 0; i--) {
+                    const m = this._markers[i];
+                    // 位置 & 寿命
+                    m.x -= v * dt;
+                    m.life -= (now - (m._ts || now));
+                    m._ts = now;
+
+                    // 超界或过期移除
+                    if (m.x < this._innerX || m.life <= 0) {
+                        this._markers.splice(i, 1);
+                        continue;
+                    }
+                    // 绘制竖线
+                    ctx.beginPath();
+                    ctx.strokeStyle = m.color;
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(m.x + 0.5, this._innerY);
+                    ctx.lineTo(m.x + 0.5, this._innerY + this._innerH);
+                    ctx.stroke();
+                }
+            }
         },
 
         _composite() {
@@ -482,6 +554,38 @@
                     g.textBaseline = 'middle';
                     const LABEL_GAP = 12;
                     g.fillText(String(dB), x0 - LABEL_GAP, y);   // 画在外侧
+                }
+            }
+
+            if (this._useBeatGrid && this._beatBPM > 0) {
+                const g = this._gctx;
+                const x0 = this._innerX, y0 = this._innerY, w = this._innerW, h = this._innerH;
+
+                // 仍与“时间轴”绑定（不乘 _sampleMul）
+                const pxPerSec = this._innerW / this._spanSec;
+                const pxPerBeat = pxPerSec * (60 / this._beatBPM);
+
+                const subdiv = 4;                        // 1 拍分成 4 份（可改 8）
+                const pxPerSub = pxPerBeat / subdiv;
+                const perBarSubs = this._beatsPerBar * subdiv;
+
+                let x = x0 + w + 0.5;
+                let sub = 0;
+                while (x >= x0) {
+                    const isBar = (sub % perBarSubs) === 0;       // 小节线
+                    const isBeat = (sub % subdiv) === 0;           // 拍线
+
+                    g.beginPath();
+                    g.strokeStyle = isBar ? 'rgba(255,255,255,.18)'
+                        : isBeat ? 'rgba(255,255,255,.12)'
+                            : 'rgba(255,255,255,.06)';  // 子拍更淡
+                    g.lineWidth = 1;
+                    g.moveTo(x, y0);
+                    g.lineTo(x, y0 + h);
+                    g.stroke();
+
+                    x -= pxPerSub;
+                    sub++;
                 }
             }
         },
@@ -618,6 +722,10 @@
         setSpeedFactor: (sf) => LevelMeter.setSpeedFactor(sf),
         setSampleRateMul: (m) => LevelMeter.setSampleRateMul(m),
         setExternalHit: (label, conf, hold) => LevelMeter.setExternalHit(label, conf, hold),
+
+        setBPM: (bpm, baseBpm) => LevelMeter.setBPM(bpm, baseBpm),
+        useBeatGrid: (on, bpm, bpb) => LevelMeter.useBeatGrid(on, bpm, bpb),
+        pushMarker: (color, lifeMs) => LevelMeter.pushMarker(color, lifeMs),
 
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错
