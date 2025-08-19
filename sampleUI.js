@@ -49,10 +49,10 @@
         _gateDownK: 0.35,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
         _eventS: 0.35,         // 事件态跟随系数（越小越快）
         _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
-        _sBase: 0.55,            // 基线态的平滑（越小越快，保留自然抖动）
+        _sBase: 0.3,            // 基线态的平滑（越小越快，保留自然抖动）
         _sEvent: 0.22,
 
-        _despikeDb: 6.0,       // 去刺阈值：单列最大允许向下跳幅（dB）
+        _despikeDb: 2,       // 去刺阈值：单列最大允许向下跳幅（dB）
         _med3: [null, null, null],
         _med3Idx: 0,
         _prevDrawDb: null,
