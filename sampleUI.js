@@ -38,18 +38,18 @@
         _baseDb: null,          // 背景(基线)估计
         _baseAlpha: 0.97,      // 背景平滑 (越接近1越慢)
         _baseRiseCap: 0.8,     // 背景每帧最多上升(dB)，防止被峰值带着跑
-        _gateDb: 3.2,           // 门限：低于“背景+门限”时按背景画（=平线）
+        _gateDb: 5.5,           // 门限：低于“背景+门限”时按背景画（=平线）
         _sAtk: 0.50,            // 上冲(打击)时的系数（小=快）
         _sRel: 0.50,            // 回落时的系数（大=慢）
-        _baseFallAlpha: 0.78,
-        _snapPx: 3,
+        _baseFallAlpha: 0.35,
+        _snapPx: 0,
         _resumeGuardUntil: 0,   // 恢复后的“写列禁入”时间戳
 
         _eventActive: false,
-        _gateDownK: 0.35,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
+        _gateDownK: 0.45,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
         _eventS: 0.35,         // 事件态跟随系数（越小越快）
         _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
-        _sBase: 0.3,            // 基线态的平滑（越小越快，保留自然抖动）
+        _sBase: 0.08,            // 基线态的平滑（越小越快，保留自然抖动）
         _sEvent: 0.22,
 
         _despikeDb: 2,       // 去刺阈值：单列最大允许向下跳幅（dB）
@@ -61,7 +61,7 @@
         _tmHoldUntil: 0,
         _tmLabel: 'BG',
         _tmConf: 0,
-        _tmBoostDb: 3.5,   // 命中时轻微提升绘制值（让峰更像“命中”）
+        _tmBoostDb: 4.0,   // 命中时轻微提升绘制值（让峰更像“命中”）
 
         _useBeatGrid: false,
         _beatBPM: 120,
@@ -69,6 +69,12 @@
 
         _markers: [],        // {x, life, color, _ts}
         _lastMarkT: 0,       // 上次更新标记的时间戳
+
+        _penAtCenter: true,   // 笔是否在中线；false=在最右列
+
+        _hardPeaks: [],        // 永久标记 {x,y,color}
+        _peakTrack: null,      // 正在跟踪的峰 {minY, untilTs}
+        _lastHardT: 0,
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -264,6 +270,13 @@
                 * Math.max(0.05, this._sampleMul);
         },
 
+        setPenAtCenter(on = true) { this._penAtCenter = !!on; },
+        getCursorX() {                    // 提供给 AmpGuides 作为“现在时刻的屏幕 x”
+            return this._penAtCenter
+                ? (this._innerX + Math.floor(this._innerW * 0.5))
+                : (this._innerX + this._innerW - 1);
+        },
+
         // 以后做“音符判定”时，往 HUD 打一条竖线（从最右侧入场）
         pushMarker(color = '#a64fd6', lifeMs = 380) {
             this._markers.push({
@@ -309,7 +322,9 @@
         setExternalHit(label, conf, holdMs = 140) {
             this._tmLabel = label || 'BG';
             this._tmConf = conf || 0;
-            this._tmHoldUntil = performance.now() + (holdMs | 0);
+            const until = performance.now() + (holdMs | 0);
+            this._tmHoldUntil = until;
+            this._peakTrack = { minY: Infinity, until };
         },
 
         setSpeedFactor(sf = 1) {
@@ -391,16 +406,33 @@
                 // 基线态按原来的轻平滑（已去刺，不会再直插）
                 const dy = Math.abs(yTarget - this._yNow);
                 if ((wasEvent !== this._eventActive) || this._eventActive || dy >= this._snapPx) {
-                    this._yNow = yTarget;
+                    this._yNow = yTarget;                     // 事件态/边沿：刀口
                 } else {
-                    const s = this._sBase;               // 非事件：轻平滑
-                    this._yNow = this._yNow * s + yTarget * (1 - s);
+                    if (this._yNow > yTarget) {
+                        const r = 0.1;                         // ★ 快速回落（0.2~0.35 可调）
+                        this._yNow = this._yNow * r + yTarget * (1 - r);
+                    } else {
+                        const s = this._sBase;                  // 上行仍然用轻平滑
+                        this._yNow = this._yNow * s + yTarget * (1 - s);
+                    }
                 }
 
                 // 6) 推入环形缓冲
                 this._ys[this._writeIdx] = this._yNow;
                 this._writeIdx = (this._writeIdx + 1) % this._Wpx;
                 if (!this._filled && this._writeIdx === 0) this._filled = true;
+
+                // —— 跟踪命中峰的最高点（y 越小越高） —— //
+                if (this._peakTrack) {
+                    const yTop = this._innerY + Math.round(this._yNow || 0);
+                    if (yTop < this._peakTrack.minY) this._peakTrack.minY = yTop;
+
+                    if (performance.now() >= this._peakTrack.until) {
+                        const xPen = this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1);
+                        this._hardPeaks.push({ x: xPen + 0.5, y: this._peakTrack.minY + 0.5, color: '#ffcc00' });
+                        this._peakTrack = null;
+                    }
+                }
             }
 
             // 重画完整折线
@@ -427,6 +459,22 @@
                 ctx.stroke();
             }
             this._composite();
+
+            const dtHard = (now - (this._lastHardT || now)) / 1000;
+            this._lastHardT = now;
+            if (this._hardPeaks.length) {
+                const v = this._colsPerSec();
+                const ctx = this._tctx;
+                for (const m of this._hardPeaks) {
+                    m.x -= v * dtHard;
+                    ctx.beginPath();
+                    ctx.strokeStyle = m.color || '#ffcc00';
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(m.x - 4, m.y); ctx.lineTo(m.x + 4, m.y);
+                    ctx.moveTo(m.x, m.y - 4); ctx.lineTo(m.x, m.y + 4);
+                    ctx.stroke();
+                }
+            }
 
             // === 判定标记（随折线速度向左移动） ===
             if (this._markers.length) {
@@ -458,15 +506,28 @@
                     ctx.lineTo(m.x + 0.5, this._innerY + this._innerH);
                     ctx.stroke();
                 }
+
             }
         },
+
 
         _composite() {
             const W = this._canvas.width / dpr(), H = this._canvas.height / dpr();
             this._ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
             this._ctx.clearRect(0, 0, W, H);
             this._ctx.drawImage(this._grid, 0, 0, W, H);
-            this._ctx.drawImage(this._trace, 0, 0, W, H);
+            //this._ctx.drawImage(this._trace, 0, 0, W, H);
+            const n = this._filled ? this._Wpx : this._writeIdx;
+            const penX = this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1);
+            const rightOfData = this._innerX + Math.max(0, n - 1);   // 最新一列（旧逻辑：在最右）
+            const dx = Math.round(penX - rightOfData);
+
+            this._ctx.save();
+            this._ctx.beginPath();                      // 只在内框里绘制
+            this._ctx.rect(this._innerX, this._innerY, this._innerW, this._innerH);
+            this._ctx.clip();
+            this._ctx.drawImage(this._trace, dx, 0, W, H);
+            this._ctx.restore();
             if (this._hudInCanvas && this._statsStr) this._drawHUD();
         },
 
@@ -726,6 +787,10 @@
         setBPM: (bpm, baseBpm) => LevelMeter.setBPM(bpm, baseBpm),
         useBeatGrid: (on, bpm, bpb) => LevelMeter.useBeatGrid(on, bpm, bpb),
         pushMarker: (color, lifeMs) => LevelMeter.pushMarker(color, lifeMs),
+
+        getCursorX: () => LevelMeter.getCursorX(),
+        setPenAtCenter: (on) => LevelMeter.setPenAtCenter(on),
+        clearHardPeaks: () => { LevelMeter._hardPeaks.length = 0; LevelMeter._peakTrack = null; },
 
 
         // 没用到但在外部被调用到的接口，保留为 no-op 防止报错

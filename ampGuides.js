@@ -54,7 +54,7 @@
             const now = (this._getNowMs ? this._getNowMs() : 0) % this._loopMs;
 
             // HUD 的“绘制端”在最右：以右边界为“现在时刻”的屏幕位置
-            const xHead = x + w - 1;
+            const xHead = (window.SampleUI?.getCursorX?.() ?? (x + w - 1));
 
             // 一整轮音符对应的像素距离（用于复制铺满整个宽度）
             const periodPx = S * (this._loopMs / 1000);

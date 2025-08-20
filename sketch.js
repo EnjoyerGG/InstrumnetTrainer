@@ -336,6 +336,8 @@ function setup() {
             hudCorner: 'br'
         });
 
+        SampleUI.setPenAtCenter(true);    // ← 把分贝折线的“笔”固定在 HUD 中线
+
         SampleUI.setupAudio({
             levelMode: 'rms',
             workletPath: './meter-processor.js',
@@ -435,7 +437,8 @@ function setup() {
                             (abbr === 'B') ? 'P' : 'O';
                 if (window.DrumCanvas?.trigger) DrumCanvas.trigger(ringKey, 320);
                 if (window.SampleUI?.setExternalHit) {
-                    SampleUI.setExternalHit(label, confidence, 140);
+                    SampleUI.setExternalHit(label, confidence, 80);
+                    SampleUI.pushMarker('#a64fd6', 900);  // 一条紫色竖线，约 0.9s 后淡出
                 }
             }
         });
@@ -505,6 +508,8 @@ function setup() {
         SampleUI.setBPM(bpmVal);           // 用 BPM 直接驱动折线写入速率
         SampleUI.useBeatGrid(true, bpmVal, 4);
         SampleUI.setSpeedFactor(speedVal);
+        guides.syncFixed?.();
+
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
@@ -645,6 +650,7 @@ function handleReset() {
     if (window.SampleUI) {
         SampleUI.reset();
         SampleUI.pause();
+        SampleUI.clearHardPeaks?.();
     }
     guides?.setStartGap(COUNTDOWN_MS);
 }
