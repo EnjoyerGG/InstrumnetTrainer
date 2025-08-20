@@ -715,9 +715,10 @@ function draw() {
     if (window.SampleUI) {
         SampleUI.update();
         SampleUI.renderTo(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+        // ★ 在 HUD 上覆盖画“预设竖线”
+        guides?.render(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
-    // ★ 在 HUD 上覆盖画“预设竖线”
-    guides?.render(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+
 
     // ===== 分隔线（横向 1 条 + 纵向 2 条）=====
     stroke(220); strokeWeight(2);
@@ -814,13 +815,47 @@ function drawNotesAndFeedback() {
 
 /* ------------ Interaction --------- */
 function mousePressed() {
+    // 1) 先在 HUD 区记一条永久紫线（即使 SampleUI 会消费事件）
+    if (guides && RECT && RECT.amp) {
+        const r = RECT.amp;
+        if (mouseX >= r.x && mouseX < r.x + r.w && mouseY >= r.y && mouseY < r.y + r.h) {
+            guides.addHitNow?.();                 // 记录到 AmpGuides（会随预设线一起移动）
+            window.SampleUI?.pushMarker?.('#a64fd6', 900); // HUD 内再来一条会慢慢淡出的临时紫线（可选）
+            // 不要 return；让后面的流程继续
+        }
+    }
+
+    // 2) 再交给 SampleUI 自己的交互（如拖拽等）
+    if (window.SampleUI && SampleUI.pointerDown(mouseX, mouseY)) {
+        // 让它消费点击即可；但我们上面已经留下了永久紫线
+        return;
+    }
+
+    // 3) 其它交互（例如训练用的人工命中、鼓面闪光等）
+    if (running) {
+        rm.registerHit();
+        judgeLineGlow = 1;
+    }
+    if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
+        DrumCanvas.trigger('EDGE', 360);
+    }
+}
+
+function mouseClicked() {
+    if (guides && RECT && RECT.amp) {
+        const r = RECT.amp;
+        if (mouseX >= r.x && mouseX < r.x + r.w && mouseY >= r.y && mouseY < r.y + r.h) {
+            guides.addHitNow?.();
+            window.SampleUI?.pushMarker?.('#a64fd6', 900);
+        }
+    }
     if (window.SampleUI && SampleUI.pointerDown(mouseX, mouseY)) return;
     if (running) {
         rm.registerHit();
         judgeLineGlow = 1;
     }
     if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
-        DrumCanvas.trigger('EDGE', 360); // 发光时长可调：260~420ms
+        DrumCanvas.trigger('EDGE', 360);
     }
 }
 

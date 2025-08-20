@@ -58,7 +58,7 @@
         },
 
         render(ctx, x, y, w, h) {
-            if (!ctx || !w || !h || !this._notes.length) return;
+            if (!ctx || !w || !h) return;   // 没有 notes 也照样可以画“紫色命中痕迹”;
 
             const S = (root.rm?.scrollSpeed || 0.5) * 1000;
             const now = (this._getNowMs ? this._getNowMs() : 0) % this._loopMs;
