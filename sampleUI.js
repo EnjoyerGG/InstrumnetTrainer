@@ -340,13 +340,31 @@
             this._speedMul = Math.max(0.05, Number(sf) || 1);
         },
 
+        setPaperSpeedPxPerSec(pxps = 60) {
+            const base = (this._innerW / this._spanSec) * Math.max(0.05, this._sampleMul);
+            this._speedMul = pxps / Math.max(1e-6, base);
+        },
+        getColsPerSec() { return this._colsPerSec(); },
+
         /* -------------------- 每帧更新 -------------------- */
         update() {
             if (!this._running) return;
             const now = performance.now();
             const effPeriod = this._colPeriodMs / (Math.max(0.05, this._speedMul) * Math.max(0.05, this._sampleMul));
-            if (now - this._lastColTime < effPeriod) { this._composite(); return; }
-            this._lastColTime = now;
+            let need = Math.floor((now - this._lastColTime) / effPeriod);
+            if (need <= 0) { this._composite(); return; }
+
+            // 防极端掉帧一次写太多
+            const MAX_BURST = 24;
+            if (need > MAX_BURST) need = MAX_BURST;
+
+            for (let c = 0; c < need; c++) {
+                this._lastColTime += effPeriod;
+
+                // ↓↓↓ 把你现有“背景估计/门限/求 yTarget/单列脉冲/推入环形缓冲/峰跟踪”那段
+                //     完整搬进这个 for 循环（每循环=写 1 列）。其它逻辑不变。
+            }
+            this._composite();
 
             // —— dB → y（事件态/基线分离 + 迟滞 + 硬跳）——
             if (this._lastDb != null) {

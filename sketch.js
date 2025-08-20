@@ -33,19 +33,10 @@ const NOTE_GLYPH = {
 };
 
 function syncHudSpeedToNotes() {
-    if (!window.SampleUI) return;
-    if (!rm || typeof rm.scrollSpeed !== 'number' || typeof rm.speedFactor !== 'number') return;
-    if (!window.SampleUI || !SampleUI.getColsPerSec || !SampleUI.setSpeedFactor) return;
-    if (!HUD_VPX_AT1) {
-        // 暂把 HUD 速率设为 1，量一遍基准 v(px/s)
-        const prev = 1;
-        SampleUI.setSpeedFactor(1);
-        HUD_VPX_AT1 = SampleUI.getColsPerSec?.() || 1;     // 需要 sampleUI.js 暴露 getColsPerSec（已暴露）:contentReference[oaicite:3]{index=3}
-        SampleUI.setSpeedFactor(prev);
-    }
-    const vNotes = (rm.scrollSpeed || 0.5) * (rm.speedFactor || 1) * 1000; // px/s
-    const sfHUD = vNotes / HUD_VPX_AT1;
-    SampleUI.setSpeedFactor(sfHUD);                                         // 让 HUD 绘制端速度 = 音符滚动速度
+    if (!rm || !window.SampleUI?.setPaperSpeedPxPerSec) return;
+    // 预设线速度 = rm.scrollSpeed(px/ms) * rm.speedFactor * 1000(px/s)
+    const vNotesPxPerSec = (rm.scrollSpeed || 0.5) * (rm.speedFactor || 1) * 1000;
+    SampleUI.setPaperSpeedPxPerSec(vNotesPxPerSec);
 }
 
 function glyphForAbbr(ab) {
