@@ -385,7 +385,9 @@
 
                 // —— 去刺：只在“非事件态”做 —— //
                 let drawDb;
-                if (tmActive) drawDb += this._tmBoostDb;
+                // ……算出 drawDb 之后再加 boost
+                if (tmActive) drawDb = Math.min(this._dbMax, drawDb + this._tmBoostDb);
+
                 if (!this._eventActive) {
                     // (a) 3 点中值（median-of-3），消单列刺
                     if (this._med3[0] == null) this._med3 = [candDb, candDb, candDb];
@@ -524,37 +526,7 @@
 
             }
 
-            const nowT = performance.now();
-            if (!this._lastHardT) this._lastHardT = nowT;
-            this._lastHardT = nowT;
 
-            // 1) 命中期间跟踪最高点
-            if (this._peakTrack) {
-                const yTop = this._innerY + Math.round(this._yNow || 0);
-                if (yTop < this._peakTrack.minY) this._peakTrack.minY = yTop;
-
-                if (nowT >= this._peakTrack.until) {
-                    const xPen = this._innerX + this._innerW - 1 + 0.5; // “笔”在右侧；若笔在中线，改成 getCursorX()
-                    this._hardPeaks.push({ x: xPen, y: this._peakTrack.minY + 0.5, color: '#ffcc00' });
-                    this._peakTrack = null;
-                }
-            }
-
-            // 2) 推进并绘制永久标记
-            if (this._hardPeaks.length) {
-                const v = this._colsPerSec(); // px/s
-                const ctx = this._tctx;
-                for (const p of this._hardPeaks) {
-                    p.x -= v * dtHard;
-                    // 小十字
-                    ctx.beginPath();
-                    ctx.strokeStyle = p.color || '#ffcc00';
-                    ctx.lineWidth = 2;
-                    ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
-                    ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, p.y + 4);
-                    ctx.stroke();
-                }
-            }
         },
 
 
