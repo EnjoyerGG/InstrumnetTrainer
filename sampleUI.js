@@ -49,7 +49,7 @@
         _gateDownK: 0.45,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
         _eventS: 0.35,         // 事件态跟随系数（越小越快）
         _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
-        _sBase: 0.08,            // 基线态的平滑（越小越快，保留自然抖动）
+        _sBase: 0.10,            // 基线态的平滑（越小越快，保留自然抖动）
         _sEvent: 0.22,
 
         _despikeDb: 2,       // 去刺阈值：单列最大允许向下跳幅（dB）
@@ -75,6 +75,11 @@
         _hardPeaks: [],        // 永久标记 {x,y,color}
         _peakTrack: null,      // 正在跟踪的峰 {minY, untilTs}
         _lastHardT: 0,
+
+        // —— 脉冲 & 永久标记 —— //
+        _spikeCols: 1,        // 脉冲持续几列（1=只占一列）
+        _spiking: 0,          // >0 表示正在输出脉冲
+        _forceBaseOnce: false,// 在脉冲后强制下一列回基线
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -325,6 +330,10 @@
             const until = performance.now() + (holdMs | 0);
             this._tmHoldUntil = until;
             this._peakTrack = { minY: Infinity, until };
+
+            // 触发一次“单列脉冲”
+            this._spiking = this._spikeCols;     // 从当前列开始画高值
+            this._forceBaseOnce = true;          // 脉冲后下一列强制回基线
         },
 
         setSpeedFactor(sf = 1) {
@@ -402,17 +411,23 @@
                 // 5) 平滑 / 硬贴
                 if (this._yNow == null) this._yNow = yTarget;
 
-                // 进入/退出事件边沿直接贴目标；事件态内也贴（刀口）；
-                // 基线态按原来的轻平滑（已去刺，不会再直插）
-                const dy = Math.abs(yTarget - this._yNow);
-                if ((wasEvent !== this._eventActive) || this._eventActive || dy >= this._snapPx) {
-                    this._yNow = yTarget;                     // 事件态/边沿：刀口
+                const tb = Math.max(0, Math.min(1, (this._baseDb - this._dbMin) / (this._dbMax - this._dbMin)));
+                const yBase = (this._innerH - 1) * (1 - tb);
+
+                // —— 单列脉冲：把当前列“硬设”为 yTarget，下列强制回基线 —— //
+                if (this._spiking > 0) {
+                    this._yNow = yTarget;           // 当前列=峰
+                    this._spiking--;
+                } else if (this._forceBaseOnce) {
+                    this._yNow = yBase;             // 下一列=基线（直落）
+                    this._forceBaseOnce = false;
                 } else {
-                    if (this._yNow > yTarget) {
-                        const r = 0.1;                         // ★ 快速回落（0.2~0.35 可调）
-                        this._yNow = this._yNow * r + yTarget * (1 - r);
+                    // 进入/退出事件 或 事件态：硬贴；基线态：轻平滑
+                    const dy = Math.abs(yTarget - this._yNow);
+                    if ((wasEvent !== this._eventActive) || this._eventActive || dy >= this._snapPx) {
+                        this._yNow = yTarget;         // 刀口
                     } else {
-                        const s = this._sBase;                  // 上行仍然用轻平滑
+                        const s = this._sBase;        // 非事件：轻平滑
                         this._yNow = this._yNow * s + yTarget * (1 - s);
                     }
                 }
@@ -507,6 +522,38 @@
                     ctx.stroke();
                 }
 
+            }
+
+            const nowT = performance.now();
+            if (!this._lastHardT) this._lastHardT = nowT;
+            this._lastHardT = nowT;
+
+            // 1) 命中期间跟踪最高点
+            if (this._peakTrack) {
+                const yTop = this._innerY + Math.round(this._yNow || 0);
+                if (yTop < this._peakTrack.minY) this._peakTrack.minY = yTop;
+
+                if (nowT >= this._peakTrack.until) {
+                    const xPen = this._innerX + this._innerW - 1 + 0.5; // “笔”在右侧；若笔在中线，改成 getCursorX()
+                    this._hardPeaks.push({ x: xPen, y: this._peakTrack.minY + 0.5, color: '#ffcc00' });
+                    this._peakTrack = null;
+                }
+            }
+
+            // 2) 推进并绘制永久标记
+            if (this._hardPeaks.length) {
+                const v = this._colsPerSec(); // px/s
+                const ctx = this._tctx;
+                for (const p of this._hardPeaks) {
+                    p.x -= v * dtHard;
+                    // 小十字
+                    ctx.beginPath();
+                    ctx.strokeStyle = p.color || '#ffcc00';
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
+                    ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, p.y + 4);
+                    ctx.stroke();
+                }
             }
         },
 
