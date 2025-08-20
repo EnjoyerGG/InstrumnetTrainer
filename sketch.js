@@ -11,6 +11,7 @@ let mic;
 let guides;                // AmpGuides 实例
 let HUD_VPX_AT1 = null;    // “HUD 在 speedFactor=1 时”的基准像素/秒
 const COUNTDOWN_MS = 3000;
+const SWEEP_H = 140;   // 底部 Sweep 画布高度（按需改）
 
 const BPM_MIN = 60, BPM_MAX = 240;
 const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
@@ -199,34 +200,50 @@ function layoutRects(cnv) {
     const topH = Number.isFinite(GRID.topHpx)
         ? GRID.topHpx
         : Math.round(height * GRID.topHRatio);
-    const botY = topH, botH = height - topH;
 
-    const col0 = Math.round(width * 0.5);     // 左 1/2
-    const col1 = Math.round(width * 0.25);    // 中 1/4
-    const col2 = width - col0 - col1;         // 右 1/4
+    const botY = topH;
+    const botH = height - topH;
+
+    // 底部区域拆为两层：上层(amp/drum/mic)，下层(sweep)
+    const sweepH = SWEEP_H;
+    const hudH = Math.max(60, botH - sweepH - GRID.pad * 3);  // 上层高度
+    const hudY = botY + GRID.pad;
+
+    const col0 = Math.round(width * 0.5);   // 左 1/2
+    const col1 = Math.round(width * 0.25);  // 中 1/4
+    const col2 = width - col0 - col1;       // 右 1/4
 
     RECT.top = { x: 0, y: 0, w: width, h: topH };
 
+    // 上层：Amp/Meter、Drum、Mic
     RECT.amp = {
-        x: GRID.pad, y: botY + GRID.pad,
-        w: col0 - GRID.pad * 2, h: botH - GRID.pad * 2
+        x: GRID.pad, y: hudY,
+        w: col0 - GRID.pad * 2, h: hudH
     };
     if (window.SampleUI?.resize) {
-        SampleUI.resize(RECT.amp.w, RECT.amp.h);  // ★ 使内部画布与槽位一致
-        HUD_VPX_AT1 = null;         // 尺寸变了 → 重新测基准
+        SampleUI.resize(RECT.amp.w, RECT.amp.h);
+        HUD_VPX_AT1 = null;
         if (rm && window.SampleUI && SampleUI.getColsPerSec) {
             syncHudSpeedToNotes();
         }
     }
 
     RECT.drum = {
-        x: col0 + GRID.pad, y: botY + GRID.pad,
-        w: col1 - GRID.pad * 2, h: botH - GRID.pad * 2
+        x: col0 + GRID.pad, y: hudY,
+        w: col1 - GRID.pad * 2, h: hudH
     };
 
     RECT.mic = {
-        x: col0 + col1 + GRID.pad, y: botY + GRID.pad,
-        w: col2 - GRID.pad * 2, h: botH - GRID.pad * 2
+        x: col0 + col1 + GRID.pad, y: hudY,
+        w: col2 - GRID.pad * 2, h: hudH
+    };
+
+    // 下层：新增 Sweep 画布（整行铺满）
+    RECT.sweep = {
+        x: GRID.pad,
+        y: hudY + hudH + GRID.pad,
+        w: width - GRID.pad * 2,
+        h: sweepH
     };
 
     // —— 把两个 DOM 面板摆到中/右两格 —— //
@@ -235,7 +252,6 @@ function layoutRects(cnv) {
     const offX = cvsRect.left - hostRect.left;
     const offY = cvsRect.top - hostRect.top;
 
-    // 鼓面（等宽高，居中）
     const drumWrap = document.getElementById('drum-wrap');
     if (drumWrap) {
         const size = Math.floor(Math.min(RECT.drum.w, RECT.drum.h));
@@ -245,7 +261,6 @@ function layoutRects(cnv) {
         drumWrap.style.height = size + 'px';
     }
 
-    // Mic HUD（充满右 1/4 区）
     const micHud = document.getElementById('mic-hud');
     if (micHud) {
         micHud.style.left = (RECT.mic.x + offX) + 'px';
@@ -266,7 +281,8 @@ function setup() {
 
     //const cnv = createCanvas(1000, 120);
     const NOTES_H = 120, GAP = 16, METER_H = 160;
-    const cnv = createCanvas(1000, NOTES_H + GAP + METER_H);
+    const cnv = createCanvas(1000, NOTES_H + GAP + METER_H + SWEEP_H + GRID.pad);
+
     cnv.parent('score-wrap');
     GRID.topHpx = NOTES_H;
     _canvasHost = select('#score-wrap');      // 主容器（父节点）
@@ -298,6 +314,19 @@ function setup() {
     guides.setNotes(rm.scoreNotes, rm.totalDuration);      // 把整轮音符交给它画竖线 :contentReference[oaicite:6]{index=6}
     // 初始速度绑定：rm 与 HUD 都按当前 speed 滑块
     //syncHudSpeedToNotes();
+
+    // 新模式实例（传入谱面时间、画布矩形）
+    window.SweepMode = SweepMode.init({
+        nowMs: () => rm._t(),                 // 用你的谱面时钟
+        rectProvider: () => RECT.sweep,
+        speedMultiplier: 1                    // 可由 speed 滑块改它
+    });
+
+    // 把 rm 读到的音符喂给它（和 rhythmManager 的 notes 同源）
+    SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
+
+    // 倒计时：开场预留（若你有 COUNTDOWN_MS）
+    SweepMode.setStartGap(COUNTDOWN_MS || 0);
 
     metro.onloaded(() => {
         console.log("Metronome loaded!");
@@ -718,6 +747,10 @@ function draw() {
         // ★ 在 HUD 上覆盖画“预设竖线”
         guides?.render(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
+
+    // 最底部新画布：静止谱面 + 左→右扫条
+    SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
+
 
 
     // ===== 分隔线（横向 1 条 + 纵向 2 条）=====
