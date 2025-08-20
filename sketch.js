@@ -34,9 +34,8 @@ const NOTE_GLYPH = {
 
 function syncHudSpeedToNotes() {
     if (!rm || !window.SampleUI?.setPaperSpeedPxPerSec) return;
-    // 预设线速度 = rm.scrollSpeed(px/ms) * rm.speedFactor * 1000(px/s)
-    const vNotesPxPerSec = (rm.scrollSpeed || 0.5) * (rm.speedFactor || 1) * 1000;
-    SampleUI.setPaperSpeedPxPerSec(vNotesPxPerSec);
+    const vNotesPxPerSec = (rm.scrollSpeed || 0.5) * (rm.speedFactor || 1) * 1000; // 预设线速度
+    SampleUI.setPaperSpeedPxPerSec(vNotesPxPerSec); // 纸速 = 预设线速度
 }
 
 function glyphForAbbr(ab) {
@@ -430,6 +429,7 @@ function setup() {
                 if (window.SampleUI?.setExternalHit) {
                     SampleUI.setExternalHit(label, confidence, 80);
                     SampleUI.pushMarker('#a64fd6', 900);  // 一条紫色竖线，约 0.9s 后淡出
+                    guides?.addHitNow?.();
                 }
             }
         });
@@ -498,7 +498,7 @@ function setup() {
         rm.setSpeedFactor(speedVal); // 视觉速度
         SampleUI.setBPM(bpmVal);           // 用 BPM 直接驱动折线写入速率
         SampleUI.useBeatGrid(true, bpmVal, 4);
-        SampleUI.setSpeedFactor(speedVal);
+        //SampleUI.setSpeedFactor(speedVal);
         guides.syncFixed?.();
 
         if (CongaClassifier.setCooldown) {
@@ -644,6 +644,7 @@ function handleReset() {
         SampleUI.clearHardPeaks?.();
     }
     guides?.setStartGap(COUNTDOWN_MS);
+    guides?.clearHits?.();
 }
 
 function startCountdown() {

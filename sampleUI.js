@@ -80,6 +80,8 @@
         _spikeCols: 1,        // 脉冲持续几列（1=只占一列）
         _spiking: 0,          // >0 表示正在输出脉冲
         _forceBaseOnce: false,// 在脉冲后强制下一列回基线
+
+        //_recordDbGate: 70,   // 只记录 >=70 dB 的列
         /* -------------------- 初始化 UI -------------------- */
         init({
             mount,
@@ -284,8 +286,9 @@
 
         // 以后做“音符判定”时，往 HUD 打一条竖线（从最右侧入场）
         pushMarker(color = '#a64fd6', lifeMs = 380) {
+            const cursorX = this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1);
             this._markers.push({
-                x: this._innerX + this._innerW - 1,
+                x: cursorX,
                 life: lifeMs,
                 color,
                 _ts: performance.now()
@@ -329,7 +332,10 @@
             this._tmConf = conf || 0;
             const until = performance.now() + (holdMs | 0);
             this._tmHoldUntil = until;
-            this._peakTrack = { minY: Infinity, until };
+            // 记录击打开始当下的“绘制头”位置，作为永久峰值的锚点
+            const cursorX = this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1);
+            // 开始跟踪最高点 & 锚住 X
+            this._peakTrack = { minY: Infinity, until: this._tmHoldUntil, x: cursorX };
 
             // 触发一次“单列脉冲”
             this._spiking = this._spikeCols;     // 从当前列开始画高值
@@ -349,31 +355,28 @@
         /* -------------------- 每帧更新 -------------------- */
         update() {
             if (!this._running) return;
+
             const now = performance.now();
-            const effPeriod = this._colPeriodMs / (Math.max(0.05, this._speedMul) * Math.max(0.05, this._sampleMul));
+
+            // 倒计时恢复后的保护：避免刚恢复写出一根“竖针”
+            if (now < this._resumeGuardUntil) { this._composite(); return; }
+
+            // 目标“每列周期”(ms) —— 决定纸速(px/s)
+            const effPeriod = this._colPeriodMs / (
+                Math.max(0.05, this._speedMul) * Math.max(0.05, this._sampleMul)
+            );
+
+            // 需要补写多少列（追帧），解除 FPS 上限
             let need = Math.floor((now - this._lastColTime) / effPeriod);
             if (need <= 0) { this._composite(); return; }
-
-            // 防极端掉帧一次写太多
-            const MAX_BURST = 24;
+            const MAX_BURST = 24;         // 掉帧时一次最多补 24 列，防止长时间卡顿
             if (need > MAX_BURST) need = MAX_BURST;
 
             for (let c = 0; c < need; c++) {
                 this._lastColTime += effPeriod;
 
-                // ↓↓↓ 把你现有“背景估计/门限/求 yTarget/单列脉冲/推入环形缓冲/峰跟踪”那段
-                //     完整搬进这个 for 循环（每循环=写 1 列）。其它逻辑不变。
-            }
-            this._composite();
-
-            // —— dB → y（事件态/基线分离 + 迟滞 + 硬跳）——
-            if (this._lastDb != null) {
-                // 恢复保护：倒计时恢复后的若干毫秒不推进列，避免竖针
-                const nowT = performance.now();
-                if (nowT < this._resumeGuardUntil) { this._composite(); return; }
-
-                // 1) 背景估计：上升限速 + 下降快跟随
-                if (this._baseDb == null) this._baseDb = this._lastDb;
+                // === 1) 背景估计（上升限速、下降快跟随） ===
+                if (this._baseDb == null) this._baseDb = this._lastDb ?? this._dbMin;
                 if (this._lastDb >= this._baseDb) {
                     const noPeak = Math.min(this._lastDb, this._baseDb + this._baseRiseCap);
                     this._baseDb = this._baseDb * this._baseAlpha + noPeak * (1 - this._baseAlpha);
@@ -381,11 +384,9 @@
                     this._baseDb = this._baseDb * this._baseFallAlpha + this._lastDb * (1 - this._baseFallAlpha);
                 }
 
-                // 2) 带“迟滞”的门限：避免来回抖动
+                // === 2) 迟滞门限 + 外部门控（命中保持期） ===
                 const gateUp = this._baseDb + this._gateDb;
                 const gateDown = this._baseDb + this._gateDb * this._gateDownK;
-
-                // 来自 TM 的外部门控（在 hold 期内始终认为命中）
                 const tmActive = (performance.now() < this._tmHoldUntil) && (this._tmLabel && this._tmLabel !== 'BG');
 
                 const wasEvent = this._eventActive;
@@ -394,86 +395,83 @@
                 } else {
                     if (!tmActive && this._lastDb < gateDown) this._eventActive = false;
                 }
-                const edgeSnap = (wasEvent !== this._eventActive);
 
-                // 3) 候选 dB：事件态=真值；基线态=轻平滑（保留自然抖动）
+                // === 3) 候选 dB（事件态=真值；基线态=轻平滑） + 去刺 ===
                 let candDb = this._eventActive
                     ? this._lastDb
                     : (this._lastDb * (1 - this._sBase) + this._baseDb * this._sBase);
 
-                // —— 去刺：只在“非事件态”做 —— //
                 let drawDb;
-                // ……算出 drawDb 之后再加 boost
-                if (tmActive) drawDb = Math.min(this._dbMax, drawDb + this._tmBoostDb);
-
                 if (!this._eventActive) {
-                    // (a) 3 点中值（median-of-3），消单列刺
+                    // 中值 3 点，消单列刺
                     if (this._med3[0] == null) this._med3 = [candDb, candDb, candDb];
                     this._med3Idx = (this._med3Idx + 1) % 3;
                     this._med3[this._med3Idx] = candDb;
-                    const [a, b, c] = this._med3;
-                    const med = (a > b) ? ((b > c) ? b : (a > c ? c : a))
-                        : ((a > c) ? a : (b > c ? c : b));
-
-                    // (b) 最大向下跳幅夹限（两列刺）
+                    const [a, b, c3] = this._med3;
+                    const med = (a > b) ? ((b > c3) ? b : (a > c3 ? c3 : a))
+                        : ((a > c3) ? a : (b > c3 ? c3 : b));
+                    // 最大向下跳幅夹限
                     const prev = (this._prevDrawDb != null) ? this._prevDrawDb : med;
                     const maxDrop = this._despikeDb || 6.0;
                     drawDb = (prev - med > maxDrop) ? (prev - maxDrop) : med;
                 } else {
                     drawDb = candDb; // 事件态保持锋利
                 }
+
+                // 命中抬高（放在算出 drawDb 之后！）
+                if (tmActive) drawDb = Math.min(this._dbMax, drawDb + this._tmBoostDb);
                 this._prevDrawDb = drawDb;
 
-                // 4) 映射到像素
+                // === 4) dB → y 像素 ===
                 const t = Math.max(0, Math.min(1, (drawDb - this._dbMin) / (this._dbMax - this._dbMin)));
                 const yTarget = (this._innerH - 1) * (1 - t);
-
-                // 5) 平滑 / 硬贴
                 if (this._yNow == null) this._yNow = yTarget;
 
+                // 基线像素（用于“下一列强制回基线”）
                 const tb = Math.max(0, Math.min(1, (this._baseDb - this._dbMin) / (this._dbMax - this._dbMin)));
                 const yBase = (this._innerH - 1) * (1 - tb);
 
-                // —— 单列脉冲：把当前列“硬设”为 yTarget，下列强制回基线 —— //
+                // === 5) 单列脉冲 + 回落 ===
                 if (this._spiking > 0) {
-                    this._yNow = yTarget;           // 当前列=峰
+                    this._yNow = yTarget;     // 当前列 = 峰
                     this._spiking--;
                 } else if (this._forceBaseOnce) {
-                    this._yNow = yBase;             // 下一列=基线（直落）
+                    this._yNow = yBase;       // 下一列 = 基线（直落）
                     this._forceBaseOnce = false;
                 } else {
-                    // 进入/退出事件 或 事件态：硬贴；基线态：轻平滑
                     const dy = Math.abs(yTarget - this._yNow);
                     if ((wasEvent !== this._eventActive) || this._eventActive || dy >= this._snapPx) {
-                        this._yNow = yTarget;         // 刀口
+                        this._yNow = yTarget;   // 刀口
                     } else {
-                        const s = this._sBase;        // 非事件：轻平滑
+                        const s = this._sBase;  // 非事件：轻平滑
                         this._yNow = this._yNow * s + yTarget * (1 - s);
                     }
                 }
 
-                // 6) 推入环形缓冲
+                // === 6) 写入一列到环形缓冲 ===
                 this._ys[this._writeIdx] = this._yNow;
                 this._writeIdx = (this._writeIdx + 1) % this._Wpx;
                 if (!this._filled && this._writeIdx === 0) this._filled = true;
 
-                // —— 跟踪命中峰的最高点（y 越小越高） —— //
+                // === 7) 命中峰最高点跟踪 → 到点落永远标记 ===
                 if (this._peakTrack) {
                     const yTop = this._innerY + Math.round(this._yNow || 0);
                     if (yTop < this._peakTrack.minY) this._peakTrack.minY = yTop;
 
                     if (performance.now() >= this._peakTrack.until) {
-                        const xPen = this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1);
+                        const xPen = (this._peakTrack.x != null)
+                            ? this._peakTrack.x            // ★ 用“开始时刻”的绘制头 X
+                            : (this.getCursorX ? this.getCursorX() : (this._innerX + this._innerW - 1));
                         this._hardPeaks.push({ x: xPen + 0.5, y: this._peakTrack.minY + 0.5, color: '#ffcc00' });
                         this._peakTrack = null;
                     }
                 }
-            }
+            } // end for (need)
 
-            // 重画完整折线
+            // === 8) 重画整条折线（根据 _ys）并合成到前景 ===
             const ctx = this._tctx;
             const Wc = this._canvas.width / dpr(), Hc = this._canvas.height / dpr();
-            const x0 = this._innerX, y0 = this._innerY, w = this._innerW;
+            const x0 = this._innerX, y0 = this._innerY;
 
             ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
             ctx.imageSmoothingEnabled = false;
@@ -482,24 +480,25 @@
             const n = this._filled ? this._Wpx : this._writeIdx;
             if (n > 1) {
                 const start = this._filled ? this._writeIdx : 0;
-                ctx.beginPath();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#ff3b30';
+                this._tctx.beginPath();
+                this._tctx.lineWidth = 2;
+                this._tctx.strokeStyle = '#ff3b30';
                 for (let i = 0; i < n; i++) {
                     const idx = (start + i) % this._Wpx;
                     const x = x0 + i;
                     const y = y0 + Math.round(this._ys[idx] || (this._innerH - 1));
-                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    if (i === 0) this._tctx.moveTo(x, y); else this._tctx.lineTo(x, y);
                 }
-                ctx.stroke();
+                this._tctx.stroke();
             }
+
             this._composite();
 
+            // 永久顶点记号（随纸左移，不自动过期）
             const dtHard = (now - (this._lastHardT || now)) / 1000;
             this._lastHardT = now;
             if (this._hardPeaks.length) {
                 const v = this._colsPerSec();
-                const ctx = this._tctx;
                 for (const m of this._hardPeaks) {
                     m.x -= v * dtHard;
                     ctx.beginPath();
@@ -511,41 +510,29 @@
                 }
             }
 
-            // === 判定标记（随折线速度向左移动） ===
+            // 临时竖线 markers（同样按 v 左移）
             if (this._markers.length) {
-                const now = performance.now();
-                if (!this._lastMarkT) this._lastMarkT = now;
-                const dt = (now - this._lastMarkT) / 1000;    // s
-                this._lastMarkT = now;
+                const now2 = performance.now();
+                if (!this._lastMarkT) this._lastMarkT = now2;
+                const dt = (now2 - this._lastMarkT) / 1000;
+                this._lastMarkT = now2;
 
-                const v = this._colsPerSec(); // px/s
-                const ctx = this._tctx;
-
+                const v = this._colsPerSec();
                 for (let i = this._markers.length - 1; i >= 0; i--) {
                     const m = this._markers[i];
-                    // 位置 & 寿命
                     m.x -= v * dt;
-                    m.life -= (now - (m._ts || now));
-                    m._ts = now;
-
-                    // 超界或过期移除
-                    if (m.x < this._innerX || m.life <= 0) {
-                        this._markers.splice(i, 1);
-                        continue;
-                    }
-                    // 绘制竖线
+                    m.life -= (now2 - (m._ts || now2));
+                    m._ts = now2;
+                    if (m.x < this._innerX || m.life <= 0) { this._markers.splice(i, 1); continue; }
                     ctx.beginPath();
-                    ctx.strokeStyle = m.color;
-                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = m.color; ctx.lineWidth = 2;
                     ctx.moveTo(m.x + 0.5, this._innerY);
                     ctx.lineTo(m.x + 0.5, this._innerY + this._innerH);
                     ctx.stroke();
                 }
-
             }
-
-
         },
+
 
 
         _composite() {

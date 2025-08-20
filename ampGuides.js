@@ -7,11 +7,13 @@
 (function (root) {
     const AmpGuides = {
         _notes: [],          // [{time, accent}]
+        _hits: [],                     // [{ t: 命中发生时的乐谱时间(ms) }]
+        _hitStyle: { color: 'rgba(166,79,214,0.55)', w: 2 },  // 淡紫色
         _loopMs: 1,
         _startGapMs: 0,      // 倒计时起始空隙
         _style: {
-            weak: 'rgba(120,160,255,0.28)',
-            strong: 'rgba(120,160,255,0.5)',
+            weak: 'rgba(160,160,160,0.28)',   // 灰
+            strong: 'rgba(220,220,220,0.55)', // 灰（重拍稍亮）
             wWeak: 1,
             wStrong: 1.5
         },
@@ -38,6 +40,17 @@
             this._startGapMs = Math.max(0, ms | 0);
         },
 
+        addHitAt(tMs) {
+            if (!Number.isFinite(tMs)) return;
+            const t = ((tMs % this._loopMs) + this._loopMs) % this._loopMs;
+            this._hits.push({ t });
+        },
+        addHitNow() {
+            const now = (this._getNowMs ? this._getNowMs() : 0);
+            this.addHitAt(now);
+        },
+        clearHits() { this._hits.length = 0; },
+
         clear() {
             this._notes = [];
             this._loopMs = 1;
@@ -47,45 +60,55 @@
         render(ctx, x, y, w, h) {
             if (!ctx || !w || !h || !this._notes.length) return;
 
-            // 参照：音符滚动速度 = rm.scrollSpeed(px/ms) * rm.speedFactor (ms/ms)
-            // 转 px/s 时： S = rm.scrollSpeed * 1000
-            const S = (root.rm?.scrollSpeed || 0.5) * 1000;         // 固定“像素/秒”比例（只由乐谱单位决定）
-            const sf = (root.rm?.speedFactor || 1);                 // speed 滑块倍率（只影响速度，不影响间距）
+            const S = (root.rm?.scrollSpeed || 0.5) * 1000;
             const now = (this._getNowMs ? this._getNowMs() : 0) % this._loopMs;
-
-            // HUD 的“绘制端”在最右：以右边界为“现在时刻”的屏幕位置
             const xHead = (window.SampleUI?.getCursorX?.() ?? (x + w - 1));
-
-            // 一整轮音符对应的像素距离（用于复制铺满整个宽度）
             const periodPx = S * (this._loopMs / 1000);
 
+            // === 第一遍：灰色预设线 ===
             ctx.save();
             for (const n of this._notes) {
-                // 距离“现在”的相对时间（回环修正）
-                let dt = n.t - now;
-                if (dt < 0) dt += this._loopMs;
-
-                // 倒计时：整体右移“COUNTDOWN_MS 的路程”
-                // 注意：这里不乘 speedFactor —— 因为“间距”只取决于谱面时间轴
+                let dt = n.t - now; if (dt < 0) dt += this._loopMs;
                 const base = xHead + S * ((dt + this._startGapMs) / 1000);
-
-                // 复制到可视区（考虑左右多几轮，避免边界闪烁）
                 const k0 = Math.floor((x - base) / periodPx) - 1;
                 const k1 = Math.ceil((x + w - base) / periodPx) + 1;
+
+                const strong = !!n.accent;
+                ctx.strokeStyle = strong ? this._style.strong : this._style.weak;
+                ctx.lineWidth = strong ? this._style.wStrong : this._style.wWeak;
 
                 for (let k = k0; k <= k1; k++) {
                     const xx = Math.round(base + k * periodPx) + 0.5;
                     if (xx < x || xx >= x + w) continue;
-
                     ctx.beginPath();
-                    ctx.strokeStyle = n.accent ? this._style.strong : this._style.weak;
-                    ctx.lineWidth = n.accent ? this._style.wStrong : this._style.wWeak;
                     ctx.moveTo(xx, y);
                     ctx.lineTo(xx, y + h);
                     ctx.stroke();
                 }
             }
             ctx.restore();
+
+            // === 第二遍：永久“打击痕迹”（淡紫） ===
+            if (this._hits.length) {
+                ctx.save();
+                ctx.strokeStyle = this._hitStyle.color;
+                ctx.lineWidth = this._hitStyle.w;
+                for (const h of this._hits) {
+                    let dt = h.t - now; if (dt < 0) dt += this._loopMs;
+                    const base = xHead + S * ((dt + this._startGapMs) / 1000);
+                    const k0 = Math.floor((x - base) / periodPx) - 1;
+                    const k1 = Math.ceil((x + w - base) / periodPx) + 1;
+                    for (let k = k0; k <= k1; k++) {
+                        const xx = Math.round(base + k * periodPx) + 0.5;
+                        if (xx < x || xx >= x + w) continue;
+                        ctx.beginPath();
+                        ctx.moveTo(xx, y);
+                        ctx.lineTo(xx, y + h);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
         }
     };
 
