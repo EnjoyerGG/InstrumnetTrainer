@@ -8,6 +8,8 @@ let metronomeEnabled = false;
 let chartJSON;
 let lastNoteIdx = -1;
 let mic;
+let guides;                // AmpGuides 实例
+let HUD_VPX_AT1 = null;    // “HUD 在 speedFactor=1 时”的基准像素/秒
 const COUNTDOWN_MS = 3000;
 
 const BPM_MIN = 60, BPM_MAX = 240;
@@ -29,6 +31,23 @@ const NOTE_GLYPH = {
     P: '▼',  // Palm
     B: 'B'   // Bass
 };
+
+function syncHudSpeedToNotes() {
+    if (!window.SampleUI) return;
+    if (!rm || typeof rm.scrollSpeed !== 'number' || typeof rm.speedFactor !== 'number') return;
+    if (!window.SampleUI || !SampleUI.getColsPerSec || !SampleUI.setSpeedFactor) return;
+    if (!HUD_VPX_AT1) {
+        // 暂把 HUD 速率设为 1，量一遍基准 v(px/s)
+        const prev = 1;
+        SampleUI.setSpeedFactor(1);
+        HUD_VPX_AT1 = SampleUI.getColsPerSec?.() || 1;     // 需要 sampleUI.js 暴露 getColsPerSec（已暴露）:contentReference[oaicite:3]{index=3}
+        SampleUI.setSpeedFactor(prev);
+    }
+    const vNotes = (rm.scrollSpeed || 0.5) * (rm.speedFactor || 1) * 1000; // px/s
+    const sfHUD = vNotes / HUD_VPX_AT1;
+    SampleUI.setSpeedFactor(sfHUD);                                         // 让 HUD 绘制端速度 = 音符滚动速度
+}
+
 function glyphForAbbr(ab) {
     const k = (ab ?? '').toString().toUpperCase();
     return NOTE_GLYPH[k] || k;
@@ -204,6 +223,10 @@ function layoutRects(cnv) {
     };
     if (window.SampleUI?.resize) {
         SampleUI.resize(RECT.amp.w, RECT.amp.h);  // ★ 使内部画布与槽位一致
+        HUD_VPX_AT1 = null;         // 尺寸变了 → 重新测基准
+        if (rm && window.SampleUI && SampleUI.getColsPerSec) {
+            syncHudSpeedToNotes();
+        }
     }
 
     RECT.drum = {
@@ -276,6 +299,16 @@ function setup() {
 
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);   // 读取 JSON
+
+    // 初始化 AmpGuides
+    guides = AmpGuides.init({
+        getNowMs: () => rm._t(),          // 当前“谱面时间”（ms）:contentReference[oaicite:5]{index=5}
+        getRect: () => RECT.amp
+    });
+    guides.setNotes(rm.scoreNotes, rm.totalDuration);      // 把整轮音符交给它画竖线 :contentReference[oaicite:6]{index=6}
+    // 初始速度绑定：rm 与 HUD 都按当前 speed 滑块
+    //syncHudSpeedToNotes();
+
     metro.onloaded(() => {
         console.log("Metronome loaded!");
         metro.reset();
@@ -310,6 +343,7 @@ function setup() {
         }).then(() => {
             SampleUI.pause();
             SampleUI.setSampleRateMul(35);
+            syncHudSpeedToNotes();
         });
 
         // ③ 自动校准：如果没保存过 offset，就采样 1.5s 把环境噪声对齐到“45 dB”附近
@@ -510,6 +544,8 @@ function setup() {
 
         // —— C) 能量门限的 EMA 清一次，让灵敏度快速贴合新速度 —— //
         _emaE = 0; _emaVar = 1;
+
+        syncHudSpeedToNotes();   // ★ 校准 HUD 绘制速度 = 音符滚动速度
     });
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
@@ -610,6 +646,7 @@ function handleReset() {
         SampleUI.reset();
         SampleUI.pause();
     }
+    guides?.setStartGap(COUNTDOWN_MS);
 }
 
 function startCountdown() {
@@ -618,6 +655,7 @@ function startCountdown() {
     running = false;
     counting = true;
     ctStart = millis();
+    guides?.setStartGap(COUNTDOWN_MS);   // ★ 倒计时阶段：预留 COUNTDOWN_MS 的“路程”
 }
 
 /* ------------ Draw Loop ----------- */
@@ -645,6 +683,7 @@ function draw() {
             running = true;
             rm.resume();
             if (window.SampleUI) SampleUI.resume();
+            guides?.setStartGap(0);
             if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
@@ -679,6 +718,8 @@ function draw() {
         SampleUI.update();
         SampleUI.renderTo(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
+    // ★ 在 HUD 上覆盖画“预设竖线”
+    guides?.render(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
 
     // ===== 分隔线（横向 1 条 + 纵向 2 条）=====
     stroke(220); strokeWeight(2);
