@@ -43,6 +43,8 @@
         _laneGap: 28,      // 上下两条谱线间距（像素）
         _labelFadeMs: 2000,
 
+        _phaseBiasMs: 0,
+
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
             this._nowMs = nowMs || this._nowMs;
@@ -89,7 +91,7 @@
         // —— 扫条位置 —— //
         getBarX(x, w) {
             const now = this._nowMs();
-            const virt = (now * this._speedMul + this._startGapMs) % this._loopMs;
+            const virt = (now * this._speedMul + this._startGapMs + this._phaseBiasMs) % this._loopMs;
             const p = virt / this._loopMs;
             return x + p * w;
         },
@@ -119,22 +121,30 @@
             const fb = this._getFeedback() || [];
             for (const n of this._notes) {
                 const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
-                const yy = n.abbr && n.abbr === n.abbr.toLowerCase() ? yBot : yTop; // 小写=下路（若 JSON 没做区分，全走上路也无妨）
-                const rr = n.accent ? this._rStrong : this._r;
+                const yy = n.abbr && n.abbr === n.abbr.toLowerCase() ? yBot : yTop; // 小写=下路
+                const glyph = this._glyph(n.abbr);
 
-                // 圆点
+                // 半透明“糖葫芦”竖线（自音符向下）
+                const stemTop = yy + 10;
+                const stemBottom = y + h - 10;
+                const stemAlpha = n.accent ? 0.22 : 0.14;
+                ctx.save();
+                ctx.strokeStyle = `rgba(255,255,255,${stemAlpha})`;
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.fillStyle = n.accent ? this._noteStrong : this._note;
-                ctx.arc(xx, yy, rr, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.moveTo(xx, stemTop);
+                ctx.lineTo(xx, stemBottom);
+                ctx.stroke();
+                ctx.restore();
 
-                // 字母
-                if (n.abbr) {
-                    ctx.fillStyle = '#222';
-                    ctx.font = 'bold 11px ui-sans-serif, system-ui, -apple-system';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(this._glyph(n.abbr), xx, yy + rr + 12);
-                }
+                // 音符字符（替代圆点）
+                ctx.save();
+                ctx.fillStyle = n.accent ? this._noteStrong : this._note;
+                ctx.font = (n.accent ? 'bold 18px ' : 'bold 16px ') + 'ui-sans-serif, system-ui, -apple-system';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(glyph || '', xx, yy);
+                ctx.restore();
 
                 // 判定结果（复用 rm.feedbackStates[idx]）
                 const st = fb[n.idx];
@@ -143,12 +153,13 @@
                     ctx.save();
                     ctx.globalAlpha = a;
                     ctx.fillStyle =
-                        st.result === 'Perfect' ? 'rgba(174,79,214,1)'
-                            : st.result === 'Good' ? 'rgba(85,187,90,1)'
-                                : 'rgba(211,47,47,1)';
+                        st.result === 'Perfect' ? 'rgba(174,79,214,1)' :
+                            st.result === 'Good' ? 'rgba(85,187,90,1)' :
+                                'rgba(211,47,47,1)';
                     ctx.font = '13px ui-sans-serif, system-ui, -apple-system';
                     ctx.textAlign = 'center';
-                    ctx.fillText(st.result, xx, yy - (rr + 16));
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(st.result, xx, yy - 14);
                     ctx.restore();
                 }
             }
@@ -215,7 +226,12 @@
                 ctx.stroke();
             }
             ctx.restore();
-        }
+        },
+
+        snapToLeft() {    // ★ 让扫条此刻就在最左边（x==panel左边）
+            const cur = (this._nowMs() * this._speedMul + this._startGapMs) % this._loopMs;
+            this._phaseBiasMs = (this._loopMs - cur) % this._loopMs;
+        },
     };
 
     root.SweepMode = Mode;

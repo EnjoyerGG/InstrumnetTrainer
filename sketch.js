@@ -318,7 +318,7 @@ function setup() {
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
         rectProvider: () => RECT.sweep,
-        speedMultiplier: rm.speedFactor || 1,
+        speedMultiplier: 1,
         getFeedback: () => rm.feedbackStates,   // ★ 让底部也能显示 Perfect/Good/Miss
         glyph: (ab) => glyphForAbbr(ab)         // ★ 复用上面字母映射
     });
@@ -326,6 +326,7 @@ function setup() {
     SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
     // 倒计时：开场预留（若你有 COUNTDOWN_MS）
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
+    SweepMode.snapToLeft();
 
     metro.onloaded(() => {
         console.log("Metronome loaded!");
@@ -529,7 +530,7 @@ function setup() {
         SampleUI.useBeatGrid(true, bpmVal, 4);
         //SampleUI.setSpeedFactor(speedVal);
         guides.syncFixed?.();
-        SweepMode.setSpeedMultiplier(rm.speedFactor || 1);
+        SweepMode.setSpeedMultiplier(1);
 
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
@@ -677,6 +678,7 @@ function handleReset() {
     guides?.clearHits?.();
     SweepMode.clearHits();
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
+    SweepMode.snapToLeft();
 }
 
 function startCountdown() {
@@ -687,6 +689,7 @@ function startCountdown() {
     ctStart = millis();
     guides?.setStartGap(COUNTDOWN_MS);   // ★ 倒计时阶段：预留 COUNTDOWN_MS 的“路程”
     SweepMode.setStartGap(COUNTDOWN_MS);
+    SweepMode.snapToLeft();
 }
 
 /* ------------ Draw Loop ----------- */
@@ -716,6 +719,7 @@ function draw() {
             if (window.SampleUI) SampleUI.resume();
             guides?.setStartGap(0);
             SweepMode.setStartGap(0);
+            SweepMode.snapToLeft();
             if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
