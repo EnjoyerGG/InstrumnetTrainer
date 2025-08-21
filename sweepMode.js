@@ -23,7 +23,7 @@
         _startGapMs: 0,
 
         // ===== 状态 =====
-        _permHits: [],   // [{x}]
+        _permHits: [],   // [{ x, t, idx, dt, l, res }]  // res: 'good'|'early'|'late'|'miss'
         _lastTs: 0,
 
         // ===== 样式 =====
@@ -58,6 +58,16 @@
         _beatMs: 0,                           // 一拍时长（ms），外部注入 rm.noteInterval
         setBeatMs(ms) { this._beatMs = Math.max(0, Number(ms) || 0); return this; },
 
+        _showRMFeedback: false,                 // ★ 不再显示 rm 的 Perfect/Good/Miss 文案
+        // —— 底部 HUD 自己的判定阈值（以“拍”的比例计）——
+        _thrGood: 0.0525,                       // |Δt| < 0.0525 beat → good
+        _thrLate: 0.16,                         // |Δt| > 0.16 beat  → miss
+        setJudgeThresholds(good, late) {         // 可选：外部重设
+            if (Number.isFinite(good)) this._thrGood = Math.max(0, good);
+            if (Number.isFinite(late)) this._thrLate = Math.max(this._thrGood, late);
+            return this;
+        },
+
 
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
@@ -91,8 +101,38 @@
         clearHits() { this._permHits.length = 0; },
         addHitNow() {
             const r = this._rect();
+            const now = this._nowMs();
+            // 虚拟时间：与扫条位置一致
+            const virt = (now * this._speedMul + this._startGapMs + this._phaseBiasMs) % this._loopMs;
             const xBar = this.getBarX(r.x, r.w);
-            this._permHits.push({ x: Math.round(xBar) + 0.5 });
+
+            // 找最近音符（考虑循环，dt 映射到 (-loop/2, +loop/2]）
+            let bestIdx = -1, bestAbs = Infinity, bestDt = 0;
+            for (let i = 0; i < this._notes.length; i++) {
+                let dt = this._notes[i].time - virt;
+                const half = this._loopMs * 0.5;
+                if (dt > half) dt -= this._loopMs;
+                if (dt < -half) dt += this._loopMs;
+                const a = Math.abs(dt);
+                if (a < bestAbs) { bestAbs = a; bestIdx = i; bestDt = dt; }
+            }
+
+            // |Δt| 换成“拍”的比例
+            const beat = this._beatMs || 1;   // 防 0
+            const l = Math.abs(bestDt) / beat;
+            let res;
+            if (l > this._thrLate) res = 'miss';
+            else if (l < this._thrGood) res = 'good';
+            else res = (bestDt > 0 ? 'early' : 'late');   // dt>0：紫线在左（早）；dt<0：紫线在右（晚）
+
+            this._permHits.push({
+                x: Math.round(xBar) + 0.5,
+                t: virt,
+                idx: bestIdx,
+                dt: bestDt,
+                l,
+                res
+            });
         },
 
         // —— 时间(ms) → X 像素（静止谱面）—— //
@@ -191,34 +231,50 @@
                 ctx.restore();
 
                 // 判定反馈
-                const st = fb[n.idx];
-                if (st && st.judged && st.fadeTimer > 0) {
-                    const a = Math.max(0, Math.min(1, st.fadeTimer / this._labelFadeMs));
-                    ctx.save();
-                    ctx.globalAlpha = a;
-                    ctx.fillStyle =
-                        st.result === 'Perfect' ? 'rgba(174,79,214,1)' :
-                            st.result === 'Good' ? 'rgba(85,187,90,1)' :
-                                'rgba(211,47,47,1)';
-                    ctx.font = '13px ui-sans-serif, system-ui, -apple-system';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'bottom';
-                    ctx.fillText(st.result, xx, yy - 14);
-                    ctx.restore();
+                //const st = fb[n.idx];
+                //if (st && st.judged && st.fadeTimer > 0) {
+                if (this._showRMFeedback) {
+                    const st = fb[n.idx];
+                    if (st && st.judged && st.fadeTimer > 0) {
+                        const a = Math.max(0, Math.min(1, st.fadeTimer / this._labelFadeMs));
+                        ctx.save();
+                        ctx.globalAlpha = a;
+                        ctx.fillStyle =
+                            st.result === 'Perfect' ? 'rgba(174,79,214,1)' :
+                                st.result === 'Good' ? 'rgba(85,187,90,1)' :
+                                    'rgba(211,47,47,1)';
+                        ctx.font = '13px ui-sans-serif, system-ui, -apple-system';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(st.result, xx, yy - 14);
+                        ctx.restore();
+                        //}
+                    }
                 }
             }
 
             // 永久命中竖线（也用内层）
             if (this._permHits.length) {
                 ctx.save();
-                ctx.strokeStyle = this._hit;
-                ctx.lineWidth = this._hitW;
-                for (const h0 of this._permHits) {
-                    if (h0.x < x - 6 || h0.x > x + w + 6) continue;
-                    ctx.beginPath();
-                    ctx.moveTo(h0.x, inY + 8);
-                    ctx.lineTo(h0.x, inY + inH - 8);
-                    ctx.stroke();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.font = 'bold 13px ui-sans-serif, system-ui, -apple-system';
+                for (const h of this._permHits) {
+                    if (h.idx == null || h.idx < 0 || h.idx >= this._notes.length) continue;
+                    const n = this._notes[h.idx];
+                    const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
+                    const yy = (n.abbr && n.abbr === n.abbr.toLowerCase()) ? yBot : yTop;
+
+                    let color;
+                    if (h.res === 'good') color = 'rgba(85,187,90,1)';        // 绿色
+                    else if (h.res === 'miss') color = 'rgba(211,47,47,1)';   // 红色
+                    else color = 'rgba(166,79,214,1)';                        // 早/晚：紫色
+
+                    ctx.fillStyle = color;
+                    const label = (h.res === 'good') ? 'GOOD' :
+                        (h.res === 'miss') ? 'MISS' :
+                            (h.res === 'early') ? 'EARLY' : 'LATE';
+                    ctx.fillText(label, xx, yy - 14);
                 }
                 ctx.restore();
             }
