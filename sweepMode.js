@@ -119,7 +119,7 @@
 
             // 两条谱线
             // 两条谱线（可关）
-            const cy = Math.round(inY + inH * 0.58) + 0.5;
+            const cy = Math.round(inY + inH * 0.58 - 15) + 0.5;
             const yTop = cy - this._laneGap / 2;
             const yBot = cy + this._laneGap / 2;
             if (this._showLanes) {
