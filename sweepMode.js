@@ -61,14 +61,14 @@
         _beatMs: 0,                           // 一拍时长（ms），外部注入 rm.noteInterval
         setBeatMs(ms) { this._beatMs = Math.max(0, Number(ms) || 0); return this; },
 
-        _labelFont: 'bold 20px ui-sans-serif, system-ui, -apple-system', // ★ 加粗加大
+        _labelFont: 'bold 30px ui-sans-serif, system-ui, -apple-system', // ★ 加粗加大
         _labelStroke: 'rgba(255,255,255,0.85)',
         _labelStrokeW: 2,
         _labelShadow: 'rgba(255,255,255,0.35)',
         _labelShadowBlur: 3,
         // 反馈文字相对 Loop 行字的位移（右/下为正）
-        _feedShiftX: 22,   // ★ 往左移多少像素（数值越大越靠左）
-        _feedShiftY: 18,   // ★ 往上移多少像素（数值越大越靠上）
+        _feedShiftX: 50,   // ★ 往左移多少像素（数值越大越靠左）
+        _feedShiftY: 40,   // ★ 往上移多少像素（数值越大越靠上）
 
         //右下角灰色框
         _showFeedPanel: false,   // ← 设为 false：不画框；想要小框可改 true
