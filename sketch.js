@@ -779,7 +779,6 @@ function draw() {
     // 竖线：只画到 yBorder（不再延伸到最底）
     line(xSep1, yTopDiv, xSep1, yBorder);
     line(xSep2, yTopDiv, xSep2, yBorder);
-
     pop();
 
     // —— 每帧确保两个 DOM HUD 跟随布局 —— //

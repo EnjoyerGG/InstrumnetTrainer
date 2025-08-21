@@ -199,13 +199,13 @@
             // 右下角说明
             ctx.save();
             ctx.fillStyle = this._text;
-            ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
+            ctx.font = 'bold 16px ui-sans-serif, system-ui, -apple-system';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
             ctx.fillText(
                 `Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`,
-                x + w - 12,
-                inY + inH - 10
+                x + w - 10,
+                inY + inH
             );
             ctx.restore();
         },
