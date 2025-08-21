@@ -340,33 +340,35 @@
                 ctx.restore();
             }
 
-            // —— 右下角反馈：仅文字（无背景），靠 Loop 行字正上方，右对齐 ——
-            // Loop 文案的锚点（你下面绘制 Loop 文案用的就是 x + w - 10, inY + inH）
-            const loopTx = contentRight - this._feedShiftX;  // ★ 向左挪
+            // —— 右下角反馈：只显示“当前一次”（无背景），靠 Loop 行字正上方，右对齐 ——
+            // 与 Loop 文案共用同一右边界（contentRight），并裁剪到内容区内
+            const loopTx = contentRight - this._feedShiftX;  // 右锚点（带你的位移）
             const loopTy = inY + inH;                         // Loop 文案的基线
-            const rows = this._permHits.slice(-5).reverse();
-            const fontPx = parseInt(this._labelFont, 10) || 20;
-            const lineH = Math.round(fontPx * 1.2);         // 行高跟着字号走
-            let ty = loopTy - this._feedShiftY;              // ★ 向上挪                 // 与 Loop 留 6px 间距
 
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(clipX, clipY, clipW, clipH); // ★ 裁剪：不让文字出框
-            ctx.clip();
+            // 只取“最新一次”反馈
+            const lastHit = this._permHits[this._permHits.length - 1];
 
-            for (const h of rows) {
-                ty -= lineH;                        // 逐条向上排
-                if (ty < inY + 8) break;            // 顶部保护
+            if (lastHit) {
+                // 把绘制限制在 HUD 内容矩形内，避免出框
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(clipX, clipY, clipW, clipH);
+                ctx.clip();
 
-                let color = 'rgba(174,79,214,1)';   // EARLY/LATE：紫
+                // 颜色与标签
+                let color = 'rgba(229, 116, 59, 1)'; // 默认紫：EARLY/LATE
                 let label = 'LATE';
-                if (h.res === 'good') { color = 'rgba(85,187,90,1)'; label = 'GOOD'; }
-                else if (h.res === 'miss') { color = 'rgba(211,47,47,1)'; label = 'MISS'; }
-                else if (h.res === 'early') { label = 'EARLY'; }
+                if (lastHit.res === 'good') { color = 'rgba(85,187,90,1)'; label = 'GOOD'; }
+                else if (lastHit.res === 'miss') { color = 'rgba(211,47,47,1)'; label = 'MISS'; }
+                else if (lastHit.res === 'early') { label = 'EARLY'; }
 
+                // 位置：在 Loop 文案上方 _feedShiftY 像素处，右对齐
+                const ty = loopTy - this._feedShiftY;
                 this._drawOutlinedText(ctx, label, loopTx, ty, color, 'right', 'bottom');
+
+                ctx.restore();
             }
-            ctx.restore();
+
 
             // 扫条
             const xBar = this.getBarX(x, w);
