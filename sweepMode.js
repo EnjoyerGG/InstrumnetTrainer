@@ -33,7 +33,7 @@
         _bar: '#ff3b7b',
         _note: '#d0d6e0',
         _noteStrong: '#ffffff',
-        _hit: 'rgba(166,79,214,0.95)',
+        _hit: 'rgba(166,79,214,0.40)',
         _text: 'rgba(255,255,255,0.8)',
         _r: 10,            // note 半径（弱）
         _rStrong: 12,      // note 半径（强）

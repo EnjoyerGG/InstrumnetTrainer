@@ -9,6 +9,10 @@ let chartJSON;
 let lastNoteIdx = -1;
 let mic;
 let guides;                // AmpGuides 实例
+let hasEverStarted = false;  // 是否已经跑过一次
+let isPaused = false;        // 当前是否处于暂停
+let countdownForResume = false;
+
 let HUD_VPX_AT1 = null;    // “HUD 在 speedFactor=1 时”的基准像素/秒
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;   // 底部 Sweep 画布高度（按需改）
@@ -507,12 +511,15 @@ function setup() {
 
     select('#start-btn').mousePressed(handleStart);
     select('#pause-btn').mousePressed(() => {
+        if (!running && !counting) return;
+        isPaused = true;
         running = false;
         if (window.SampleUI) SampleUI.pause();
         //if (window.SampleUI) SampleUI.reset();
         counting = false;
         rm.pause();
         CongaClassifier.stop();
+        stopScoreTickScheduler();
     });
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(() => saveStrings([rm.exportCSV()], 'hits.csv'));
@@ -586,53 +593,48 @@ function setup() {
 async function handleStart() {
     if (running || counting) return;
 
+    // 保证 AudioContext 恢复
     if (typeof getAudioContext === 'function') {
         const ac = getAudioContext();
         if (ac && ac.state !== 'running') {
             try { await ac.resume(); } catch (e) { console.warn(e); }
         }
     }
-
     if (metro?.ctx && metro.ctx.state !== 'running') {
         try { await metro.ctx.resume(); } catch (e) { console.warn(e); }
     }
 
+    // Mic & HUD
     try {
         await mic.start();
         if (window.SampleUI && SampleUI.setMic) SampleUI.setMic(mic);
-        // 仅第一次创建音频链
-        if (!window.__meterAudioReady) {
-            // await SampleUI.setupAudio({
-            //     levelMode: 'rms',
-            //     workletPath: './meter-processor.js',
-            //     offsetDb: Number(localStorage.getItem('splOffset')) || 0
-            // });
-            window.__meterAudioReady = true;
-        }
-        //if (window.SampleUI) { SampleUI.reset(); SampleUI.resume(); }
     } catch (e) { console.warn(e); }
 
+    // === A) 如果是“从暂停处继续”，不要倒计时、不要 snapToLeft ===
+    if (isPaused) {
+        // 仍处于暂停：开启“恢复模式”的倒计时
+        startCountdown({ resume: true });      // ★ 关键
+        return;
+    }
+
+    // === 首次开始（或 Reset 后） → 原流程 ===
     try {
         if (CongaClassifier.setConstraints) {
             CongaClassifier.setConstraints({
-                echoCancellation: false, noiseSuppression: false,
-                autoGainControl: false
+                echoCancellation: false, noiseSuppression: false, autoGainControl: false
             });
         }
-
         CongaClassifier.start();
         if (CongaClassifier.setCooldown) {
-            CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4))); // 设置冷却时间
+            CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 
-    startCountdown();
+    startCountdown({ resume: false });       // ★ 首次/Reset：旧逻辑
     if (window.SampleUI) SampleUI.resume();
-    lastNoteIdx = -1; // 重置音符索引
+    lastNoteIdx = -1;
     metro.reset();
-    metro.useInternalGrid = false;  // 明确用谱面驱动
+    metro.useInternalGrid = false;
     scheduleTicksOnce._lastIdx = -1;
     if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
     scheduleTicksOnce._guardUntil = 0;
@@ -651,9 +653,11 @@ async function handleStart() {
     }
 }
 
+
 function handleReset() {
     running = false;
     counting = false;
+    isPaused = false;
     lastNoteIdx = -1;
     rm.reset();
     rm.pause();
@@ -681,16 +685,26 @@ function handleReset() {
     SweepMode.snapToLeft();
 }
 
-function startCountdown() {
+function startCountdown(opts = {}) {
+    const resume = !!opts.resume;     // ★ 是否为“暂停恢复”的倒计时
+    countdownForResume = resume;
+    hasEverStarted = true;
+
     if (rm.startTime === null) rm.reset();
-    rm.pause();
+    rm.pause();                       // 倒计时期间时间冻结
     running = false;
     counting = true;
     ctStart = millis();
-    guides?.setStartGap(COUNTDOWN_MS);   // ★ 倒计时阶段：预留 COUNTDOWN_MS 的“路程”
-    SweepMode.setStartGap(COUNTDOWN_MS);
-    SweepMode.snapToLeft();
+
+    if (!resume) {
+        // ★ 首次/Reset：倒计时视觉对齐（扫条贴左并整体延后）
+        guides?.setStartGap(COUNTDOWN_MS);
+        SweepMode.setStartGap(COUNTDOWN_MS);
+        SweepMode.snapToLeft();
+    }
+    // ★ 恢复模式：不改相位/不设 startGap，只显示倒计时
 }
+
 
 /* ------------ Draw Loop ----------- */
 function draw() {
@@ -715,17 +729,37 @@ function draw() {
         if (remain <= 0) {
             counting = false;
             running = true;
+            isPaused = false;                       // ★ 清掉暂停态
             rm.resume();
             if (window.SampleUI) SampleUI.resume();
-            guides?.setStartGap(0);
-            SweepMode.setStartGap(0);
-            SweepMode.snapToLeft();
-            if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
+            if (!countdownForResume) {
+                // ★ 首次/Reset 才清 startGap 且贴左
+                guides?.setStartGap(0);
+                SweepMode.setStartGap(0);
+                SweepMode.snapToLeft();
+            }
+            // ★ 恢复模式：不 snapToLeft、不改 startGap
+
+            // 预调度器重启
+            startScoreTickScheduler();
+            if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
             scheduleTicksOnce._guardUntil = 0;
+
+            // 分类器确保在听
+            try {
+                if (!CongaClassifier.isListening || !CongaClassifier.isListening()) {
+                    CongaClassifier.start();
+                }
+                if (CongaClassifier.setCooldown) {
+                    CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
+                }
+            } catch (e) { console.warn(e); }
+        } else {
+            drawCountdown(remain);
         }
-        else drawCountdown(remain);
+
     }
 
     if (running) {
