@@ -47,6 +47,9 @@
         _padTop: 24,     // 面板内容距顶部的内边距（想更低就改大些）
         _padBottom: 12,  // 面板内容距底部的内边距
 
+        _showGrid: false,   // ← 关闭网格横线
+        _showLanes: false,  // ← 关闭两条谱线
+
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
             this._nowMs = nowMs || this._nowMs;
@@ -110,18 +113,21 @@
             const inH = h - this._padTop - this._padBottom;
 
             // 网格
-            this._drawGrid(ctx, x, inY, w, inH);
+            if (this._showGrid) this._drawGrid(ctx, x, inY, w, inH);
 
             // 两条谱线
+            // 两条谱线（可关）
             const cy = Math.round(inY + inH * 0.58) + 0.5;
             const yTop = cy - this._laneGap / 2;
             const yBot = cy + this._laneGap / 2;
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(x + 16, yTop); ctx.lineTo(x + w - 16, yTop); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(x + 16, yBot); ctx.lineTo(x + w - 16, yBot); ctx.stroke();
-            ctx.restore();
+            if (this._showLanes) {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + 16, yTop); ctx.lineTo(x + w - 16, yTop); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + 16, yBot); ctx.lineTo(x + w - 16, yBot); ctx.stroke();
+                ctx.restore();
+            }
 
             // 音符（糖葫芦）
             const fb = this._getFeedback() || [];
