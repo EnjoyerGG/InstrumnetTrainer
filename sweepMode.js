@@ -356,7 +356,7 @@
                 ctx.clip();
 
                 // 颜色与标签
-                let color = 'rgba(229, 116, 59, 1)'; // 默认紫：EARLY/LATE
+                let color = 'rgba(216, 87, 7, 1)'; // 默认紫：EARLY/LATE
                 let label = 'LATE';
                 if (lastHit.res === 'good') { color = 'rgba(85,187,90,1)'; label = 'GOOD'; }
                 else if (lastHit.res === 'miss') { color = 'rgba(211,47,47,1)'; label = 'MISS'; }
