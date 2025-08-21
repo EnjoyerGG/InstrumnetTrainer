@@ -137,6 +137,13 @@
             ctx.restore();
         },
 
+        // —— 读取当前 Loop 的循环号（整型，0,1,2,...）—— //
+        getCurrentCycle() {
+            const now = this._nowMs();
+            const phase = (now * this._speedMul + this._startGapMs + this._phaseBiasMs);
+            return Math.floor(phase / this._loopMs);
+        },
+
         // 倒计时（ms）
         setStartGap(ms = 0) { this._startGapMs = Math.max(0, Number(ms) || 0); },
 

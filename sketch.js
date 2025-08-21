@@ -29,6 +29,13 @@ const ACCENT_MODE = 'score';
 let METRO_OFFSET_STEPS = 0;
 function getMetroOffsetMs() { return (METRO_OFFSET_STEPS || 0) * (rm?.noteInterval || 0); }
 
+// —— 导出面板队列（仅存最近 10 张底部谱面截图）——
+window.SWEEP_EXPORT_QUEUE = [];
+const SWEEP_EXPORT_MAX = 10;
+
+let _lastCycleForSnap = null;   // 最近一次已保存快照的循环号
+
+
 const NOTE_GLYPH = {
     S: '×',  // Slap
     O: 'O',  // Open tone
@@ -332,6 +339,7 @@ function setup() {
     // 倒计时：开场预留（若你有 COUNTDOWN_MS）
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
+    _lastCycleForSnap = SweepMode.getCurrentCycle();
 
     metro.onloaded(() => {
         console.log("Metronome loaded!");
@@ -523,28 +531,43 @@ function setup() {
         stopScoreTickScheduler();
     });
     select('#reset-btn').mousePressed(handleReset);
+    // 只截底部 HUD（RECT.sweep），把“当下的全部紫线”作为一张面板入队，
+
+    // 一次性把队列里的面板竖向拼接成一张 PNG 导出
     select('#export-btn').mousePressed(() => {
-        // 1) 打开档案模式：渲染所有历史紫线
-        const prev = window.SweepMode?._showArchive;
-        if (window.SweepMode?.showArchive) SweepMode.showArchive(true);
+        // 如果队列为空，兼容：先截一张当前面板（以免导出空图）
+        if (SWEEP_EXPORT_QUEUE.length === 0) {
+            const r0 = RECT.sweep;
+            const curImg = get(r0.x, r0.y, r0.w, r0.h);
+            SWEEP_EXPORT_QUEUE.push(curImg);
+        }
 
-        // 2) 等一帧让画面按“档案模式”刷新，然后抓图
-        setTimeout(() => {
-            const ts = new Date();
-            const name =
-                `export_${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}_` +
-                `${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}${String(ts.getSeconds()).padStart(2, '0')}`;
+        const r = RECT.sweep;
+        const n = SWEEP_EXPORT_QUEUE.length;
+        const totalH = r.h * n;
 
-            // 导出主画布 PNG
-            saveCanvas(name, 'png');
+        // 用离屏画布把 N 张面板自上而下拼接
+        const g = createGraphics(r.w, totalH);
+        g.clear(); // 透明背景；想要纯黑可改 g.background(0);
+        for (let i = 0; i < n; i++) {
+            g.image(SWEEP_EXPORT_QUEUE[i], 0, i * r.h);
+            // 可选：分隔线
+            // g.noStroke(); g.fill(255, 24); g.rect(0, i * r.h, r.w, 1);
+        }
 
-            // 同时导出命中 CSV（可选，保留你以前的功能）
-            saveStrings([rm.exportCSV()], `${name}.csv`);
+        // 导出一张 PNG
+        const ts = new Date();
+        const name =
+            `stack_${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}_` +
+            `${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}${String(ts.getSeconds()).padStart(2, '0')}`;
+        saveCanvas(g, name, 'png');
 
-            // 3) 恢复运行模式：只显示“本轮”紫线
-            if (window.SweepMode?.showArchive) SweepMode.showArchive(!!prev);
-        }, 60); // 给一帧时间刷新
+        // 不清空队列：继续保持“最多 10 张，FIFO”的滚动窗口
+        // 若导出后想清空，下行解注释：
+        // SWEEP_EXPORT_QUEUE.length = 0;
     });
+
+
 
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
@@ -730,6 +753,26 @@ function startCountdown(opts = {}) {
 
 /* ------------ Draw Loop ----------- */
 function draw() {
+    // —— 每帧开头：如检测到“跨轮”，立即把上一帧画面里的底部面板截图入队 —— //
+    if (window.SweepMode?.getCurrentCycle) {
+        const cur = SweepMode.getCurrentCycle();
+        if (_lastCycleForSnap == null) {
+            _lastCycleForSnap = cur;
+        } else if (cur !== _lastCycleForSnap) {
+            // 发生跨轮：此刻画布上还是“上一轮”的画面，先截取面板区域
+            const r = RECT.sweep;
+            const panelImg = get(r.x, r.y, r.w, r.h);   // p5.Image（上一帧已渲染的面板）
+
+            // 入队（最多 10 张）
+            SWEEP_EXPORT_QUEUE.push(panelImg);
+            if (SWEEP_EXPORT_QUEUE.length > SWEEP_EXPORT_MAX) SWEEP_EXPORT_QUEUE.shift();
+
+            // 记录“本轮号”
+            _lastCycleForSnap = cur;
+        }
+    }
+
+
     background('#3a3a3a');
     judgeLineGlow *= 0.9;
     if (judgeLineGlow < 0.01) judgeLineGlow = 0;
