@@ -194,7 +194,13 @@
             ctx.save();
             ctx.fillStyle = this._text;
             ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
-            ctx.fillText(`Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`, x + 12, y + h - 10);
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(
+                `Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`,
+                x + w - 12,           // ← 右侧 12px 内边距
+                y + h - 10            // ← 底部 10px 内边距
+            );
             ctx.restore();
         },
 
