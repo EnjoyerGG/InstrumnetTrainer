@@ -85,6 +85,13 @@
             return this;
         },
 
+        // 命中线档案控制
+        _showArchive: false,        // 运行时 false：仅画本轮；导出时 true：画所有历史
+        _archiveMaxCycles: 0,       // 可选：>0 时按循环号裁剪最老数据（0 表示不裁剪）
+        showArchive(flag) { this._showArchive = !!flag; return this; },
+        clearArchive() { this._permHits.length = 0; return this; },
+
+
 
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
@@ -141,9 +148,10 @@
         addHitNow() {
             const r = this._rect();
             const now = this._nowMs();
-            // 虚拟时间：与扫条位置一致
-            const virt = (now * this._speedMul + this._startGapMs + this._phaseBiasMs) % this._loopMs;
-            const xBar = this.getBarX(r.x, r.w);
+            const phaseNow = (now * this._speedMul + this._startGapMs + this._phaseBiasMs);
+            const curCyc = Math.floor(phaseNow / this._loopMs);
+            const virt = phaseNow % this._loopMs;                         // 本轮内的时间（0~loopMs）
+            const cyc = Math.floor(phaseNow / this._loopMs);             // 所在循环号（可为很大的整数）
 
             // 找最近音符（考虑循环，dt 映射到 (-loop/2, +loop/2]）
             let bestIdx = -1, bestAbs = Infinity, bestDt = 0;
@@ -164,15 +172,24 @@
             else if (l < this._thrGood) res = 'good';
             else res = (bestDt > 0 ? 'early' : 'late');   // dt>0：紫线在左（早）；dt<0：紫线在右（晚）
 
+            // ▼ 存“循环号 + 本轮时间”而不是固定像素
             this._permHits.push({
-                x: Math.round(xBar) + 0.5,
-                t: virt,
+                cyc,              // 第几轮
+                t: virt,          // 该轮内的时间（ms）
                 idx: bestIdx,
                 dt: bestDt,
                 l,
                 res,
-                sys: Date.now()
+                wall: Date.now()
             });
+
+            // 可选：按循环号裁剪老数据
+            if (this._archiveMaxCycles > 0) {
+                const minCyc = cyc - this._archiveMaxCycles;
+                let i = 0;
+                while (i < this._permHits.length && this._permHits[i].cyc < minCyc) i++;
+                if (i > 0) this._permHits.splice(0, i);
+            }
         },
 
         // —— 时间(ms) → X 像素（静止谱面）—— //
@@ -301,17 +318,22 @@
                 }
             }
 
+            const nowMs = this._nowMs();
+            const phaseNow = (nowMs * this._speedMul + this._startGapMs + this._phaseBiasMs);
+            const curCyc = Math.floor(phaseNow / this._loopMs);
             // 永久命中竖线（也用内层）
             if (this._permHits.length) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = this._hit;
-                ctx.lineWidth = this._hitW;
-                for (const h0 of this._permHits) {
-                    if (h0.x < x - 6 || h0.x > x + w + 6) continue;
+                ctx.strokeStyle = this._hit;       // rgba(166,79,214,0.45)
+                ctx.lineWidth = this._hitW;      // 3
+                for (const h of this._permHits) {
+                    if (!this._showArchive && h.cyc !== curCyc) continue; // 只画本轮
+                    const xx = Math.round(this.timeToX(h.t, x, w)) + 0.5; // 从“本轮时间”换 x
+                    if (xx < x - 6 || xx > x + w + 6) continue;
                     ctx.beginPath();
-                    ctx.moveTo(h0.x, inY + 8);
-                    ctx.lineTo(h0.x, inY + inH - 8);
+                    ctx.moveTo(xx, inY + 8);
+                    ctx.lineTo(xx, inY + inH - 8);
                     ctx.stroke();
                 }
                 ctx.restore();

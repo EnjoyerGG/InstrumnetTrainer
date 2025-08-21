@@ -523,7 +523,28 @@ function setup() {
         stopScoreTickScheduler();
     });
     select('#reset-btn').mousePressed(handleReset);
-    select('#export-btn').mousePressed(() => saveStrings([rm.exportCSV()], 'hits.csv'));
+    select('#export-btn').mousePressed(() => {
+        // 1) 打开档案模式：渲染所有历史紫线
+        const prev = window.SweepMode?._showArchive;
+        if (window.SweepMode?.showArchive) SweepMode.showArchive(true);
+
+        // 2) 等一帧让画面按“档案模式”刷新，然后抓图
+        setTimeout(() => {
+            const ts = new Date();
+            const name =
+                `export_${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}_` +
+                `${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}${String(ts.getSeconds()).padStart(2, '0')}`;
+
+            // 导出主画布 PNG
+            saveCanvas(name, 'png');
+
+            // 同时导出命中 CSV（可选，保留你以前的功能）
+            saveStrings([rm.exportCSV()], `${name}.csv`);
+
+            // 3) 恢复运行模式：只显示“本轮”紫线
+            if (window.SweepMode?.showArchive) SweepMode.showArchive(!!prev);
+        }, 60); // 给一帧时间刷新
+    });
 
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
