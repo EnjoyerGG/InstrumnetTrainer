@@ -44,6 +44,8 @@
         _labelFadeMs: 2000,
 
         _phaseBiasMs: 0,
+        _padTop: 24,     // 面板内容距顶部的内边距（想更低就改大些）
+        _padBottom: 12,  // 面板内容距底部的内边距
 
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
@@ -100,14 +102,18 @@
         render(ctx, x, y, w, h) {
             if (!ctx || !w || !h) return;
 
-            // 背板
+            // 外框保持原位
             this._roundRect(ctx, x, y, w, h, this._corner, this._bg, this._frame);
 
-            // 网格（横线）
-            this._drawGrid(ctx, x, y, w, h);
+            // ★ 内层区域：把内容整体下移（留缝）
+            const inY = y + this._padTop;
+            const inH = h - this._padTop - this._padBottom;
 
-            // 两条谱线（模仿上半部）
-            const cy = Math.round(y + h * 0.58) + 0.5;   // 下路中心
+            // 网格
+            this._drawGrid(ctx, x, inY, w, inH);
+
+            // 两条谱线
+            const cy = Math.round(inY + inH * 0.58) + 0.5;
             const yTop = cy - this._laneGap / 2;
             const yBot = cy + this._laneGap / 2;
             ctx.save();
@@ -117,16 +123,16 @@
             ctx.beginPath(); ctx.moveTo(x + 16, yBot); ctx.lineTo(x + w - 16, yBot); ctx.stroke();
             ctx.restore();
 
-            // 音符（静止、铺满整宽）
+            // 音符（糖葫芦）
             const fb = this._getFeedback() || [];
             for (const n of this._notes) {
                 const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
-                const yy = n.abbr && n.abbr === n.abbr.toLowerCase() ? yBot : yTop; // 小写=下路
+                const yy = n.abbr && n.abbr === n.abbr.toLowerCase() ? yBot : yTop;
                 const glyph = this._glyph(n.abbr);
 
-                // 半透明“糖葫芦”竖线（自音符向下）
+                // 竖线
                 const stemTop = yy + 10;
-                const stemBottom = y + h - 10;
+                const stemBottom = inY + inH - 10;
                 const stemAlpha = n.accent ? 0.22 : 0.14;
                 ctx.save();
                 ctx.strokeStyle = `rgba(255,255,255,${stemAlpha})`;
@@ -137,7 +143,7 @@
                 ctx.stroke();
                 ctx.restore();
 
-                // 音符字符（替代圆点）
+                // 字符
                 ctx.save();
                 ctx.fillStyle = n.accent ? this._noteStrong : this._note;
                 ctx.font = (n.accent ? 'bold 18px ' : 'bold 16px ') + 'ui-sans-serif, system-ui, -apple-system';
@@ -146,7 +152,7 @@
                 ctx.fillText(glyph || '', xx, yy);
                 ctx.restore();
 
-                // 判定结果（复用 rm.feedbackStates[idx]）
+                // 判定反馈
                 const st = fb[n.idx];
                 if (st && st.judged && st.fadeTimer > 0) {
                     const a = Math.max(0, Math.min(1, st.fadeTimer / this._labelFadeMs));
@@ -164,7 +170,7 @@
                 }
             }
 
-            // 永久命中竖线
+            // 永久命中竖线（也用内层）
             if (this._permHits.length) {
                 ctx.save();
                 ctx.strokeStyle = this._hit;
@@ -172,8 +178,8 @@
                 for (const h0 of this._permHits) {
                     if (h0.x < x - 6 || h0.x > x + w + 6) continue;
                     ctx.beginPath();
-                    ctx.moveTo(h0.x, y + 8);
-                    ctx.lineTo(h0.x, y + h - 8);
+                    ctx.moveTo(h0.x, inY + 8);
+                    ctx.lineTo(h0.x, inY + inH - 8);
                     ctx.stroke();
                 }
                 ctx.restore();
@@ -185,12 +191,12 @@
             ctx.strokeStyle = this._bar;
             ctx.lineWidth = this._barW;
             ctx.beginPath();
-            ctx.moveTo(xBar, y + 6);
-            ctx.lineTo(xBar, y + h - 6);
+            ctx.moveTo(xBar, inY + 6);
+            ctx.lineTo(xBar, inY + inH - 6);
             ctx.stroke();
             ctx.restore();
 
-            // 底部说明
+            // 右下角说明
             ctx.save();
             ctx.fillStyle = this._text;
             ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
@@ -198,11 +204,12 @@
             ctx.textBaseline = 'bottom';
             ctx.fillText(
                 `Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`,
-                x + w - 12,           // ← 右侧 12px 内边距
-                y + h - 10            // ← 底部 10px 内边距
+                x + w - 12,
+                inY + inH - 10
             );
             ctx.restore();
         },
+
 
         // —— 工具 —— //
         _roundRect(ctx, x, y, w, h, r, fill, stroke) {

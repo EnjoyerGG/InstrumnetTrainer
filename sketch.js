@@ -241,9 +241,9 @@ function layoutRects(cnv) {
     // 下层：新增 Sweep 画布（整行铺满）
     RECT.sweep = {
         x: GRID.pad,
-        y: hudY + hudH + GRID.pad,
+        y: hudY + hudH + GRID.pad + 20,
         w: width - GRID.pad * 2,
-        h: sweepH
+        h: sweepH - 20
     };
 
     // —— 把两个 DOM 面板摆到中/右两格 —— //
@@ -763,10 +763,24 @@ function draw() {
 
 
     // ===== 分隔线（横向 1 条 + 纵向 2 条）=====
-    stroke(220); strokeWeight(2);
-    line(0, RECT.amp.y - GRID.pad, width, RECT.amp.y - GRID.pad);               // 上下分界
-    line(RECT.drum.x - GRID.pad, RECT.amp.y - GRID.pad, RECT.drum.x - GRID.pad, height); // 左/中
-    line(RECT.mic.x - GRID.pad, RECT.amp.y - GRID.pad, RECT.mic.x - GRID.pad, height); // 中/右
+    push();
+    stroke(220);
+    strokeWeight(2);
+    // 像素对齐更锐利
+    const xSep1 = Math.round(RECT.drum.x - GRID.pad) + 0.5;   // 左/中
+    const xSep2 = Math.round(RECT.mic.x - GRID.pad) + 0.5;   // 中/右
+    const yTopDiv = Math.round(RECT.amp.y - GRID.pad) + 0.5;   // 原先的上部分界线
+    const yBorder = Math.round(RECT.sweep.y - GRID.pad - 10) + 0.5;  // ★ 新增：最下方 HUD 的“上边框”
+
+    // 水平线：保留上部那条 + 新增下部 HUD 顶边这条
+    line(0, yTopDiv, width, yTopDiv);
+    line(0, yBorder, width, yBorder);   // ★ 新增边框线
+
+    // 竖线：只画到 yBorder（不再延伸到最底）
+    line(xSep1, yTopDiv, xSep1, yBorder);
+    line(xSep2, yTopDiv, xSep2, yBorder);
+
+    pop();
 
     // —— 每帧确保两个 DOM HUD 跟随布局 —— //
     layoutRects(this._renderer ? this._renderer : { elt: document.querySelector('canvas') });
