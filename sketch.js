@@ -315,16 +315,15 @@ function setup() {
     // 初始速度绑定：rm 与 HUD 都按当前 speed 滑块
     //syncHudSpeedToNotes();
 
-    // 新模式实例（传入谱面时间、画布矩形）
-    window.SweepMode = SweepMode.init({
-        nowMs: () => rm._t(),                 // 用你的谱面时钟
+    SweepMode = SweepMode.init({
+        nowMs: () => rm._t(),
         rectProvider: () => RECT.sweep,
-        speedMultiplier: 1                    // 可由 speed 滑块改它
+        speedMultiplier: rm.speedFactor || 1,
+        getFeedback: () => rm.feedbackStates,   // ★ 让底部也能显示 Perfect/Good/Miss
+        glyph: (ab) => glyphForAbbr(ab)         // ★ 复用上面字母映射
     });
-
     // 把 rm 读到的音符喂给它（和 rhythmManager 的 notes 同源）
     SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
-
     // 倒计时：开场预留（若你有 COUNTDOWN_MS）
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
 
@@ -459,6 +458,7 @@ function setup() {
                     SampleUI.setExternalHit(label, confidence, 80);
                     SampleUI.pushMarker('#a64fd6', 900);  // 一条紫色竖线，约 0.9s 后淡出
                     guides?.addHitNow?.();
+                    SweepMode.addHitNow();
                 }
             }
         });
@@ -529,6 +529,7 @@ function setup() {
         SampleUI.useBeatGrid(true, bpmVal, 4);
         //SampleUI.setSpeedFactor(speedVal);
         guides.syncFixed?.();
+        SweepMode.setSpeedMultiplier(rm.speedFactor || 1);
 
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
@@ -674,6 +675,8 @@ function handleReset() {
     }
     guides?.setStartGap(COUNTDOWN_MS);
     guides?.clearHits?.();
+    SweepMode.clearHits();
+    SweepMode.setStartGap(COUNTDOWN_MS || 0);
 }
 
 function startCountdown() {
@@ -683,6 +686,7 @@ function startCountdown() {
     counting = true;
     ctStart = millis();
     guides?.setStartGap(COUNTDOWN_MS);   // ★ 倒计时阶段：预留 COUNTDOWN_MS 的“路程”
+    SweepMode.setStartGap(COUNTDOWN_MS);
 }
 
 /* ------------ Draw Loop ----------- */
@@ -711,6 +715,7 @@ function draw() {
             rm.resume();
             if (window.SampleUI) SampleUI.resume();
             guides?.setStartGap(0);
+            SweepMode.setStartGap(0);
             if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
 
             if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
@@ -867,31 +872,13 @@ function mousePressed() {
     // 3) 其它交互（例如训练用的人工命中、鼓面闪光等）
     if (running) {
         rm.registerHit();
+        SweepMode.addHitNow();
         judgeLineGlow = 1;
     }
     if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
         DrumCanvas.trigger('EDGE', 360);
     }
 }
-
-function mouseClicked() {
-    if (guides && RECT && RECT.amp) {
-        const r = RECT.amp;
-        if (mouseX >= r.x && mouseX < r.x + r.w && mouseY >= r.y && mouseY < r.y + r.h) {
-            guides.addHitNow?.();
-            window.SampleUI?.pushMarker?.('#a64fd6', 900);
-        }
-    }
-    if (window.SampleUI && SampleUI.pointerDown(mouseX, mouseY)) return;
-    if (running) {
-        rm.registerHit();
-        judgeLineGlow = 1;
-    }
-    if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
-        DrumCanvas.trigger('EDGE', 360);
-    }
-}
-
 
 // —— Mic HUD 状态 —— //
 const HUD = {

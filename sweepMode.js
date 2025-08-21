@@ -1,29 +1,32 @@
 // sweepMode.js
-// 静止谱面 + 左→右扫条（Bar）模式。
-// ─ 由 JSON/你的 rm 提供 notes（ms 时间）与 loop 时长。
-// ─ 音符静止按时间等距铺满画布宽度，speed 仅影响“扫条速度”，不会改变音符间隔。
-// ─ 支持倒计时 startGapMs：倒计时期间扫条延后，确保第一拍对上。
-// ─ 可记录命中（鼠标/麦克风）在扫条处打“永久竖线”。
+// 静止谱面 + 左→右扫条模式（底部新画布）
+// - 音符静止，按 0..Loop 映射到画布宽度，speed 只影响扫条速度；
+// - 读取外部 rm.scoreNotes（time/accent/abbr/...），Loop = rm.totalDuration；
+// - 支持倒计时 startGapMs；
+// - 渲染 Perfect/Good/Miss：复用 rm.feedbackStates；
+// - 鼠标/麦克风命中：addHitNow() 在“当前扫条位置”刻一根永久紫线。
 
 (function (root) {
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
     const Mode = {
-        // ---- 注入 ----
-        _nowMs: () => 0,                // 谱面时间（建议传 rm._t）
-        _rect: () => ({ x: 0, y: 0, w: 0, h: 0 }), // 画布矩形（由外部给）
-        _speedMul: 1,                   // 额外播放倍率（可选）
+        // ===== 注入 =====
+        _nowMs: () => 0,
+        _rect: () => ({ x: 0, y: 0, w: 0, h: 0 }),
+        _speedMul: 1,
+        _getFeedback: () => [],              // () => rm.feedbackStates
+        _glyph: (ab) => (ab || ''),          // (abbr) => 可渲染字符
 
-        // ---- 数据 ----
+        // ===== 数据 =====
         _loopMs: 1,
-        _notes: [],    // [{time(ms), accent:boolean}]
+        _notes: [],      // [{ idx, time, accent, abbr, drum }]
         _startGapMs: 0,
 
-        // ---- 状态 ----
-        _permHits: [], // 永久命中痕迹：{ x }
-        _lastTs: 0,    // for dt
+        // ===== 状态 =====
+        _permHits: [],   // [{x}]
+        _lastTs: 0,
 
-        // ---- 样式 ----
+        // ===== 样式 =====
         _bg: '#16181c',
         _frame: '#666b73',
         _grid: 'rgba(255,255,255,0.06)',
@@ -32,25 +35,32 @@
         _noteStrong: '#ffffff',
         _hit: 'rgba(166,79,214,0.95)',
         _text: 'rgba(255,255,255,0.8)',
-        _r: 10,         // note 半径（弱）
-        _rStrong: 12,   // note 半径（强）
-        _barW: 3,       // 打击条宽度
-        _hitW: 3,       // 命中竖线宽度
-        _corner: 12,    // 圆角
+        _r: 10,            // note 半径（弱）
+        _rStrong: 12,      // note 半径（强）
+        _barW: 3,          // 扫条宽
+        _hitW: 3,          // 命中竖线宽
+        _corner: 12,       // 圆角
+        _laneGap: 28,      // 上下两条谱线间距（像素）
+        _labelFadeMs: 2000,
 
         // —— 初始化 —— //
-        init({ nowMs, rectProvider, speedMultiplier } = {}) {
+        init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
             this._nowMs = nowMs || this._nowMs;
             this._rect = rectProvider || this._rect;
             this._speedMul = Number(speedMultiplier || 1);
+            if (typeof getFeedback === 'function') this._getFeedback = getFeedback;
+            if (typeof glyph === 'function') this._glyph = glyph;
             return this;
         },
 
-        // 设置音符 + 循环总时长（单位 ms）
+        // —— 同步谱面 —— //
         setNotes(notes = [], loopMs = 1) {
-            this._notes = (notes || []).map(n => ({
+            // 保留索引，便于按 rm.feedbackStates[idx] 找到判定结果
+            this._notes = (notes || []).map((n, i) => ({
+                idx: i,
                 time: Number(n._displayTime ?? n.time) || 0,
-                accent: (n.accent | 0) === 1
+                accent: (n.accent | 0) === 1,
+                abbr: n.abbr || (n.type ? String(n.type)[0].toUpperCase() : '')
             }));
             this._loopMs = Math.max(1, Number(loopMs) || 1);
         },
@@ -58,31 +68,28 @@
         // 倒计时（ms）
         setStartGap(ms = 0) { this._startGapMs = Math.max(0, Number(ms) || 0); },
 
-        // 额外播放倍率（不改音符间隔，只改扫条速度）
+        // 只影响扫条速度，不改音符间隔
         setSpeedMultiplier(k = 1) { this._speedMul = Math.max(0.05, Number(k) || 1); },
 
-        // 清理永久命中
+        // 命中痕迹
         clearHits() { this._permHits.length = 0; },
-
-        // 记录一次命中：在“当前扫条位置”打永久竖线
         addHitNow() {
             const r = this._rect();
             const xBar = this.getBarX(r.x, r.w);
             this._permHits.push({ x: Math.round(xBar) + 0.5 });
         },
 
-        // —— 映射：时间(ms) -> X 像素（静止谱面，按 loop 等比映射） —— //
+        // —— 时间(ms) → X 像素（静止谱面）—— //
         timeToX(tMs, x, w) {
             const p = ((tMs % this._loopMs) + this._loopMs) / this._loopMs; // 0..1
             return x + p * w;
         },
 
-        // —— 扫条位置：随时间左→右（受 startGap 与 speedMultiplier 影响） —— //
+        // —— 扫条位置 —— //
         getBarX(x, w) {
             const now = this._nowMs();
-            // 倒计时：整体延后；speedMul：整体加速/减速
             const virt = (now * this._speedMul + this._startGapMs) % this._loopMs;
-            const p = virt / this._loopMs; // 0..1
+            const p = virt / this._loopMs;
             return x + p * w;
         },
 
@@ -96,35 +103,56 @@
             // 网格（横线）
             this._drawGrid(ctx, x, y, w, h);
 
-            // 中线轨道
-            const cy = Math.round(y + h * 0.55) + 0.5;
+            // 两条谱线（模仿上半部）
+            const cy = Math.round(y + h * 0.58) + 0.5;   // 下路中心
+            const yTop = cy - this._laneGap / 2;
+            const yBot = cy + this._laneGap / 2;
             ctx.save();
             ctx.strokeStyle = 'rgba(255,255,255,0.08)';
             ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x + 16, cy);
-            ctx.lineTo(x + w - 16, cy);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 16, yTop); ctx.lineTo(x + w - 16, yTop); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + 16, yBot); ctx.lineTo(x + w - 16, yBot); ctx.stroke();
             ctx.restore();
 
-            // 音符（静止）
+            // 音符（静止、铺满整宽）
+            const fb = this._getFeedback() || [];
             for (const n of this._notes) {
                 const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
+                const yy = n.abbr && n.abbr === n.abbr.toLowerCase() ? yBot : yTop; // 小写=下路（若 JSON 没做区分，全走上路也无妨）
                 const rr = n.accent ? this._rStrong : this._r;
+
+                // 圆点
                 ctx.beginPath();
                 ctx.fillStyle = n.accent ? this._noteStrong : this._note;
-                ctx.arc(xx, cy, rr, 0, Math.PI * 2);
+                ctx.arc(xx, yy, rr, 0, Math.PI * 2);
                 ctx.fill();
-                // 小三角（可选）
-                ctx.beginPath();
-                ctx.moveTo(xx, cy + rr + 6);
-                ctx.lineTo(xx - 4, cy + rr + 14);
-                ctx.lineTo(xx + 4, cy + rr + 14);
-                ctx.closePath();
-                ctx.fill();
+
+                // 字母
+                if (n.abbr) {
+                    ctx.fillStyle = '#222';
+                    ctx.font = 'bold 11px ui-sans-serif, system-ui, -apple-system';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(this._glyph(n.abbr), xx, yy + rr + 12);
+                }
+
+                // 判定结果（复用 rm.feedbackStates[idx]）
+                const st = fb[n.idx];
+                if (st && st.judged && st.fadeTimer > 0) {
+                    const a = Math.max(0, Math.min(1, st.fadeTimer / this._labelFadeMs));
+                    ctx.save();
+                    ctx.globalAlpha = a;
+                    ctx.fillStyle =
+                        st.result === 'Perfect' ? 'rgba(174,79,214,1)'
+                            : st.result === 'Good' ? 'rgba(85,187,90,1)'
+                                : 'rgba(211,47,47,1)';
+                    ctx.font = '13px ui-sans-serif, system-ui, -apple-system';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(st.result, xx, yy - (rr + 16));
+                    ctx.restore();
+                }
             }
 
-            // 永久命中竖线（和扫条同色系）
+            // 永久命中竖线
             if (this._permHits.length) {
                 ctx.save();
                 ctx.strokeStyle = this._hit;
@@ -139,7 +167,7 @@
                 ctx.restore();
             }
 
-            // 扫条（当前时间）
+            // 扫条
             const xBar = this.getBarX(x, w);
             ctx.save();
             ctx.strokeStyle = this._bar;
@@ -154,12 +182,11 @@
             ctx.save();
             ctx.fillStyle = this._text;
             ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
-            const max = Math.max(...this._notes.map(n => n.time), 0);
             ctx.fillText(`Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`, x + 12, y + h - 10);
             ctx.restore();
         },
 
-        // —— 工具：绘制圆角面板 + 网格 —— //
+        // —— 工具 —— //
         _roundRect(ctx, x, y, w, h, r, fill, stroke) {
             ctx.save();
             ctx.beginPath();
