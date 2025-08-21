@@ -61,11 +61,14 @@
         _beatMs: 0,                           // 一拍时长（ms），外部注入 rm.noteInterval
         setBeatMs(ms) { this._beatMs = Math.max(0, Number(ms) || 0); return this; },
 
-        _labelFont: 'bold 16px ui-sans-serif, system-ui, -apple-system', // ★ 加粗加大
+        _labelFont: 'bold 20px ui-sans-serif, system-ui, -apple-system', // ★ 加粗加大
         _labelStroke: 'rgba(255,255,255,0.85)',
         _labelStrokeW: 2,
         _labelShadow: 'rgba(255,255,255,0.35)',
         _labelShadowBlur: 3,
+        // 反馈文字相对 Loop 行字的位移（右/下为正）
+        _feedShiftX: 22,   // ★ 往左移多少像素（数值越大越靠左）
+        _feedShiftY: 18,   // ★ 往上移多少像素（数值越大越靠上）
 
         //右下角灰色框
         _showFeedPanel: false,   // ← 设为 false：不画框；想要小框可改 true
@@ -126,28 +129,6 @@
             ctx.fillText(text, x, y);
             ctx.restore();
         },
-
-
-        _drawOutlinedText(ctx, text, x, y, fillColor) {
-            ctx.save();
-            ctx.font = this._labelFont;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.lineJoin = 'round';
-            ctx.miterLimit = 2;
-
-            ctx.strokeStyle = this._labelStroke;
-            ctx.lineWidth = this._labelStrokeW;
-            ctx.shadowColor = this._labelShadow;
-            ctx.shadowBlur = this._labelShadowBlur;
-            ctx.strokeText(text, x, y);
-
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = fillColor;
-            ctx.fillText(text, x, y);
-            ctx.restore();
-        },
-
 
         // 倒计时（ms）
         setStartGap(ms = 0) { this._startGapMs = Math.max(0, Number(ms) || 0); },
@@ -219,6 +200,14 @@
             // ★ 内层区域：把内容整体下移（留缝）
             const inY = y + this._padTop;
             const inH = h - this._padTop - this._padBottom;
+            // 内容左右内边距（和 Loop 文案、反馈共用同一右边界）
+            const padL = 12, padR = 12;
+            const contentLeft = x + padL;
+            const contentRight = x + w - padR;
+
+            // 防越界：把后续“右下角反馈”绘制限制在内容矩形内
+            const clipX = contentLeft, clipY = inY, clipW = contentRight - contentLeft, clipH = inH;
+
 
             // 网格
             if (this._showGrid) this._drawGrid(ctx, x, inY, w, inH);
@@ -351,24 +340,33 @@
                 ctx.restore();
             }
 
-            // 最近几条（最多 5 条，最新在上）
-            const rows = this._permHits.slice(-5).reverse();  // 最近 5 条
-            const lineH = 20;
-            const tx = x + w - 12;                 // 右侧内边距
-            let ty = inY + inH - 36 - (rows.length - 1) * lineH; // 距底部预留 36px，向上堆叠
+            // —— 右下角反馈：仅文字（无背景），靠 Loop 行字正上方，右对齐 ——
+            // Loop 文案的锚点（你下面绘制 Loop 文案用的就是 x + w - 10, inY + inH）
+            const loopTx = contentRight - this._feedShiftX;  // ★ 向左挪
+            const loopTy = inY + inH;                         // Loop 文案的基线
+            const rows = this._permHits.slice(-5).reverse();
+            const fontPx = parseInt(this._labelFont, 10) || 20;
+            const lineH = Math.round(fontPx * 1.2);         // 行高跟着字号走
+            let ty = loopTy - this._feedShiftY;              // ★ 向上挪                 // 与 Loop 留 6px 间距
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(clipX, clipY, clipW, clipH); // ★ 裁剪：不让文字出框
+            ctx.clip();
 
             for (const h of rows) {
-                let color = 'rgba(174,79,214,1)'; // 默认紫：EARLY/LATE
+                ty -= lineH;                        // 逐条向上排
+                if (ty < inY + 8) break;            // 顶部保护
+
+                let color = 'rgba(174,79,214,1)';   // EARLY/LATE：紫
                 let label = 'LATE';
                 if (h.res === 'good') { color = 'rgba(85,187,90,1)'; label = 'GOOD'; }
                 else if (h.res === 'miss') { color = 'rgba(211,47,47,1)'; label = 'MISS'; }
-                else if (h.res === 'early') { color = 'rgba(174,79,214,1)'; label = 'EARLY'; }
+                else if (h.res === 'early') { label = 'EARLY'; }
 
-                // 右对齐，无背景，仅文字（有白色细描边 + 轻微白光）
-                this._drawOutlinedText(ctx, label, tx, ty, color, 'right', 'top');
-
-                ty += lineH;
+                this._drawOutlinedText(ctx, label, loopTx, ty, color, 'right', 'bottom');
             }
+            ctx.restore();
 
             // 扫条
             const xBar = this.getBarX(x, w);
@@ -387,11 +385,8 @@
             ctx.font = 'bold 16px ui-sans-serif, system-ui, -apple-system';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'bottom';
-            ctx.fillText(
-                `Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`,
-                x + w - 10,
-                inY + inH
-            );
+            ctx.fillText(`Loop: ${(this._loopMs / 1000).toFixed(2)}s | Notes: ${this._notes.length}`,
+                contentRight, inY + inH);   // ★ 用 contentRight
             ctx.restore();
         },
 
