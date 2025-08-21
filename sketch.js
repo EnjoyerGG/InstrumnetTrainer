@@ -328,6 +328,7 @@ function setup() {
     });
     // 把 rm 读到的音符喂给它（和 rhythmManager 的 notes 同源）
     SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
+    SweepMode.setBeatMs(rm.noteInterval);
     // 倒计时：开场预留（若你有 COUNTDOWN_MS）
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();

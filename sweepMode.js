@@ -52,6 +52,13 @@
 
         _accentColor: '#ffd400',   // ★ 重音黄色（和滚动音符一致的黄，按需改）
 
+        _showTicks: true,                     // 是否显示刻度
+        _tickColor: 'rgba(255,255,255,0.14)', // 刻度线颜色（浅灰、半透明）
+        _tickW: 1,                            // 刻度线宽
+        _beatMs: 0,                           // 一拍时长（ms），外部注入 rm.noteInterval
+        setBeatMs(ms) { this._beatMs = Math.max(0, Number(ms) || 0); return this; },
+
+
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
             this._nowMs = nowMs || this._nowMs;
@@ -130,6 +137,29 @@
                 ctx.beginPath(); ctx.moveTo(x + 16, yBot); ctx.lineTo(x + w - 16, yBot); ctx.stroke();
                 ctx.restore();
             }
+
+            // --------- 每个音符的 ±1/8、±1/4 拍刻度（在音符之前画，作为背景） ---------
+            if (this._showTicks && this._beatMs > 0 && this._notes.length) {
+                const tickOffsets = [-0.16, -0.0525, 0.0525, 0.16].map(r => r * this._beatMs);
+                const yTickTop = inY + 6;                 // 刻度线顶端
+                const yTickBot = inY + inH - 6;           // 刻度线底端
+                ctx.save();
+                ctx.strokeStyle = this._tickColor;
+                ctx.lineWidth = this._tickW;
+                for (const n of this._notes) {
+                    for (const dt of tickOffsets) {
+                        const t = n.time + dt;
+                        const xx = Math.round(this.timeToX(t, x, w)) + 0.5;
+                        if (xx < x - 2 || xx > x + w + 2) continue;
+                        ctx.beginPath();
+                        ctx.moveTo(xx, yTickTop);
+                        ctx.lineTo(xx, yTickBot);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+
 
             // 音符（糖葫芦）
             const fb = this._getFeedback() || [];
