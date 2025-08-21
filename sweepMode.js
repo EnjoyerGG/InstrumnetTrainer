@@ -91,6 +91,30 @@
             this._loopMs = Math.max(1, Number(loopMs) || 1);
         },
 
+        _drawGlowText(ctx, text, x, y, color) {
+            ctx.save();
+            ctx.font = this._labelFont;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+
+            // 发光层
+            ctx.shadowColor = color;
+            ctx.shadowBlur = this._glowBlur;
+            ctx.globalAlpha = this._glowAlpha;
+            ctx.fillStyle = color;
+            ctx.fillText(text, x, y);
+
+            // 轮廓 + 实心
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeText(text, x, y);
+            ctx.fillText(text, x, y);
+
+            ctx.restore();
+        },
+
         // 倒计时（ms）
         setStartGap(ms = 0) { this._startGapMs = Math.max(0, Number(ms) || 0); },
 
@@ -258,23 +282,26 @@
                 ctx.save();
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'bottom';
-                ctx.font = 'bold 13px ui-sans-serif, system-ui, -apple-system';
+                ctx.font = 'bold 12px ui-sans-serif, system-ui, -apple-system'; // 和上面滚动 HUD 的 14px 对齐
+
                 for (const h of this._permHits) {
                     if (h.idx == null || h.idx < 0 || h.idx >= this._notes.length) continue;
                     const n = this._notes[h.idx];
                     const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
                     const yy = (n.abbr && n.abbr === n.abbr.toLowerCase()) ? yBot : yTop;
 
+                    // 颜色与上面一致：Good=绿(85,187,90)，Miss=红(211,47,47)，其余用紫(174,79,214)
                     let color;
-                    if (h.res === 'good') color = 'rgba(85,187,90,1)';        // 绿色
-                    else if (h.res === 'miss') color = 'rgba(211,47,47,1)';   // 红色
-                    else color = 'rgba(166,79,214,1)';                        // 早/晚：紫色
+                    if (h.res === 'good') color = 'rgba(85,187,90,1)';     // Good 绿色
+                    else if (h.res === 'miss') color = 'rgba(211,47,47,1)';     // Miss 红色
+                    else color = 'rgba(174,79,214,1)';    // Early/Late 用紫色（与上面 Perfect 一致）
 
                     ctx.fillStyle = color;
-                    const label = (h.res === 'good') ? 'GOOD' :
-                        (h.res === 'miss') ? 'MISS' :
-                            (h.res === 'early') ? 'EARLY' : 'LATE';
-                    ctx.fillText(label, xx, yy - 14);
+                    const label = (h.res === 'good') ? 'GOOD'
+                        : (h.res === 'miss') ? 'MISS'
+                            : (h.res === 'early') ? 'EARLY' : 'LATE';
+
+                    ctx.fillText(label, xx, yy - 14); // 文字位置与上方 HUD 的偏移相近
                 }
                 ctx.restore();
             }
