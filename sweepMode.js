@@ -50,6 +50,8 @@
         _showGrid: false,   // ← 关闭网格横线
         _showLanes: false,  // ← 关闭两条谱线
 
+        _accentColor: '#ffd400',   // ★ 重音黄色（和滚动音符一致的黄，按需改）
+
         // —— 初始化 —— //
         init({ nowMs, rectProvider, speedMultiplier, getFeedback, glyph } = {}) {
             this._nowMs = nowMs || this._nowMs;
@@ -151,7 +153,7 @@
 
                 // 字符
                 ctx.save();
-                ctx.fillStyle = n.accent ? this._noteStrong : this._note;
+                ctx.fillStyle = n.accent ? this._accentColor : this._note;
                 ctx.font = (n.accent ? 'bold 18px ' : 'bold 16px ') + 'ui-sans-serif, system-ui, -apple-system';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
