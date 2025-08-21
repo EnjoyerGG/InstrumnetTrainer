@@ -81,7 +81,8 @@
 
         // —— 时间(ms) → X 像素（静止谱面）—— //
         timeToX(tMs, x, w) {
-            const p = ((tMs % this._loopMs) + this._loopMs) / this._loopMs; // 0..1
+            // 正余数：先做一次 %，加 loopMs 防负数，再 % 一次归回 [0, loopMs)
+            const p = (((tMs % this._loopMs) + this._loopMs) % this._loopMs) / this._loopMs; // 0..1
             return x + p * w;
         },
 
