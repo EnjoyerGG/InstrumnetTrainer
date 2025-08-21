@@ -464,7 +464,7 @@ function setup() {
                     SampleUI.setExternalHit(label, confidence, 80);
                     SampleUI.pushMarker('#a64fd6', 900);  // 一条紫色竖线，约 0.9s 后淡出
                     guides?.addHitNow?.();
-                    SweepMode.addHitNow();
+                    if (window.SweepMode && SweepMode.addHitNow) SweepMode.addHitNow();
                 }
             }
         });
@@ -914,6 +914,9 @@ function mousePressed() {
             // 不要 return；让后面的流程继续
         }
     }
+
+    SampleUI.pushMarker('rgba(166,79,214,0.45)', 900);
+    if (window.SweepMode && SweepMode.addHitNow) SweepMode.addHitNow();
 
     // 2) 再交给 SampleUI 自己的交互（如拖拽等）
     if (window.SampleUI && SampleUI.pointerDown(mouseX, mouseY)) {

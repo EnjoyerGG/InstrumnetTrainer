@@ -33,12 +33,15 @@
         _bar: '#ff3b7b',
         _note: '#d0d6e0',
         _noteStrong: '#ffffff',
-        _hit: 'rgba(166,79,214,0.40)',
+
+        _hit: 'rgba(152, 65, 199, 0.4)',
+        _hitW: 2,          // 命中竖线宽
+
         _text: 'rgba(255,255,255,0.8)',
         _r: 10,            // note 半径（弱）
         _rStrong: 12,      // note 半径（强）
         _barW: 3,          // 扫条宽
-        _hitW: 3,          // 命中竖线宽
+
         _corner: 12,       // 圆角
         _laneGap: 28,      // 上下两条谱线间距（像素）
         _labelFadeMs: 2000,
@@ -57,6 +60,17 @@
         _tickW: 1,                            // 刻度线宽
         _beatMs: 0,                           // 一拍时长（ms），外部注入 rm.noteInterval
         setBeatMs(ms) { this._beatMs = Math.max(0, Number(ms) || 0); return this; },
+
+        _labelFont: 'bold 16px ui-sans-serif, system-ui, -apple-system', // ★ 加粗加大
+        _labelStroke: 'rgba(255,255,255,0.85)',
+        _labelStrokeW: 2,
+        _labelShadow: 'rgba(255,255,255,0.35)',
+        _labelShadowBlur: 3,
+
+        //右下角灰色框
+        _showFeedPanel: false,   // ← 设为 false：不画框；想要小框可改 true
+        _feedPanelW: 180,
+        _feedPanelH: 84,
 
         _showRMFeedback: false,                 // ★ 不再显示 rm 的 Perfect/Good/Miss 文案
         // —— 底部 HUD 自己的判定阈值（以“拍”的比例计）——
@@ -91,29 +105,49 @@
             this._loopMs = Math.max(1, Number(loopMs) || 1);
         },
 
-        _drawGlowText(ctx, text, x, y, color) {
+        _drawOutlinedText(ctx, text, x, y, fillColor, align = 'left', baseline = 'top') {
             ctx.save();
             ctx.font = this._labelFont;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
+            ctx.textAlign = align;
+            ctx.textBaseline = baseline;
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
 
-            // 发光层
-            ctx.shadowColor = color;
-            ctx.shadowBlur = this._glowBlur;
-            ctx.globalAlpha = this._glowAlpha;
-            ctx.fillStyle = color;
-            ctx.fillText(text, x, y);
-
-            // 轮廓 + 实心
-            ctx.shadowBlur = 0;
-            ctx.globalAlpha = 1;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
+            // 先描边 + 轻微白光
+            ctx.strokeStyle = this._labelStroke;
+            ctx.lineWidth = this._labelStrokeW;
+            ctx.shadowColor = this._labelShadow;
+            ctx.shadowBlur = this._labelShadowBlur;
             ctx.strokeText(text, x, y);
-            ctx.fillText(text, x, y);
 
+            // 再填充目标颜色
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = fillColor;
+            ctx.fillText(text, x, y);
             ctx.restore();
         },
+
+
+        _drawOutlinedText(ctx, text, x, y, fillColor) {
+            ctx.save();
+            ctx.font = this._labelFont;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
+
+            ctx.strokeStyle = this._labelStroke;
+            ctx.lineWidth = this._labelStrokeW;
+            ctx.shadowColor = this._labelShadow;
+            ctx.shadowBlur = this._labelShadowBlur;
+            ctx.strokeText(text, x, y);
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = fillColor;
+            ctx.fillText(text, x, y);
+            ctx.restore();
+        },
+
 
         // 倒计时（ms）
         setStartGap(ms = 0) { this._startGapMs = Math.max(0, Number(ms) || 0); },
@@ -155,7 +189,8 @@
                 idx: bestIdx,
                 dt: bestDt,
                 l,
-                res
+                res,
+                sys: Date.now()
             });
         },
 
@@ -280,30 +315,59 @@
             // 永久命中竖线（也用内层）
             if (this._permHits.length) {
                 ctx.save();
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
-                ctx.font = 'bold 12px ui-sans-serif, system-ui, -apple-system'; // 和上面滚动 HUD 的 14px 对齐
-
-                for (const h of this._permHits) {
-                    if (h.idx == null || h.idx < 0 || h.idx >= this._notes.length) continue;
-                    const n = this._notes[h.idx];
-                    const xx = Math.round(this.timeToX(n.time, x, w)) + 0.5;
-                    const yy = (n.abbr && n.abbr === n.abbr.toLowerCase()) ? yBot : yTop;
-
-                    // 颜色与上面一致：Good=绿(85,187,90)，Miss=红(211,47,47)，其余用紫(174,79,214)
-                    let color;
-                    if (h.res === 'good') color = 'rgba(85,187,90,1)';     // Good 绿色
-                    else if (h.res === 'miss') color = 'rgba(211,47,47,1)';     // Miss 红色
-                    else color = 'rgba(174,79,214,1)';    // Early/Late 用紫色（与上面 Perfect 一致）
-
-                    ctx.fillStyle = color;
-                    const label = (h.res === 'good') ? 'GOOD'
-                        : (h.res === 'miss') ? 'MISS'
-                            : (h.res === 'early') ? 'EARLY' : 'LATE';
-
-                    ctx.fillText(label, xx, yy - 14); // 文字位置与上方 HUD 的偏移相近
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = this._hit;
+                ctx.lineWidth = this._hitW;
+                for (const h0 of this._permHits) {
+                    if (h0.x < x - 6 || h0.x > x + w + 6) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(h0.x, inY + 8);
+                    ctx.lineTo(h0.x, inY + inH - 8);
+                    ctx.stroke();
                 }
                 ctx.restore();
+            }
+
+            // —— 右侧小面板：显示最近命中反馈 ——
+            // 面板尺寸/位置（靠右上，避开 Loop 文案）
+            if (this._showFeedPanel) {
+                const panelW = this._feedPanelW, panelH = this._feedPanelH;
+                const px = x + w - panelW - 12;     // 紧贴右边
+                const py = inY + inH - panelH - 40; // 在 Loop 行字的上方
+                ctx.save();
+                ctx.fillStyle = 'rgba(0,0,0,0.28)';           // 更小更浅
+                ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+                ctx.lineWidth = 1.5;
+                const r = 10;
+                ctx.beginPath();
+                ctx.moveTo(px + r, py);
+                ctx.arcTo(px + panelW, py, px + panelW, py + panelH, r);
+                ctx.arcTo(px + panelW, py + panelH, px, py + panelH, r);
+                ctx.arcTo(px, py + panelH, px, py, r);
+                ctx.arcTo(px, py, px + panelW, py, r);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 最近几条（最多 5 条，最新在上）
+            const rows = this._permHits.slice(-5).reverse();  // 最近 5 条
+            const lineH = 20;
+            const tx = x + w - 12;                 // 右侧内边距
+            let ty = inY + inH - 36 - (rows.length - 1) * lineH; // 距底部预留 36px，向上堆叠
+
+            for (const h of rows) {
+                let color = 'rgba(174,79,214,1)'; // 默认紫：EARLY/LATE
+                let label = 'LATE';
+                if (h.res === 'good') { color = 'rgba(85,187,90,1)'; label = 'GOOD'; }
+                else if (h.res === 'miss') { color = 'rgba(211,47,47,1)'; label = 'MISS'; }
+                else if (h.res === 'early') { color = 'rgba(174,79,214,1)'; label = 'EARLY'; }
+
+                // 右对齐，无背景，仅文字（有白色细描边 + 轻微白光）
+                this._drawOutlinedText(ctx, label, tx, ty, color, 'right', 'top');
+
+                ty += lineH;
             }
 
             // 扫条
