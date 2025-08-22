@@ -1,4 +1,30 @@
 /* ------------ Globals ------------ */
+
+//尝试修复移动端麦克风没法正常工作的问题
+// === Mobile/WebAudio unlock（放在 Globals 附近） ===
+window.userStartAudio = async function () {
+    try {
+        // p5 的 AudioContext
+        if (typeof getAudioContext === 'function') {
+            const ac = getAudioContext();
+            if (ac && ac.state !== 'running') await ac.resume();
+        }
+    } catch (e) { console.warn(e); }
+
+    try {
+        // 我们的节拍器 AudioContext
+        if (window.metro?.ctx && metro.ctx.state !== 'running') {
+            await metro.ctx.resume();
+        }
+    } catch (e) { console.warn(e); }
+};
+
+// 首次手势自动解锁一次
+window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
+window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
+
+
+
 let rm;
 let metro;
 let running = false, counting = false;
@@ -718,6 +744,7 @@ async function handleStart() {
     if (running || counting) return;
 
     // 保证 AudioContext 恢复
+    await window.userStartAudio?.();
     if (typeof getAudioContext === 'function') {
         const ac = getAudioContext();
         if (ac && ac.state !== 'running') {

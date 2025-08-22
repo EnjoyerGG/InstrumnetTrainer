@@ -41,7 +41,7 @@
         _gateDb: 5.5,           // 门限：低于“背景+门限”时按背景画（=平线）
         _sAtk: 0.50,            // 上冲(打击)时的系数（小=快）
         _sRel: 0.50,            // 回落时的系数（大=慢）
-        _baseFallAlpha: 0.35,
+        _baseFallAlpha: 0.28,
         _snapPx: 0,
         _resumeGuardUntil: 0,   // 恢复后的“写列禁入”时间戳
 
@@ -49,7 +49,7 @@
         _gateDownK: 0.45,      // 迟滞：退出门限 = base + gate * 0.55（小于进入门限）
         _eventS: 0.35,         // 事件态跟随系数（越小越快）
         _baseQuant: 0.5,       // 基线量化步长（dB），让基线更“平”
-        _sBase: 0.10,            // 基线态的平滑（越小越快，保留自然抖动）
+        _sBase: 0.08,            // 基线态的平滑（越小越快，保留自然抖动）
         _sEvent: 0.22,
 
         _despikeDb: 2,       // 去刺阈值：单列最大允许向下跳幅（dB）
@@ -183,6 +183,7 @@
             this._offsetDb = offsetDb;
             const AC = window.AudioContext || window.webkitAudioContext;
             const ctx = (window.getAudioContext && window.getAudioContext()) || new AC();
+            try { if (root.userStartAudio) await root.userStartAudio(); } catch { }
 
             // 麦克风
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -394,6 +395,10 @@
                     if (tmActive || this._lastDb >= gateUp) this._eventActive = true;
                 } else {
                     if (!tmActive && this._lastDb < gateDown) this._eventActive = false;
+                }
+
+                if (wasEvent && !this._eventActive) {
+                    this._forceBaseOnce = true;
                 }
 
                 // === 3) 候选 dB（事件态=真值；基线态=轻平滑） + 去刺 ===
