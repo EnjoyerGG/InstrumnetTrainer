@@ -94,6 +94,44 @@ function stopScoreTickScheduler() {
     }
 }
 
+// —— 调度器复位：确保恢复/改速后没有“旧状态”干扰 —— 
+function resetMetronomeSchedulerState() {
+    scheduleTicksOnce._lastIdx = -1;
+    scheduleTicksOnce._lastNowMs = null;
+    if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+    scheduleTicksOnce._guardUntil = 0;
+}
+
+// —— 立即对“离判定线最近”的记谱音符打一击，并把指针对齐 —— 
+function primeMetronomeOnce(centerMs = 35) {
+    if (!metronomeEnabled || !metro || !metro.isLoaded() || !rm?.scoreNotes?.length) return;
+
+    const nowMs = rm._t() % rm.totalDuration;
+    const notes = rm.scoreNotes;
+    let nextIdx = notes.findIndex(n => n.time >= nowMs);
+    if (nextIdx < 0) nextIdx = 0;
+    const prevIdx = (nextIdx - 1 + notes.length) % notes.length;
+
+    const dNext = Math.abs(notes[nextIdx].time - nowMs);
+    const dPrev = Math.abs(nowMs - notes[prevIdx].time);
+    const nearestIdx = (dNext <= dPrev) ? nextIdx : prevIdx;
+    const nearestDist = Math.min(dNext, dPrev);
+
+    // 距红线够近才补敲（避免误打）
+    if (nearestDist <= centerMs) {
+        const isStrong = ((notes[nearestIdx].accent | 0) === 1);
+        const sf = rm?.speedFactor || 1;
+        const when = metro.ctx.currentTime + Math.max(0.03, getMetroOffsetMs() / (1000 * sf));
+        metro.scheduleAt(when, isStrong);
+
+        // 让预调度从它之后继续，避免重复
+        scheduleTicksOnce._lastIdx = nearestIdx;
+        // 额外保护 20ms，避免刚好又被调度到一次
+        scheduleTicksOnce._guardUntil = when + 0.02;
+    }
+}
+
+
 function scheduleTicksOnce() {
     if (!metronomeEnabled || !running || !metro || !metro.isLoaded()) return;
     const ctxNow = metro.ctx.currentTime;
@@ -148,8 +186,46 @@ function scheduleTicksOnce() {
         idx = (idx + 1) % notes.length;
         count++;
     }
-
+    scheduleTicksOnce._forceWindowMs = null;
 }
+
+// —— 调度器复位 —— //
+function resetMetronomeSchedulerState() {
+    scheduleTicksOnce._lastIdx = -1;
+    scheduleTicksOnce._lastNowMs = null;
+    if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
+    scheduleTicksOnce._guardUntil = 0;
+    scheduleTicksOnce._forceWindowMs = null;
+}
+
+// —— 强行把“下一记”安排进本轮（不等窗口自然命中） —— //
+function armNextTickNow() {
+    if (!metronomeEnabled || !metro || !metro.isLoaded() || !rm?.scoreNotes?.length) return;
+
+    const notes = rm.scoreNotes;
+    const tot = rm.totalDuration || 1e9;
+    const nowMs = rm._t() % tot;
+
+    // 找“下一记”
+    let nextIdx = notes.findIndex(n => n.time >= nowMs);
+    if (nextIdx < 0) nextIdx = 0;
+
+    // 这记离现在的距离（ms）
+    const dtNext = (notes[nextIdx].time - nowMs + tot) % tot;
+
+    // 让扫描从“它的前一位”开始，下一位就是它本身
+    scheduleTicksOnce._lastIdx = (nextIdx - 1 + notes.length) % notes.length;
+
+    // 放大一次性窗口到“能覆盖这记”
+    scheduleTicksOnce._forceWindowMs = dtNext + 30;   // 30ms 余量避免边界误差
+
+    // 立刻跑一次，把这记排进 WebAudio
+    scheduleTicksOnce();
+
+    // 之后恢复成常规 22ms 轮询
+    startScoreTickScheduler();
+}
+
 
 // 立刻对“最靠近判定线”的音符打一下（用于改速时相位重锁）
 function forceClickNearestIfCentered(centerMs = 35) {
@@ -484,16 +560,16 @@ function setup() {
 
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
-        if (metronomeEnabled) {
-            select('#metro-toggle').html('Metronome Off');
-        } else {
-            select('#metro-toggle').html('Metronome On');
-        }
         metro.enable(metronomeEnabled);
         if (metronomeEnabled) {
-            scheduleTicksOnce._lastIdx = -1;
+            select('#metro-toggle').html('Metronome Off');
+            metro.enable(true);
+            resetMetronomeSchedulerState();  // ★ 复位调度状态
+            armNextTickNow();                // ★ 立即从下一记开始
             startScoreTickScheduler();
         } else {
+            select('#metro-toggle').html('Metronome On');
+            metro.enable(false);
             stopScoreTickScheduler();
         }
     });
@@ -587,10 +663,13 @@ function setup() {
         if (CongaClassifier.setCooldown) {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
+        if (metronomeEnabled && running && metro.isLoaded()) {
+            resetMetronomeSchedulerState();  // 清掉上一次的游标/保护窗
+            armNextTickNow();                // 直接把“下一记”排进 WebAudio
+        }
         if (typeof scheduleTicksOnce._lastIdx === 'number') {
-            scheduleTicksOnce._lastIdx = -1;
-            if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear(); // ← 清空已排表
-            scheduleTicksOnce._guardUntil = 0;                             // ← 清掉旧保护时间
+            resetMetronomeSchedulerState();
+            primeMetronomeOnce(35);                            // ← 清掉旧保护时间
 
         }
         // —— A) 若红线就在音符附近，立刻敲一下，避免改速瞬间的“静音错觉” —— //
@@ -794,23 +873,19 @@ function draw() {
         if (remain <= 0) {
             counting = false;
             running = true;
-            isPaused = false;                       // ★ 清掉暂停态
+            isPaused = false;
             rm.resume();
             if (window.SampleUI) SampleUI.resume();
 
-            if (!countdownForResume) {
-                // ★ 首次/Reset 才清 startGap 且贴左
-                guides?.setStartGap(0);
-                SweepMode.setStartGap(0);
-                SweepMode.snapToLeft();
+            if (metronomeEnabled) {
+                metro.enable(true);
+                resetMetronomeSchedulerState();
+                armNextTickNow();            // ★ 关键：恢复就从“下一记”开始工作
+            } else {
+                // 就算没开节拍器，也把调度循环开起来以保持一致（不会排声）
+                resetMetronomeSchedulerState();
+                startScoreTickScheduler();
             }
-            // ★ 恢复模式：不 snapToLeft、不改 startGap
-
-            // 预调度器重启
-            startScoreTickScheduler();
-            if (typeof scheduleTicksOnce._lastIdx === 'number') scheduleTicksOnce._lastIdx = -1;
-            if (scheduleTicksOnce._seen) scheduleTicksOnce._seen.clear();
-            scheduleTicksOnce._guardUntil = 0;
 
             // 分类器确保在听
             try {
