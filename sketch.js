@@ -1,10 +1,6 @@
 /* ------------ Globals ------------ */
-
-//尝试修复移动端麦克风没法正常工作的问题
-// === Mobile/WebAudio unlock（放在 Globals 附近） ===
 window.userStartAudio = async function () {
     try {
-        // p5 的 AudioContext
         if (typeof getAudioContext === 'function') {
             const ac = getAudioContext();
             if (ac && ac.state !== 'running') await ac.resume();
@@ -12,34 +8,27 @@ window.userStartAudio = async function () {
     } catch (e) { console.warn(e); }
 
     try {
-        // 我们的节拍器 AudioContext
         if (window.metro?.ctx && metro.ctx.state !== 'running') {
             await metro.ctx.resume();
         }
     } catch (e) { console.warn(e); }
 };
-
-// 首次手势自动解锁一次
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
 
 
-let rm;
-let metro;
+let rm, metro, mic, guides;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0; // 红线发光效果
 let metronomeEnabled = false;
 let chartJSON;
 let lastNoteIdx = -1;
-let mic;
-let guides;                // AmpGuides 实例
 let hasEverStarted = false;  // 是否已经跑过一次
 let isPaused = false;        // 当前是否处于暂停
 let countdownForResume = false;
 
-let HUD_VPX_AT1 = null;    // “HUD 在 speedFactor=1 时”的基准像素/秒
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;   // 底部 Sweep 画布高度（按需改）
 
@@ -335,7 +324,6 @@ function layoutRects(cnv) {
     };
     if (window.SampleUI?.resize) {
         SampleUI.resize(RECT.amp.w, RECT.amp.h);
-        HUD_VPX_AT1 = null;
         if (rm && window.SampleUI && SampleUI.getColsPerSec) {
             syncHudSpeedToNotes();
         }
