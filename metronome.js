@@ -13,6 +13,7 @@ class Metronome {
         this.enabled = false;
         this._timer = null;
         this.buffers = { weak: null, strong: null };
+        this._pending = [];
         this.useInternalGrid = false;
     }
 
@@ -31,6 +32,7 @@ class Metronome {
         src.buffer = strong ? this.buffers.strong : this.buffers.weak;
         src.connect(this.ctx.destination);
         src.start(time);
+        this._pending.push({ src, at: time });
     }
 
     _advance() {
@@ -56,6 +58,19 @@ class Metronome {
 
     setBPM(bpm) { this.bpm = Math.max(20, bpm); }
 
+    // 取消“未来还没开始”的点击（用于改速/跳转瞬间）
+    flushFuture(cutoffSec = this.ctx.currentTime + 0.001) {
+        const keep = [];
+        for (const p of this._pending) {
+            if (p.at >= cutoffSec) {
+                try { p.src.stop(0); p.src.disconnect(); } catch { }
+            } else {
+                keep.push(p);
+            }
+        }
+        this._pending = keep;
+    }
+
     enable(on) {
         this.enabled = !!on;
         if (this.enabled) {
@@ -73,6 +88,8 @@ class Metronome {
     reset() {
         this.nextNoteTime = this.ctx.currentTime + 0.05;
         this.currentStep = 0;
+        this.flushFuture(0);
+        this._pending = [];
     }
 
     isLoaded() { return !!(this.buffers.weak && this.buffers.strong); }
