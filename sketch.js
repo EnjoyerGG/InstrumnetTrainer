@@ -212,7 +212,14 @@ function armNextTickNow() {
     schedulerState.lastIdx = (nextIdx - 1 + notes.length) % notes.length;
     schedulerState.forceWindowMs = dtNext + 30;
 
-    scheduleTicksOnce();
+    //scheduleTicksOnce();
+    const prevIdx = schedulerState.lastIdx;
+    scheduleTicksOnce();                         // 尝试一次
+    if (schedulerState.lastIdx === prevIdx) {    // 还没前进？放大窗口覆盖本轮剩余
+        const now2 = rm._t() % rm.totalDuration;
+        schedulerState.forceWindowMs = (rm.totalDuration - now2) + 30;
+        scheduleTicksOnce();
+    }
     startScoreTickScheduler();
 }
 
@@ -551,41 +558,45 @@ function setup() {
             CongaClassifier.setCooldown(Math.max(70, Math.min(180, rm.noteInterval * 0.4)));
         }
 
-        // Keep metronome running during speed changes
+        // // Keep metronome running during speed changes
+        // if (metronomeEnabled && running && metro.isLoaded()) {
+        //     metro.flushFuture();
+
+        //     // Find nearest note to maintain sync
+        //     const nowMs = rm._t() % rm.totalDuration;
+        //     const notes = rm.scoreNotes;
+        //     let nearestIdx = 0;
+        //     let minDist = Infinity;
+
+        //     for (let i = 0; i < notes.length; i++) {
+        //         const dist = Math.abs(notes[i].time - nowMs);
+        //         if (dist < minDist) {
+        //             minDist = dist;
+        //             nearestIdx = i;
+        //         }
+        //     }
+
+        //     // Update scheduler position without stopping
+        //     schedulerState.lastIdx = nearestIdx - 1;
+        //     schedulerState.scheduledNotes.clear();
+
+        //     // Schedule immediate next beat
+        //     const nextIdx = (nearestIdx < notes.length - 1) ? nearestIdx : 0;
+        //     const dt = (notes[nextIdx].time - nowMs + rm.totalDuration) % rm.totalDuration;
+
+        //     if (dt < 100) { // If very close, schedule it now
+        //         const sf = rm?.speedFactor || 1;
+        //         const when = metro.ctx.currentTime + Math.max(0.01, (dt + getMetroOffsetMs()) / (1000 * sf));
+        //         const strong = (notes[nextIdx].accent | 0) === 1;
+        //         metro.scheduleAt(when, strong);
+        //         schedulerState.guardUntil = when + 0.02;
+        //     }
+        // }
         if (metronomeEnabled && running && metro.isLoaded()) {
-            metro.flushFuture();
-
-            // Find nearest note to maintain sync
-            const nowMs = rm._t() % rm.totalDuration;
-            const notes = rm.scoreNotes;
-            let nearestIdx = 0;
-            let minDist = Infinity;
-
-            for (let i = 0; i < notes.length; i++) {
-                const dist = Math.abs(notes[i].time - nowMs);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearestIdx = i;
-                }
-            }
-
-            // Update scheduler position without stopping
-            schedulerState.lastIdx = nearestIdx - 1;
-            schedulerState.scheduledNotes.clear();
-
-            // Schedule immediate next beat
-            const nextIdx = (nearestIdx < notes.length - 1) ? nearestIdx : 0;
-            const dt = (notes[nextIdx].time - nowMs + rm.totalDuration) % rm.totalDuration;
-
-            if (dt < 100) { // If very close, schedule it now
-                const sf = rm?.speedFactor || 1;
-                const when = metro.ctx.currentTime + Math.max(0.01, (dt + getMetroOffsetMs()) / (1000 * sf));
-                const strong = (notes[nextIdx].accent | 0) === 1;
-                metro.scheduleAt(when, strong);
-                schedulerState.guardUntil = when + 0.02;
-            }
+            metro.flushFuture();                 // 清掉旧 BPM 预排
+            resetMetronomeSchedulerState();      // 清状态            armNextTickNow();                    // ✨ 锁定“下一记”并设置一次性 forceWindow
+            schedulerState.guardUntil = metro.ctx.currentTime + 0.02; // 保护 20ms 防重复
         }
-
         _emaE = 0;
         _emaVar = 1;
         syncHudSpeedToNotes();
