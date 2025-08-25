@@ -326,6 +326,41 @@ function setup() {
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
     setupFixes();
+
+    select('#speed-slider').input(() => {
+        const speedVal = parseFloat(select('#speed-slider').value());
+        select('#speed-val').html(speedVal.toFixed(2));
+
+        const bpmVal = speedToBPM(speedVal);
+        select('#bpm-val').html(Math.round(bpmVal));
+
+        // 更新节拍器BPM
+        metro.setBPM(bpmVal);
+
+        // 更新节奏管理器
+        rm.setBPM(bpmVal);
+        rm.setSpeedFactor(speedVal);
+
+        // 同步其他组件
+        if (guides && guides.syncFixed) {
+            guides.syncFixed();
+        }
+
+        if (SweepMode && SweepMode.setSpeedMultiplier) {
+            SweepMode.setSpeedMultiplier(1);
+        }
+
+        // 如果正在运行且节拍器启用，更新调度器
+        if (metronomeEnabled && running && metro.isLoaded()) {
+            metro.flushFuture();
+            resetMetronomeSchedulerState();
+            armNextTickNow();
+            schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
+        }
+        // 重置能量统计
+        _emaE = 0;
+        _emaVar = 1;
+    });
 }
 
 function setupFixes() {
