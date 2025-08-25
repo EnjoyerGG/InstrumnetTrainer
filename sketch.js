@@ -263,7 +263,7 @@ function setup() {
         bins: 1024,
         smoothing: 0.85,
         vscale: 1.12,
-        lift: 0
+        lift: 14
     })
 
     select('#metro-toggle').mousePressed(() => {
