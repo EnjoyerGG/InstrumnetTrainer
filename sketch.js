@@ -496,6 +496,10 @@ function draw() {
     const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5; // Sweep ↔ 下方 HUD
     line(0, yTopDiv, width, yTopDiv);
     line(0, yBelowSweep, width, yBelowSweep);
+
+    stroke(220); strokeWeight(2);
+    const midX = Math.round(width / 2) + 0.5;
+    line(midX, yBelowSweep, midX, height - GRID.pad); // 下方 HUD 中间竖线
     pop();
 }
 
