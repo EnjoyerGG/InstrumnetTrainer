@@ -1,4 +1,5 @@
-/* style.css */
+/* style.css — cleaned: remove Drum UI, keep amp HUD full-width */
+
 body {
     margin: 0;
     background: #111;
@@ -50,7 +51,7 @@ input[type="range"] {
 canvas {
     display: block;
     margin: 0 auto;
-    border: 5px solid #777777
+    border: 5px solid #777777;
 }
 
 #status,
@@ -63,26 +64,14 @@ canvas {
     color: #4DD0E1;
 }
 
-/* 两列布局：左侧谱面，右侧鼓面 */
 .app {
     max-width: 1200px;
     margin: 0 auto;
     padding: 16px 16px 120px;
-    /* 底部预留空间 */
+    /* bottom space for HUD */
 }
 
-:root {
-    --pad: 10px;
-    /* GRID.pad */
-    --notesH: 120px;
-    /* 上方滚动音符区域高度 NOTES_H */
-    --sweepH: 140px;
-    /* 中间 Sweep 面板高度 SWEEP_H */
-    /* HUD 顶边（= notesH + sweepH + pad）——贴着你画的那条白线下面 */
-    --hudTop: calc(var(--notesH) + var(--sweepH) + var(--pad));
-}
-
-/* 主音符画布挂在这个容器里——完全居中 */
+/* Main score canvas container */
 #score-wrap {
     position: relative;
     display: block;
@@ -90,34 +79,11 @@ canvas {
     margin: 0 auto;
 }
 
-#drum-wrap {
-    position: absolute !important;
-    transition: none !important;
-    /* 防止动画干扰 */
-    pointer-events: all;
-}
-
+/* === Bottom HUD: Spectrum + Amplitude (FULL WIDTH) === */
 #amp-hud {
     position: absolute !important;
     pointer-events: none;
-    /* 允许点击穿透到canvas */
-}
-
-#amp-hud canvas {
-    pointer-events: all;
-    /* canvas本身可点击 */
-}
-
-#score-wrap canvas {
-    /* 保险：阻止内联元素带来的偏移 */
-    display: block;
-    margin: 0 auto;
-}
-
-#score-wrap>#amp-hud,
-#score-wrap>#drum-wrap {
-    position: absolute;
-    /* 关键：相对 #score-wrap 绝对定位，覆盖在 canvas 上 */
+    /* allow clicks to pass through wrapper */
     box-sizing: border-box;
     z-index: 5;
     background: rgba(31, 32, 36, .92);
@@ -125,33 +91,26 @@ canvas {
     border-radius: 12px;
 }
 
-/* —— 画布下面的 HUD 横向排版 —— */
-/* 让 #score-wrap 中的 canvas 后面的两个 HUD 走普通文流并肩排列 */
-#score-wrap>#amp-hud,
-#score-wrap>#drum-wrap {
+/* enable interaction on inner canvases only */
+#amp-hud canvas {
+    pointer-events: all;
+}
+
+/* keep canvas block layout safe */
+#score-wrap canvas {
+    display: block;
+    margin: 0 auto;
+}
+
+/* place the HUD under notes+sweep; occupy full width minus padding */
+#score-wrap>#amp-hud {
     top: calc(var(--notesH) + var(--sweepH) + var(--pad));
+    left: var(--pad);
+    right: var(--pad);
     height: var(--meterH);
 }
 
-
-/* 左格：频谱+声压 */
-#score-wrap>#amp-hud {
-    left: var(--pad);
-    width: calc(50% - var(--pad)*1.5);
-    /* 左半 + 间距 */
-    pointer-events: none;
-    /* 不挡鼠标；需要交互就删掉 */
-}
-
-/* 右格：鼓面圆盘 */
-#score-wrap>#drum-wrap {
-    right: var(--pad);
-    width: calc(50% - var(--pad)*1.5);
-    /* 右半 + 间距 */
-    /* 让它从中线右侧开始 */
-    left: auto;
-}
-
+/* Controls row */
 .controls {
     display: flex;
     flex-wrap: wrap;
@@ -165,7 +124,7 @@ canvas {
     gap: 8px;
 }
 
-/* 让两个滑块占一列，并靠右堆叠 */
+/* sliders group alignment */
 #speed-row,
 #sens-row {
     flex: 0 0 420px;
@@ -176,7 +135,6 @@ canvas {
     margin-top: 6px;
 }
 
-/* 小屏幕时自动满宽纵向排 */
 @media (max-width: 768px) {
 
     #speed-row,
@@ -186,33 +144,14 @@ canvas {
     }
 }
 
-#drum-tooltip {
-    position: fixed;
-    /* 用视口坐标，直接跟随 clientX/Y */
-    display: none;
-    /* 默认隐藏，JS 控制显示 */
-    padding: 6px 8px;
-    font-size: 12px;
-    line-height: 1;
-    color: #fff;
-    background: rgba(0, 0, 0, .85);
-    border: 1px solid rgba(255, 255, 255, .18);
-    border-radius: 8px;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, .28);
-    pointer-events: none;
-    z-index: 9999;
-}
-
-/* —— Sampler Panel —— */
 /* —— Sampler Panel —— */
 #sampler-wrap.sampler,
 .sampler {
     position: fixed;
     top: 14px;
-    /* ← 改到右上角 */
+    /* moved to top-right */
     right: 14px;
     bottom: auto;
-    /* 别占右下角，避免压住 HUD */
     width: 340px;
     padding: 10px;
     border-radius: 12px;
@@ -287,4 +226,26 @@ canvas {
     font-size: 12px;
     text-align: right;
     color: #ddd;
+}
+
+/* CSS variables (match JS layout constants) */
+:root {
+    --pad: 10px;
+    /* GRID.pad */
+    --notesH: 120px;
+    /* top notes area height */
+    --sweepH: 140px;
+    /* sweep panel height */
+    --meterH: 200px;
+    /* bottom HUD height */
+}
+
+/* Fixed HUD layout (when #score-wrap gets .fixed-hud) */
+#score-wrap.fixed-hud #amp-hud {
+    position: absolute;
+    top: auto;
+    bottom: var(--pad);
+    left: var(--pad);
+    right: var(--pad);
+    height: var(--meterH);
 }

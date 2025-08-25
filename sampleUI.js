@@ -96,14 +96,42 @@
         },
 
         /* -------------------- 音频设置 -------------------- */
-        async setupAudio({ offsetDb = 0 } = {}) {
+        async setupAudio({ offsetDb = 0, useP5Mic = false } = {}) {
+            // 支持选择使用 p5.js 麦克风或独立的 MediaStream。
+            // 如果 useP5Mic 为真且存在全局 mic 实例，则直接使用 p5 的音频输入。
             this._offsetDb = offsetDb;
 
-            const AC = window.AudioContext || window.webkitAudioContext;
-            const ctx = new AC();
-
             try {
-                // 获取麦克风
+                // 如果选择使用 p5 AudioIn，尝试从 p5 获取已有的音频上下文和输入
+                if (useP5Mic && window.mic && typeof window.getAudioContext === 'function') {
+                    const ctx = window.getAudioContext();
+                    // 如果已经有 mic.stream（MediaStream），重新创建一个 source
+                    const stream = window.mic.stream;
+                    if (ctx && stream) {
+                        const source = ctx.createMediaStreamSource(stream);
+                        this._analyser = ctx.createAnalyser();
+                        this._analyser.fftSize = this._fftSize || 2048;
+                        this._analyser.smoothingTimeConstant = 0.3;
+                        this._analyser.minDecibels = -100;
+                        this._analyser.maxDecibels = -10;
+
+                        // 将 mic 流连接到分析器
+                        source.connect(this._analyser);
+
+                        const bufferLength = this._analyser.frequencyBinCount;
+                        this._frequencyData = new Uint8Array(bufferLength);
+                        this._timeData = new Uint8Array(this._analyser.fftSize);
+
+                        this._running = true;
+                        if (ctx.state !== 'running') await ctx.resume();
+                        return;
+                    }
+                }
+                // 默认情况：直接请求用户媒体
+                const AC = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AC();
+
+                // 请求麦克风音频流
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
@@ -112,7 +140,6 @@
                         sampleRate: 48000
                     }
                 });
-
                 const source = ctx.createMediaStreamSource(stream);
 
                 // 创建分析器
@@ -122,7 +149,7 @@
                 this._analyser.minDecibels = -100;
                 this._analyser.maxDecibels = -10;
 
-                // 连接
+                // 连接输入到分析器
                 source.connect(this._analyser);
 
                 // 初始化数据缓冲
@@ -132,10 +159,19 @@
 
                 this._running = true;
                 await ctx.resume();
-
             } catch (e) {
                 console.error('音频初始化失败:', e);
             }
+        },
+
+        /**
+         * 在音频分析图上添加一个标记。用户点击时可以调用此方法突出显示一个竖线。
+         * @param {string} color 颜色字符串，如 '#ff0000'
+         * @param {number} duration 持续时间（毫秒）
+         */
+        pushMarker(color = '#ff0000', duration = 1000) {
+            if (!this._markers) this._markers = [];
+            this._markers.push({ color, duration, start: performance.now() });
         },
 
         /* -------------------- 数据处理 -------------------- */
@@ -225,6 +261,30 @@
             ctx.moveTo(Math.floor(W / 2), 0);
             ctx.lineTo(Math.floor(W / 2), H);
             ctx.stroke();
+
+            // 绘制临时标记（竖线）。在顶部跨越整个图表，以便提供反馈。
+            if (this._markers && this._markers.length > 0) {
+                const now = performance.now();
+                // 默认绘制在右侧频谱区最右端
+                const markerX = this._rightPanel.x + this._rightPanel.w - 4;
+                this._markers = this._markers.filter(mk => {
+                    const t = now - mk.start;
+                    if (t <= mk.duration) {
+                        const alpha = 1 - t / mk.duration;
+                        ctx.save();
+                        ctx.strokeStyle = mk.color;
+                        ctx.globalAlpha = alpha;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(markerX + 0.5, 0);
+                        ctx.lineTo(markerX + 0.5, H);
+                        ctx.stroke();
+                        ctx.restore();
+                        return true;
+                    }
+                    return false;
+                });
+            }
         },
 
         /* -------------------- 分贝仪渲染 -------------------- */

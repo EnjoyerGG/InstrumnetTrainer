@@ -13,6 +13,7 @@ window.userStartAudio = async function () {
         }
     } catch (e) { console.warn(e); }
 };
+
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
@@ -45,14 +46,7 @@ window.SWEEP_EXPORT_QUEUE = [];
 const SWEEP_EXPORT_MAX = 10;
 let _lastCycleForSnap = null;
 
-const NOTE_GLYPH = {
-    S: '×',
-    O: 'O',
-    T: '▲',
-    P: '▼',
-    B: 'B'
-};
-
+const NOTE_GLYPH = { S: '×', O: 'O', T: '▲', P: '▼', B: 'B' };
 function glyphForAbbr(ab) {
     const k = (ab ?? '').toString().toUpperCase();
     return NOTE_GLYPH[k] || k;
@@ -182,104 +176,44 @@ function bpmToSpeed(bpm) { return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPE
 function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); }
 
 const GRID = { pad: 10, topHRatio: 0.5 };
-const RECT = { top: {}, amp: {}, drum: {}, sweep: {} };
+const RECT = { top: {}, amp: {}, sweep: {} };
 let _canvasHost;
 
 function layoutRects(cnv) {
     const topH = Number.isFinite(GRID.topHpx) ? GRID.topHpx : Math.round(height * GRID.topHRatio);
 
-    // 布局顺序：Notes -> Sweep -> 底部HUD（分贝仪+鼓面）
+    // 布局顺序：Notes -> Sweep -> 底部HUD（频谱/声谱独占整行）
     const sweepY = topH + GRID.pad;
     const sweepH = SWEEP_H;
-
-    // HUD在Sweep下面
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
 
-    // 左右两栏宽度分配
-    const midX = Math.round(width * 0.5);
-
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: width - GRID.pad * 2, h: sweepH };
+    RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
 
-    // 左侧：分贝仪/波形
-    RECT.amp = {
-        x: GRID.pad,
-        y: hudY,
-        w: midX - GRID.pad * 2,
-        h: hudH
-    };
-
-    // 右侧：鼓面
-    RECT.drum = {
-        x: midX + GRID.pad,
-        y: hudY,
-        w: width - midX - GRID.pad * 2,
-        h: hudH
-    };
-
-    // 更新DOM元素位置
-    const hostRect = _canvasHost.elt.getBoundingClientRect();
-    const cvsRect = cnv.elt ? cnv.elt.getBoundingClientRect() : { left: hostRect.left, top: hostRect.top };
-    const offX = cvsRect.left - hostRect.left;
-    const offY = cvsRect.top - hostRect.top;
-
-    // 定位鼓面容器
-    const drumWrap = document.getElementById('drum-wrap');
-    if (drumWrap) {
-        const size = Math.floor(Math.min(RECT.drum.w, RECT.drum.h) * 0.8);
-        drumWrap.style.position = 'absolute';
-        drumWrap.style.left = (RECT.drum.x + offX + (RECT.drum.w - size) / 2) + 'px';
-        drumWrap.style.top = (RECT.drum.y + offY + (RECT.drum.h - size) / 2) + 'px';
-        drumWrap.style.width = size + 'px';
-        drumWrap.style.height = size + 'px';
-        drumWrap.style.zIndex = '10';
-    }
-
-    // 定位左侧音频分析容器
+    // 同步 SampleUI 画布大小
     const ampHud = document.getElementById('amp-hud');
-    if (ampHud) {
-        ampHud.style.position = 'absolute';
-        ampHud.style.left = (RECT.amp.x + offX) + 'px';
-        ampHud.style.top = (RECT.amp.y + offY) + 'px';
-        ampHud.style.width = RECT.amp.w + 'px';
-        ampHud.style.height = RECT.amp.h + 'px';
-        ampHud.style.zIndex = '10';
-    }
-
-    // 更新SampleUI尺寸
-    if (window.SampleUI && SampleUI._canvas) {
-        const d = window.devicePixelRatio || 1;
-        SampleUI._canvas.width = Math.round(RECT.amp.w * d);
-        SampleUI._canvas.height = Math.round(RECT.amp.h * d);
-        SampleUI._canvas.style.width = RECT.amp.w + 'px';
-        SampleUI._canvas.style.height = RECT.amp.h + 'px';
-
-        if (SampleUI._grid) {
-            SampleUI._grid.width = Math.round(RECT.amp.w * d);
-            SampleUI._grid.height = Math.round(RECT.amp.h * d);
-        }
-
-        // 更新面板尺寸
-        const midX = Math.floor(RECT.amp.w / 2);
-        SampleUI._leftPanel = { x: 0, y: 0, w: midX - 1, h: RECT.amp.h };
-        SampleUI._rightPanel = { x: midX + 1, y: 0, w: RECT.amp.w - midX - 1, h: RECT.amp.h };
-
+    if (ampHud && window.SampleUI && SampleUI._canvas) {
+        const w = ampHud.clientWidth, h = ampHud.clientHeight, d = window.devicePixelRatio || 1;
+        SampleUI._canvas.width = Math.round(w * d);
+        SampleUI._canvas.height = Math.round(h * d);
+        SampleUI._canvas.style.width = w + 'px';
+        SampleUI._canvas.style.height = h + 'px';
+        if (SampleUI._grid) { SampleUI._grid.width = Math.round(w * d); SampleUI._grid.height = Math.round(h * d); }
+        const midX = Math.floor(w / 2);
+        SampleUI._leftPanel = { x: 0, y: 0, w: midX - 1, h };
+        SampleUI._rightPanel = { x: midX + 1, y: 0, w: w - midX - 1, h };
         SampleUI._drawGrid?.();
     }
 }
 
 /* ------------ Setup --------------- */
 function setup() {
-    if (isMobile()) {
-        pixelDensity(1);
-        frameRate(45);
-    } else {
-        frameRate(60);
-    }
+    if (isMobile()) { pixelDensity(1); frameRate(45); } else { frameRate(60); }
 
     const NOTES_H = 120;
-    const METER_H = 200; // 增加底部HUD高度
+    const METER_H = 200;
     const totalHeight = NOTES_H + SWEEP_H + METER_H + GRID.pad * 3;
 
     const cnv = createCanvas(1000, totalHeight);
@@ -288,8 +222,9 @@ function setup() {
 
     _canvasHost = select('#score-wrap');
     _canvasHost.elt.style.position = 'relative';
+    _canvasHost.elt.classList.add('fixed-hud');
 
-    // 创建容器
+    // 创建底部 HUD 容器（仅音频分析）
     let ampHud = document.getElementById('amp-hud');
     if (!ampHud) {
         ampHud = document.createElement('div');
@@ -302,25 +237,9 @@ function setup() {
         _canvasHost.elt.appendChild(ampHud);
     }
 
-    let drumWrap = document.getElementById('drum-wrap');
-    if (!drumWrap) {
-        drumWrap = document.createElement('div');
-        drumWrap.id = 'drum-wrap';
-        drumWrap.style.position = 'absolute';
-        drumWrap.style.background = 'rgba(30, 30, 35, 0.95)';
-        drumWrap.style.borderRadius = '50%';
-        drumWrap.style.border = '1px solid #555';
-        drumWrap.style.overflow = 'hidden';
-        _canvasHost.elt.appendChild(drumWrap);
-    }
-
-    // 首次布局
+    // 首次与响应式布局
     layoutRects(cnv);
-
-    // 响应式布局
-    window.addEventListener('resize', () => {
-        layoutRects(cnv);
-    });
+    window.addEventListener('resize', () => layoutRects(cnv));
 
     // 初始化节奏管理器
     rm = new RhythmManager();
@@ -333,7 +252,7 @@ function setup() {
     });
     guides.setNotes(rm.scoreNotes, rm.totalDuration);
 
-    // 初始化Sweep
+    // 初始化 Sweep
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
         rectProvider: () => RECT.sweep,
@@ -348,18 +267,12 @@ function setup() {
     _lastCycleForSnap = SweepMode.getCurrentCycle();
 
     // 初始化节拍器
-    metro.onloaded(() => {
-        console.log("Metronome loaded!");
-        metro.reset();
-    });
+    metro.onloaded(() => { console.log("Metronome loaded!"); metro.reset(); });
 
-    // 初始化麦克风
-    mic = new p5.AudioIn();
-    mic.start();
+    // 初始化麦克风 & 分析器
+    mic = new p5.AudioIn(); mic.start();
 
-    // 初始化音频分析器 - 确保正确连接麦克风
     if (window.SampleUI && !window.__samplerInit) {
-        // 延迟初始化以确保DOM就绪
         setTimeout(() => {
             SampleUI.init({
                 mount: '#amp-hud',
@@ -371,31 +284,14 @@ function setup() {
             });
 
             if (mic && mic.stream) {
-                SampleUI.setupAudio({
-                    offsetDb: 0,
-                    useP5Mic: true  // 使用已有麦克风
-                });
+                SampleUI.setupAudio({ offsetDb: 0, useP5Mic: true });
             } else {
                 SampleUI.setupAudio({ offsetDb: 0 });
             }
-
             SampleUI.pause();
         }, 200);
-
         window.__samplerInit = true;
     }
-    setTimeout(() => {
-        if (window.DrumCanvas && !window.DrumCanvas._ctx) {
-            const drumSize = Math.min(RECT.drum.w, RECT.drum.h) * 0.8;
-            DrumCanvas.init({
-                mount: '#drum-wrap',
-                size: drumSize,
-                background: '#2f3036'
-            });
-        }
-    }, 150);
-
-
 
     // 交互控件
     select('#sens-slider').input(() => { ENERGY_Z = parseFloat(select('#sens-slider').value()); });
@@ -428,30 +324,41 @@ function setup() {
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(handleExport);
 
-    // 速度滑块
-    select('#speed-slider').input(() => {
-        const speedVal = parseFloat(select('#speed-slider').value());
-        select('#speed-val').html(speedVal.toFixed(2));
-        const bpmVal = speedToBPM(speedVal);
-        select('#bpm-val').html(Math.round(bpmVal));
-
-        metro.setBPM(bpmVal);
-        rm.setBPM(bpmVal);
-        rm.setSpeedFactor(speedVal);
-
-        guides.syncFixed?.();
-        SweepMode.setSpeedMultiplier(1);
-
-        if (metronomeEnabled && running && metro.isLoaded()) {
-            metro.flushFuture();                 // 清掉旧 BPM 预排
-            resetMetronomeSchedulerState();      // 清状态
-            armNextTickNow();                    // 锁定下一记
-            schedulerState.guardUntil = metro.ctx.currentTime + 0.02; // 保护 20ms 防重复
-        }
-        _emaE = 0; _emaVar = 1;
-    });
-
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
+    setupFixes();
+}
+
+function setupFixes() {
+    // 确保音频分析器正确初始化
+    if (window.SampleUI && !window.__samplerInit) {
+        let ampHud = document.getElementById('amp-hud');
+        if (!ampHud) {
+            ampHud = document.createElement('div');
+            ampHud.id = 'amp-hud';
+            document.querySelector('#score-wrap').appendChild(ampHud);
+        }
+
+        setTimeout(async () => {
+            window.SampleUI = window.AudioAnalyzer || window.SampleUI;
+            if (window.SampleUI) {
+                SampleUI.init({
+                    mount: '#amp-hud',
+                    width: RECT.amp.w || 480,
+                    height: RECT.amp.h || 200,
+                    dbMin: 20,
+                    dbMax: 100,
+                    fftSize: 512
+                });
+                try {
+                    await SampleUI.setupAudio({ offsetDb: 0, useP5Mic: false });
+                    console.log("Audio analyzer initialized");
+                    SampleUI.pause();
+                } catch (e) { console.error("Audio setup failed:", e); }
+            }
+        }, 300);
+
+        window.__samplerInit = true;
+    }
 }
 
 /* ------------ Control Functions ------------- */
@@ -459,28 +366,18 @@ async function handleStart() {
     if (running || counting) return;
 
     await window.userStartAudio?.();
+    try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
 
-    try {
-        await mic.start();
-        console.log("Microphone started");
-    } catch (e) {
-        console.warn("Mic start failed:", e);
-    }
-
-    // 确保SampleUI恢复
     if (window.SampleUI) {
+        if (!SampleUI._analyser) { await SampleUI.setupAudio({ offsetDb: 0, useP5Mic: true }); }
         SampleUI.resume();
-        console.log("SampleUI resumed");
     }
 
     if (isPaused) {
         const pauseMs = (rm.pauseAt - rm.startTime) % rm.totalDuration;
         const notes = rm.scoreNotes;
         for (let i = 0; i < notes.length; i++) {
-            if (notes[i].time >= pauseMs) {
-                schedulerState.lastIdx = i - 1;
-                break;
-            }
+            if (notes[i].time >= pauseMs) { schedulerState.lastIdx = i - 1; break; }
         }
         startCountdown({ resume: true });
         return;
@@ -497,7 +394,6 @@ function handlePause() {
     if (!running && !counting) return;
     isPaused = true; running = false;
 
-    // 保存当前播放位置
     const currentMs = rm._t() % rm.totalDuration;
     rm.pauseAt = rm.startTime + currentMs;
 
@@ -533,7 +429,6 @@ function handleExport() {
         const curImg = get(r0.x, r0.y, r0.w, r0.h);
         SWEEP_EXPORT_QUEUE.push(curImg);
     }
-
     const r = RECT.sweep;
     const n = SWEEP_EXPORT_QUEUE.length;
     const totalH = r.h * n;
@@ -619,15 +514,10 @@ function draw() {
     if (running) {
         rm.checkAutoMiss();
         rm.checkLoopAndRestart();
-        flashDrumWhenNoteAtLine();
     }
 
-    if (window.DrumCanvas && DrumCanvas.update) {
-        DrumCanvas.update();
-    }
-
+    // 绘制音符与反馈
     drawNotesAndFeedback();
-    flashDrumWhenNoteAtLine();
 
     // 统计
     const { hit, miss } = rm.getStats();
@@ -641,15 +531,13 @@ function draw() {
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
 
-    // 分隔线
+    // 分隔线（仅水平两条，去掉中间竖线）
     push();
     stroke(220); strokeWeight(2);
     const yTopDiv = Math.round(RECT.sweep.y - GRID.pad) + 0.5;                    // Notes ↔ Sweep
     const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5; // Sweep ↔ 下方 HUD
     line(0, yTopDiv, width, yTopDiv);
     line(0, yBelowSweep, width, yBelowSweep);
-    const xSep = Math.round(RECT.drum.x - GRID.pad) + 0.5;                         // 中栏左右分割
-    line(xSep, yBelowSweep, xSep, height - GRID.pad);
     pop();
 }
 
@@ -671,30 +559,6 @@ function drawGrid() {
     const yBot = laneBottomY();
     line(0, yTop, width, yTop);
     line(0, yBot, width, yBot);
-}
-
-function flashDrumWhenNoteAtLine() {
-    if (!window.DrumCanvas || !DrumCanvas.trigger || !rm?.scoreNotes?.length) return;
-
-    const notes = rm.getVisibleNotes ? rm.getVisibleNotes() : rm.scoreNotes;
-    const thr = 8; // 增加阈值范围
-
-    for (const n of notes) {
-        const x = rm.getScrollX(n._displayTime ?? n.time);
-        if (Math.abs(x - rm.judgeLineX) <= thr) {
-            const abRaw = n.abbr || n.type?.[0] || 'O';
-            const AB = abRaw.toString().toUpperCase();
-            const key = (AB === 'O' || AB === 'S') ? 'O' :
-                (AB === 'T') ? 'T' :
-                    (AB === 'P' || AB === 'B') ? 'P' : 'O';
-
-            // 确保trigger函数被正确调用
-            if (typeof DrumCanvas.trigger === 'function') {
-                DrumCanvas.trigger(key, 300); // 增加持续时间
-            }
-            break;
-        }
-    }
 }
 
 function drawNotesAndFeedback() {
@@ -730,7 +594,7 @@ function drawNotesAndFeedback() {
 
             if (state.result !== 'Miss') {
                 const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time;
-                const R = 10;          // 仅用于视觉偏移
+                const R = 10; // 视觉偏移
                 const pxOffset = dt / GOOD_WINDOW * R;
                 fill(0, alpha);
                 ellipse(xN + pxOffset, y, 10);
@@ -742,35 +606,19 @@ function drawNotesAndFeedback() {
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
-    // 检查是否点击在音频分析区域
+    // 仅保留：点击音频分析区域可打点/推 marker
     if (RECT && RECT.amp) {
         if (mouseX >= RECT.amp.x && mouseX < RECT.amp.x + RECT.amp.w &&
             mouseY >= RECT.amp.y && mouseY < RECT.amp.y + RECT.amp.h) {
-            if (guides && guides.addHitNow) {
-                guides.addHitNow();
-            }
-            if (window.SampleUI && SampleUI.pushMarker) {
-                SampleUI.pushMarker('#a64fd6', 900);
-            }
-        }
-    }
-
-    // 检查是否点击在鼓面区域
-    if (RECT && RECT.drum) {
-        if (mouseX >= RECT.drum.x && mouseX < RECT.drum.x + RECT.drum.w &&
-            mouseY >= RECT.drum.y && mouseY < RECT.drum.y + RECT.drum.h) {
-            if (window.DrumCanvas && typeof DrumCanvas.trigger === 'function') {
-                DrumCanvas.trigger('EDGE', 400); // 点击外圈效果
-            }
+            if (guides && guides.addHitNow) guides.addHitNow();
+            if (window.SampleUI && SampleUI.pushMarker) SampleUI.pushMarker('#a64fd6', 900);
         }
     }
 
     // 通用击打处理
     if (running) {
         rm.registerHit();
-        if (window.SweepMode && SweepMode.addHitNow) {
-            SweepMode.addHitNow();
-        }
+        if (window.SweepMode && SweepMode.addHitNow) SweepMode.addHitNow();
         judgeLineGlow = 1;
     }
 }
