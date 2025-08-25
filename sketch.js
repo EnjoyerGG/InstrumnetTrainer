@@ -260,8 +260,10 @@ function setup() {
     fftHUD = FFTPanel.init({
         mic,
         rectProvider: () => RECT.fft,
-        bins: 64,
-        smoothing: 0.9
+        bins: 128,
+        smoothing: 0.85,
+        vscale: 1.12,
+        lift: 0
     })
 
     select('#metro-toggle').mousePressed(() => {

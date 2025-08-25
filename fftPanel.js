@@ -8,17 +8,21 @@
     const Panel = {
         _rect: () => ({ x: 0, y: 0, w: 0, h: 0 }),
         _fft: null,
-        _bins: 64,
-        _smooth: 0.9,
-        _bg: '#111319',
+        _bins: 256,
+        _smooth: 0.85,
+        _bg: '#010101ff',
         _frame: 'rgba(255,255,255,0.18)',
         _grid: 'rgba(255,255,255,0.06)',
         _corner: 12,
+        _vscale: 1.12,  //垂直放大系数
+        _liftPx: 8, //整体上移像素
 
-        init({ mic, rectProvider, bins = 64, smoothing = 0.9 } = {}) {
+        init({ mic, rectProvider, bins = 256, smoothing = 0.85, vscale = 1.12, lift = 8 } = {}) {
             this._rect = rectProvider || this._rect;
             this._bins = Math.max(16, bins | 0);
             this._smooth = clamp(smoothing, 0, 0.99);
+            this._vscale = vscale;
+            this._liftPx = lift;
             this._fft = new p5.FFT(this._smooth, this._bins);
             if (mic) this._fft.setInput(mic);
             return this;
@@ -44,7 +48,9 @@
             ctx.lineWidth = 1;
             for (let i = 1; i < 5; i++) {
                 const yy = Math.round(y + (h * i) / 5) + 0.5;
-                ctx.beginPath(); ctx.moveTo(x + 8, yy); ctx.lineTo(x + w - 8, yy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + 8, yy);
+                ctx.lineTo(x + w - 8, yy);
+                ctx.stroke();
             }
             ctx.restore();
         },
@@ -73,7 +79,7 @@
             const peakHz = Math.round(peakIdx * binHz);
 
             // 柱状图（仿 Coding Train：HSB 色相随频率变化）
-            const padL = 10, padR = 10, padT = 6, padB = 10;
+            const padL = 10, padR = 10, padT = 4, padB = 10 + this._liftPx;
             const innerW = w - padL - padR;
             const innerH = h - padT - padB;
             const barW = Math.max(1, Math.floor(innerW / N));
@@ -85,7 +91,7 @@
 
             for (let i = 0; i < N; i++) {
                 const ampl = spec[i];               // 0..255
-                const barH = (ampl / 255) * innerH; // 映射到高度
+                const barH = Math.min(innerH, (ampl / 255) * innerH * this._vscale); // 垂直放大
                 const hue = Math.floor(i * (255 / N));
                 fill(hue, 255, 255);                // HSB
                 rect(i * barW, innerH - barH, barW, barH);
@@ -97,7 +103,7 @@
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
             ctx.font = 'bold 14px ui-sans-serif, system-ui, -apple-system';
             ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-            ctx.fillText('FFT 频谱 (Mic)', x + 12, y + 10);
+            ctx.fillText('FFT(Mic)', x + 12, y + 10);
 
             ctx.textAlign = 'right';
             ctx.font = 'bold 22px ui-sans-serif, system-ui, -apple-system';
