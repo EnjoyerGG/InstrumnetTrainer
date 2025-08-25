@@ -17,7 +17,7 @@ window.userStartAudio = async function () {
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
-let rm, metro, mic, guides, fftHUD;
+let rm, metro, mic, fftHUD;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0;
@@ -32,6 +32,8 @@ const SWEEP_H = 140;
 
 const BPM_MIN = 60, BPM_MAX = 240;
 const SPEED_MIN = 0.10, SPEED_MAX = 0.40;
+
+const PX_PER_MS = 0.08;
 
 let _emaE = 0, _emaVar = 1, _alphaE = 0.08;
 let ENERGY_Z = 1.6;
@@ -177,7 +179,7 @@ function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.u
 
 const GRID = { pad: 10, topHRatio: 0.5 };
 const RECT = {
-    top: {}, amp: {}, sweep: {}, fft: {}
+    top: {}, amp: {}, sweep: {}, fft: {}, amp: {}, drum: {}
 };
 let _canvasHost;
 
@@ -199,7 +201,6 @@ function layoutRects() {
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: availW, h: sweepH };
     RECT.fft = { x: GRID.pad, y: hudY + insetTop, w: leftW - insetRight, h: hudH - insetBottom };
-    //RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
 }
 
 /* ------------ Setup --------------- */
@@ -222,23 +223,10 @@ function setup() {
     layoutRects(cnv);
     window.addEventListener('resize', () => layoutRects(cnv));
 
-    //更改打击颜色
-    guides?.setHitColor('rgba(255,180,0,0.60)', 2);
-    guides?.setHitGlow('rgba(255,210,80,0.95)', 16);   // HUD 发光更暖更亮
-    SweepMode?.setHitColor('rgba(255,180,0,0.35)', 2);
-    SweepMode?.setHitGlow('rgba(255,210,80,0.90)', 14); // Sweep 发光
-
-
     // 初始化节奏管理器
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);
     rm.noteY = 50;
-
-    // guides = AmpGuides.init({
-    //     getNowMs: () => rm._t(),
-    //     getRect: () => RECT.amp
-    // });
-    // guides.setNotes(rm.scoreNotes, rm.totalDuration);
 
     // 初始化 Sweep
     SweepMode = SweepMode.init({
@@ -252,6 +240,9 @@ function setup() {
     SweepMode.setBeatMs(rm.noteInterval);
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
+    //更改打击颜色
+    SweepMode?.setHitColor('rgba(255,180,0,0.35)', 2);
+    SweepMode?.setHitGlow('rgba(255,210,80,0.90)', 14); // Sweep 发光
     _lastCycleForSnap = SweepMode.getCurrentCycle();
 
     // 初始化节拍器
@@ -268,9 +259,10 @@ function setup() {
         bins: 1024,
         smoothing: 0.85,
         vscale: 1.12,
-        lift: 14
+        lift: 10
     })
 
+    //UI绑定
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
         select('#metro-toggle').html(metronomeEnabled ? 'Metronome Off' : 'Metronome On');
@@ -298,9 +290,7 @@ function setup() {
     select('#pause-btn').mousePressed(handlePause);
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(handleExport);
-
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
-
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
         select('#speed-val').html(speedVal.toFixed(2));
@@ -313,7 +303,7 @@ function setup() {
         rm.setSpeedFactor(speedVal);
 
         // 同步其他组件
-        guides?.syncFixed?.();
+        // guides?.syncFixed?.();
         SweepMode?.setSpeedMultiplier?.(1);
 
         // 如果正在运行且节拍器启用，更新调度器
@@ -324,8 +314,7 @@ function setup() {
             schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
         }
         // 重置能量统计
-        _emaE = 0;
-        _emaVar = 1;
+        _emaE = 0, _emaVar = 1;
     });
 }
 
@@ -376,8 +365,6 @@ function handleReset() {
 
     try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
 
-    guides?.setStartGap(COUNTDOWN_MS);
-    guides?.clearHits?.();
     SweepMode.clearHits();
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
@@ -416,7 +403,6 @@ function startCountdown(opts = {}) {
     ctStart = millis();
 
     if (!resume) {
-        guides?.setStartGap(COUNTDOWN_MS);
         SweepMode.setStartGap(COUNTDOWN_MS);
         SweepMode.snapToLeft();
     }
@@ -568,14 +554,6 @@ function drawNotesAndFeedback() {
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
-    // 仅保留：点击音频分析区域可打点/推 marker
-    if (RECT && RECT.amp) {
-        if (mouseX >= RECT.amp.x && mouseX < RECT.amp.x + RECT.amp.w &&
-            mouseY >= RECT.amp.y && mouseY < RECT.amp.y + RECT.amp.h) {
-            guides?.addHitNow?.();
-        }
-    }
-
     // 通用击打处理
     if (running) {
         rm.registerHit();
