@@ -179,7 +179,7 @@ const GRID = { pad: 10, topHRatio: 0.5 };
 const RECT = { top: {}, amp: {}, sweep: {} };
 let _canvasHost;
 
-function layoutRects(cnv) {
+function layoutRects() {
     const topH = Number.isFinite(GRID.topHpx) ? GRID.topHpx : Math.round(height * GRID.topHRatio);
 
     // 布局顺序：Notes -> Sweep -> 底部HUD（频谱/声谱独占整行）
@@ -191,21 +191,6 @@ function layoutRects(cnv) {
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: width - GRID.pad * 2, h: sweepH };
     RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
-
-    // 同步 SampleUI 画布大小
-    const ampHud = document.getElementById('amp-hud');
-    if (ampHud && window.SampleUI && SampleUI._canvas) {
-        const w = ampHud.clientWidth, h = ampHud.clientHeight, d = window.devicePixelRatio || 1;
-        SampleUI._canvas.width = Math.round(w * d);
-        SampleUI._canvas.height = Math.round(h * d);
-        SampleUI._canvas.style.width = w + 'px';
-        SampleUI._canvas.style.height = h + 'px';
-        if (SampleUI._grid) { SampleUI._grid.width = Math.round(w * d); SampleUI._grid.height = Math.round(h * d); }
-        const midX = Math.floor(w / 2);
-        SampleUI._leftPanel = { x: 0, y: 0, w: midX - 1, h };
-        SampleUI._rightPanel = { x: midX + 1, y: 0, w: w - midX - 1, h };
-        SampleUI._drawGrid?.();
-    }
 }
 
 /* ------------ Setup --------------- */
@@ -223,19 +208,6 @@ function setup() {
     _canvasHost = select('#score-wrap');
     _canvasHost.elt.style.position = 'relative';
     _canvasHost.elt.classList.add('fixed-hud');
-
-    // 创建底部 HUD 容器（仅音频分析）
-    let ampHud = document.getElementById('amp-hud');
-    if (!ampHud) {
-        ampHud = document.createElement('div');
-        ampHud.id = 'amp-hud';
-        ampHud.style.position = 'absolute';
-        ampHud.style.background = 'rgba(30, 30, 35, 0.95)';
-        ampHud.style.borderRadius = '12px';
-        ampHud.style.border = '1px solid #555';
-        ampHud.style.overflow = 'hidden';
-        _canvasHost.elt.appendChild(ampHud);
-    }
 
     // 首次与响应式布局
     layoutRects(cnv);
@@ -270,31 +242,8 @@ function setup() {
     metro.onloaded(() => { console.log("Metronome loaded!"); metro.reset(); });
 
     // 初始化麦克风 & 分析器
-    mic = new p5.AudioIn(); mic.start();
-
-    if (window.SampleUI && !window.__samplerInit) {
-        setTimeout(() => {
-            SampleUI.init({
-                mount: '#amp-hud',
-                width: RECT.amp.w,
-                height: RECT.amp.h,
-                dbMin: 30,
-                dbMax: 90,
-                fftSize: 512
-            });
-
-            if (mic && mic.stream) {
-                SampleUI.setupAudio({ offsetDb: 0, useP5Mic: true });
-            } else {
-                SampleUI.setupAudio({ offsetDb: 0 });
-            }
-            SampleUI.pause();
-        }, 200);
-        window.__samplerInit = true;
-    }
-
-    // 交互控件
-    select('#sens-slider').input(() => { ENERGY_Z = parseFloat(select('#sens-slider').value()); });
+    mic = new p5.AudioIn();
+    mic.start();
 
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
@@ -325,19 +274,15 @@ function setup() {
     select('#export-btn').mousePressed(handleExport);
 
     select('#totals').html(`Notes ${rm.scoreNotes.length}`);
-    setupFixes();
 
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
         select('#speed-val').html(speedVal.toFixed(2));
-
         const bpmVal = speedToBPM(speedVal);
         select('#bpm-val').html(Math.round(bpmVal));
 
         // 更新节拍器BPM
         metro.setBPM(bpmVal);
-
-        // 更新节奏管理器
         rm.setBPM(bpmVal);
         rm.setSpeedFactor(speedVal);
 
