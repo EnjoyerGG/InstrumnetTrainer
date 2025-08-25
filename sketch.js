@@ -541,9 +541,8 @@ function drawNotesAndFeedback() {
             text(state.result, xN, y - 30);
 
             if (state.result !== 'Miss') {
-                const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time;
-                const R = 10; // 视觉偏移
-                const pxOffset = dt / GOOD_WINDOW * R;
+                const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time; // ms（早负晚正）
+                const pxOffset = constrain(dt * PX_PER_MS, -20, 20);
                 fill(0, alpha);
                 ellipse(xN + pxOffset, y, 10);
             }
