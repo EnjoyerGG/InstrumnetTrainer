@@ -197,10 +197,29 @@ function layoutRects() {
 
     const availW = width - GRID.pad * 2;
     const leftW = Math.round(availW / 2);
+    const gap = 8;          // 中间竖向缝
+    const pad = 8;          // 四周内边距
 
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: availW, h: sweepH };
     RECT.fft = { x: GRID.pad, y: hudY + insetTop, w: leftW - insetRight, h: hudH - insetBottom };
+    // 右半：再左右拆分
+    RECT.rightHalf = { x: GRID.pad + leftW, y: hudY, w: availW - leftW, h: hudH };
+    const halfW = Math.floor((RECT.rightHalf.w - gap - pad * 2) / 2);
+
+    RECT.amp = {
+        x: RECT.rightHalf.x + pad,
+        y: RECT.rightHalf.y + pad,
+        w: halfW,
+        h: RECT.rightHalf.h - pad * 2
+    };
+    RECT.drum = {
+        x: RECT.rightHalf.x + pad + halfW + gap,
+        y: RECT.rightHalf.y + pad,
+        w: RECT.rightHalf.w - pad * 2 - halfW - gap,
+        h: RECT.rightHalf.h - pad * 2
+    };
+
 }
 
 /* ------------ Setup --------------- */
@@ -303,7 +322,6 @@ function setup() {
         rm.setSpeedFactor(speedVal);
 
         // 同步其他组件
-        // guides?.syncFixed?.();
         SweepMode?.setSpeedMultiplier?.(1);
 
         // 如果正在运行且节拍器启用，更新调度器
@@ -485,7 +503,12 @@ function draw() {
 
     stroke(220); strokeWeight(2);
     const midX = Math.round(width / 2) + 0.5;
-    line(midX, yBelowSweep, midX, height - GRID.pad); // 下方 HUD 中间竖线
+    line(midX, yBelowSweep, midX, height - GRID.pad);
+
+    stroke(200); strokeWeight(1.5);
+    const midXRight = Math.round(RECT.rightHalf.x + RECT.rightHalf.w / 2) + 0.5;
+    line(midXRight, RECT.rightHalf.y, RECT.rightHalf.x + RECT.rightHalf.w, RECT.rightHalf.y); // 顶边短刻度(可选)
+    line(midXRight, RECT.rightHalf.y, midXRight, RECT.rightHalf.y + RECT.rightHalf.h);
     pop();
 }
 
