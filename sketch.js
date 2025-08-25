@@ -189,11 +189,16 @@ function layoutRects() {
     const sweepH = SWEEP_H;
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
-    const leftW = Math.round((width - GRID.pad * 2) * 0.42);
+    const insetTop = 8;   // ↑ 顶部收紧
+    const insetRight = 10; // → 右侧收紧
+    const insetBottom = 6;
+
+    const availW = width - GRID.pad * 2;
+    const leftW = Math.round(availW / 2);
 
     RECT.top = { x: 0, y: 0, w: width, h: topH };
-    RECT.sweep = { x: GRID.pad, y: sweepY, w: width - GRID.pad * 2, h: sweepH };
-    RECT.fft = { x: GRID.pad, y: hudY, w: leftW, h: hudH };
+    RECT.sweep = { x: GRID.pad, y: sweepY, w: availW, h: sweepH };
+    RECT.fft = { x: GRID.pad, y: hudY + insetTop, w: leftW - insetRight, h: hudH - insetBottom };
     //RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
 }
 
