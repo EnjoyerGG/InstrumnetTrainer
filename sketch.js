@@ -260,7 +260,7 @@ function setup() {
     fftHUD = FFTPanel.init({
         mic,
         rectProvider: () => RECT.fft,
-        bins: 128,
+        bins: 1024,
         smoothing: 0.85,
         vscale: 1.12,
         lift: 0

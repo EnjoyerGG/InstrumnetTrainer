@@ -43,6 +43,7 @@
         },
 
         _drawGrid(ctx, x, y, w, h) {
+            this._roundRect(ctx, x, y, w, h, this._corner, this._bg, this._frame);
             ctx.save();
             ctx.strokeStyle = this._grid;
             ctx.lineWidth = 1;
@@ -51,6 +52,48 @@
                 ctx.beginPath(); ctx.moveTo(x + 8, yy);
                 ctx.lineTo(x + w - 8, yy);
                 ctx.stroke();
+            }
+            ctx.restore();
+        },
+
+        //画x轴刻度
+        _drawXAxis(ctx, x, y, w, h, nyquist, innerW, padL, padR, padT, padB) {
+            const baseY = y + h - padB + 0.5;
+
+            // 底线
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x + padL, baseY); ctx.lineTo(x + w - padR, baseY); ctx.stroke();
+
+            // 主/次刻度
+            const major = 2000;  // 2k 主刻度
+            const minor = 1000;  // 1k 次刻度
+            const labelPad = 14;
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.font = '12px ui-sans-serif, system-ui, -apple-system';
+
+            for (let f = 0; f <= nyquist + 1; f += minor) {
+                const px = x + padL + (f / nyquist) * innerW;
+                const isMajor = (f % major === 0);
+
+                ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.14)';
+                ctx.lineWidth = 1;
+
+                // 竖向网格线（从内部顶部到底线）
+                ctx.beginPath();
+                ctx.moveTo(px + 0.5, y + padT);
+                ctx.lineTo(px + 0.5, baseY);
+                ctx.stroke();
+
+                // 标签（主刻度）
+                if (isMajor && f > 0) {
+                    const label = (f >= 1000) ? (f / 1000) + 'k' : ('' + f);
+                    ctx.fillStyle = 'rgba(255,255,255,0.70)';
+                    ctx.fillText(label, px, baseY + 2);
+                }
             }
             ctx.restore();
         },
@@ -82,13 +125,12 @@
             const padL = 10, padR = 10, padT = 4, padB = 10 + this._liftPx;
             const innerW = w - padL - padR;
             const innerH = h - padT - padB;
-            const barW = Math.max(1, Math.floor(innerW / N));
 
-            push(); // p5 状态
+            const barW = Math.max(1, Math.floor(innerW / N));
+            push();
             translate(x + padL, y + padT);
             colorMode(HSB, 255);
             noStroke();
-
             for (let i = 0; i < N; i++) {
                 const ampl = spec[i];               // 0..255
                 const barH = Math.min(innerH, (ampl / 255) * innerH * this._vscale); // 垂直放大
@@ -97,6 +139,9 @@
                 rect(i * barW, innerH - barH, barW, barH);
             }
             pop(); // 还原 p5 状态
+
+            // 频率轴刻度（主：2k，次：1k）
+            this._drawXAxis(ctx, x, y, w, h, nyquist, innerW, padL, padR, padT, padB);
 
             // 标题与主峰读数
             ctx.save();
