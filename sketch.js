@@ -176,21 +176,25 @@ function bpmToSpeed(bpm) { return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPE
 function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); }
 
 const GRID = { pad: 10, topHRatio: 0.5 };
-const RECT = { top: {}, amp: {}, sweep: {} };
+const RECT = {
+    top: {}, amp: {}, sweep: {}, fft: {}
+};
 let _canvasHost;
 
 function layoutRects() {
     const topH = Number.isFinite(GRID.topHpx) ? GRID.topHpx : Math.round(height * GRID.topHRatio);
 
-    // 布局顺序：Notes -> Sweep -> 底部HUD（频谱/声谱独占整行）
+    // 布局顺序：Notes -> Sweep -> 底部HUD（左频谱/声谱独占整行）
     const sweepY = topH + GRID.pad;
     const sweepH = SWEEP_H;
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
+    const leftW = Math.round((width - GRID.pad * 2) * 0.42);
 
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: width - GRID.pad * 2, h: sweepH };
-    RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
+    RECT.fft = { x: GRID.pad, y: hudY, w: leftW, h: hudH };
+    //RECT.amp = { x: GRID.pad, y: hudY, w: width - GRID.pad * 2, h: hudH };
 }
 
 /* ------------ Setup --------------- */
@@ -225,11 +229,11 @@ function setup() {
     rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
-    guides = AmpGuides.init({
-        getNowMs: () => rm._t(),
-        getRect: () => RECT.amp
-    });
-    guides.setNotes(rm.scoreNotes, rm.totalDuration);
+    // guides = AmpGuides.init({
+    //     getNowMs: () => rm._t(),
+    //     getRect: () => RECT.amp
+    // });
+    // guides.setNotes(rm.scoreNotes, rm.totalDuration);
 
     // 初始化 Sweep
     SweepMode = SweepMode.init({
@@ -251,6 +255,14 @@ function setup() {
     // 初始化麦克风 & 分析器
     mic = new p5.AudioIn();
     mic.start();
+
+    //初始化FFT面板
+    fftHUD = FFTPanel.init({
+        mic,
+        rectProvider: () => RECT.fft,
+        bins: 64,
+        smoothing: 0.9
+    })
 
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
@@ -418,7 +430,6 @@ function draw() {
             _lastCycleForSnap = cur;
         }
     }
-
     background('#3a3a3a');
     judgeLineGlow *= 0.9; if (judgeLineGlow < 0.01) judgeLineGlow = 0;
     drawGrid();
@@ -467,6 +478,9 @@ function draw() {
 
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
+
+    // 左侧：FFT 频谱
+    fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
 
     // 分隔线（仅水平两条，去掉中间竖线）
     push();
