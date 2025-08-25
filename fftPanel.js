@@ -21,7 +21,7 @@
         _frame: 'rgba(255,255,255,0.18)',
         _grid: 'rgba(255,255,255,0.06)',
         _corner: 12,
-        _vscale: 1.12,
+        _vscale: 2.5,
         _liftPx: 0,      // 整体上移（底部留白）
 
         init({ mic, rectProvider, bins = 256, smoothing = 0.85, vscale = 1.12, lift = 12 } = {}) {

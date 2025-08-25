@@ -258,8 +258,8 @@ function setup() {
         rectProvider: () => RECT.fft,
         bins: 1024,
         smoothing: 0.85,
-        vscale: 1.12,
-        lift: 10
+        vscale: 2,
+        lift: 5
     })
 
     //UI绑定
