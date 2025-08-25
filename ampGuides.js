@@ -109,6 +109,12 @@
                 }
                 ctx.restore();
             }
+        },
+
+        setHitColor(color, width) {
+            if (color) this._hitStyle.color = color;
+            if (Number.isFinite(width)) this._hitStyle.w = width;
+            return this;
         }
     };
 

@@ -213,6 +213,11 @@ function setup() {
     layoutRects(cnv);
     window.addEventListener('resize', () => layoutRects(cnv));
 
+    //更改打击颜色
+    guides?.setHitColor('rgba(255,180,0,0.60)', 2);
+    SweepMode?.setHitColor('rgba(255,180,0,0.35)', 2);
+
+
     // 初始化节奏管理器
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);

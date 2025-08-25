@@ -456,6 +456,12 @@
             const cur = (this._nowMs() * this._speedMul + this._startGapMs) % this._loopMs;
             this._phaseBiasMs = (this._loopMs - cur) % this._loopMs;
         },
+
+        setHitColor(color, width) {
+            if (color) this._hit = color;
+            if (Number.isFinite(width)) this._hitW = width;
+            return this;
+        }
     };
 
     root.SweepMode = Mode;
