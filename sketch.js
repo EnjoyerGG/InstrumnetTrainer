@@ -215,7 +215,9 @@ function setup() {
 
     //更改打击颜色
     guides?.setHitColor('rgba(255,180,0,0.60)', 2);
+    guides?.setHitGlow('rgba(255,210,80,0.95)', 16);   // HUD 发光更暖更亮
     SweepMode?.setHitColor('rgba(255,180,0,0.35)', 2);
+    SweepMode?.setHitGlow('rgba(255,210,80,0.90)', 14); // Sweep 发光
 
 
     // 初始化节奏管理器

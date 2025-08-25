@@ -36,6 +36,13 @@
 
         _hit: 'rgba(152, 65, 199, 0.4)',
         _hitW: 2,          // 命中竖线宽
+        _hitGlowColor: 'rgba(255,180,0,0.90)',
+        _hitGlowBlur: 14,
+        setHitGlow(color, blur) {
+            if (color) this._hitGlowColor = color;
+            if (Number.isFinite(blur)) this._hitGlowBlur = blur;
+            return this;
+        },
 
         _text: 'rgba(255,255,255,0.8)',
         _r: 10,            // note 半径（弱）
@@ -328,21 +335,31 @@
             const nowMs = this._nowMs();
             const phaseNow = (nowMs * this._speedMul + this._startGapMs + this._phaseBiasMs);
             const curCyc = Math.floor(phaseNow / this._loopMs);
-            // 永久命中竖线（也用内层）
+            // 永久命中竖线（双通道：光晕 + 清晰芯）
             if (this._permHits.length) {
+                const drawPermHits = (withGlow) => {
+                    if (withGlow) { ctx.shadowColor = this._hitGlowColor; ctx.shadowBlur = this._hitGlowBlur; }
+                    else { ctx.shadowBlur = 0; }
+
+                    ctx.strokeStyle = this._hit;
+                    ctx.lineWidth = this._hitW;
+                    for (const h of this._permHits) {
+                        if (!this._showArchive && h.cyc !== curCyc) continue;
+                        const xx = Math.round(this.timeToX(h.t, x, w)) + 0.5;
+                        if (xx < x - 6 || xx > x + w + 6) continue;
+                        ctx.beginPath();
+                        ctx.moveTo(xx, inY + 8);
+                        ctx.lineTo(xx, inY + inH - 8);
+                        ctx.stroke();
+                    }
+                };
+
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = this._hit;       // rgba(166,79,214,0.45)
-                ctx.lineWidth = this._hitW;      // 3
-                for (const h of this._permHits) {
-                    if (!this._showArchive && h.cyc !== curCyc) continue; // 只画本轮
-                    const xx = Math.round(this.timeToX(h.t, x, w)) + 0.5; // 从“本轮时间”换 x
-                    if (xx < x - 6 || xx > x + w + 6) continue;
-                    ctx.beginPath();
-                    ctx.moveTo(xx, inY + 8);
-                    ctx.lineTo(xx, inY + inH - 8);
-                    ctx.stroke();
-                }
+                // 先发光
+                drawPermHits(true);
+                // 再清晰芯
+                drawPermHits(false);
                 ctx.restore();
             }
 

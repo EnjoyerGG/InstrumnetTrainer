@@ -22,6 +22,14 @@
         _getNowMs: null,
         _getRect: null,
 
+        //打击预留线的发光效果
+        _glow: { color: 'rgba(255,180,0,0.90)', blur: 14 }, // 发光颜色&强度（可改）
+        setHitGlow(color, blur) {
+            if (color) this._glow.color = color;
+            if (Number.isFinite(blur)) this._glow.blur = blur;
+            return this;
+        },
+
         init({ getNowMs, getRect }) {
             this._getNowMs = getNowMs;
             this._getRect = getRect;
@@ -88,25 +96,33 @@
             }
             ctx.restore();
 
-            // === 第二遍：永久“打击痕迹”（淡紫） ===
+            // === 第二遍：永久“打击痕迹” ===
             if (this._hits.length) {
-                ctx.save();
-                ctx.strokeStyle = this._hitStyle.color;
-                ctx.lineWidth = this._hitStyle.w;
-                for (const h of this._hits) {
-                    let dt = h.t - now; if (dt < 0) dt += this._loopMs;
-                    const base = xHead + S * ((dt + this._startGapMs) / 1000);
-                    const k0 = Math.floor((x - base) / periodPx) - 1;
-                    const k1 = Math.ceil((x + w - base) / periodPx) + 1;
-                    for (let k = k0; k <= k1; k++) {
-                        const xx = Math.round(base + k * periodPx) + 0.5;
-                        if (xx < x || xx >= x + w) continue;
-                        ctx.beginPath();
-                        ctx.moveTo(xx, y);
-                        ctx.lineTo(xx, y + h);
-                        ctx.stroke();
+                const drawHitLines = (withGlow) => {
+                    if (withGlow) { ctx.shadowColor = this._glow.color; ctx.shadowBlur = this._glow.blur; }
+                    else { ctx.shadowBlur = 0; }
+                    ctx.strokeStyle = this._hitStyle.color;
+                    ctx.lineWidth = this._hitStyle.w;
+                    for (const h of this._hits) {
+                        let dt = h.t - now; if (dt < 0) dt += this._loopMs;
+                        const base = xHead + S * ((dt + this._startGapMs) / 1000);
+                        const k0 = Math.floor((x - base) / periodPx) - 1;
+                        const k1 = Math.ceil((x + w - base) / periodPx) + 1;
+                        for (let k = k0; k <= k1; k++) {
+                            const xx = Math.round(base + k * periodPx) + 0.5;
+                            if (xx < x || xx >= x + w) continue;
+                            ctx.beginPath();
+                            ctx.moveTo(xx, y + 6);
+                            ctx.lineTo(xx, y + h - 6);
+                            ctx.stroke();
+                        }
                     }
-                }
+                };
+                ctx.save();
+                // 先画“光晕”
+                drawHitLines(true);
+                // 再画“清晰芯”
+                drawHitLines(false);
                 ctx.restore();
             }
         },
