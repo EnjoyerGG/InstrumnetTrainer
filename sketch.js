@@ -287,13 +287,8 @@ function setup() {
         rm.setSpeedFactor(speedVal);
 
         // 同步其他组件
-        if (guides && guides.syncFixed) {
-            guides.syncFixed();
-        }
-
-        if (SweepMode && SweepMode.setSpeedMultiplier) {
-            SweepMode.setSpeedMultiplier(1);
-        }
+        guides?.syncFixed?.();
+        SweepMode?.setSpeedMultiplier?.(1);
 
         // 如果正在运行且节拍器启用，更新调度器
         if (metronomeEnabled && running && metro.isLoaded()) {
@@ -308,50 +303,12 @@ function setup() {
     });
 }
 
-function setupFixes() {
-    // 确保音频分析器正确初始化
-    if (window.SampleUI && !window.__samplerInit) {
-        let ampHud = document.getElementById('amp-hud');
-        if (!ampHud) {
-            ampHud = document.createElement('div');
-            ampHud.id = 'amp-hud';
-            document.querySelector('#score-wrap').appendChild(ampHud);
-        }
-
-        setTimeout(async () => {
-            window.SampleUI = window.AudioAnalyzer || window.SampleUI;
-            if (window.SampleUI) {
-                SampleUI.init({
-                    mount: '#amp-hud',
-                    width: RECT.amp.w || 480,
-                    height: RECT.amp.h || 200,
-                    dbMin: 20,
-                    dbMax: 100,
-                    fftSize: 512
-                });
-                try {
-                    await SampleUI.setupAudio({ offsetDb: 0, useP5Mic: false });
-                    console.log("Audio analyzer initialized");
-                    SampleUI.pause();
-                } catch (e) { console.error("Audio setup failed:", e); }
-            }
-        }, 300);
-
-        window.__samplerInit = true;
-    }
-}
-
 /* ------------ Control Functions ------------- */
 async function handleStart() {
     if (running || counting) return;
 
     await window.userStartAudio?.();
     try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
-
-    if (window.SampleUI) {
-        if (!SampleUI._analyser) { await SampleUI.setupAudio({ offsetDb: 0, useP5Mic: true }); }
-        SampleUI.resume();
-    }
 
     if (isPaused) {
         const pauseMs = (rm.pauseAt - rm.startTime) % rm.totalDuration;
@@ -377,7 +334,6 @@ function handlePause() {
     const currentMs = rm._t() % rm.totalDuration;
     rm.pauseAt = rm.startTime + currentMs;
 
-    if (window.SampleUI) SampleUI.pause();
     counting = false;
     rm.pause();
     stopScoreTickScheduler();
@@ -393,8 +349,6 @@ function handleReset() {
     metro.reset();
 
     try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
-
-    if (window.SampleUI) { SampleUI.reset(); SampleUI.pause(); }
 
     guides?.setStartGap(COUNTDOWN_MS);
     guides?.clearHits?.();
@@ -479,7 +433,6 @@ function draw() {
         if (remain <= 0) {
             counting = false; running = true; isPaused = false;
             rm.resume();
-            if (window.SampleUI) SampleUI.resume();
             if (metronomeEnabled) {
                 metro.enable(true);
                 if (!countdownForResume) resetMetronomeSchedulerState();
@@ -504,9 +457,6 @@ function draw() {
     const info = `Notes ${rm.scoreNotes.length} | Hits ${hit} | Miss ${miss}`;
     noStroke(); fill(240); textSize(16); textAlign(RIGHT, BOTTOM);
     text(info, width - 12, laneBottomY() + 40);
-
-    // 左侧电平/频谱更新
-    if (window.SampleUI) SampleUI.update();
 
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
@@ -590,15 +540,14 @@ function mousePressed() {
     if (RECT && RECT.amp) {
         if (mouseX >= RECT.amp.x && mouseX < RECT.amp.x + RECT.amp.w &&
             mouseY >= RECT.amp.y && mouseY < RECT.amp.y + RECT.amp.h) {
-            if (guides && guides.addHitNow) guides.addHitNow();
-            if (window.SampleUI && SampleUI.pushMarker) SampleUI.pushMarker('#a64fd6', 900);
+            guides?.addHitNow?.();
         }
     }
 
     // 通用击打处理
     if (running) {
         rm.registerHit();
-        if (window.SweepMode && SweepMode.addHitNow) SweepMode.addHitNow();
+        SweepMode?.addHitNow?.();
         judgeLineGlow = 1;
     }
 }
