@@ -17,7 +17,7 @@ window.userStartAudio = async function () {
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
-let rm, metro, mic, fftHUD;
+let rm, metro, mic, fftHUD, ampHUD;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0;
