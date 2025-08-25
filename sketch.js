@@ -501,10 +501,12 @@ function draw() {
     line(0, yTopDiv, width, yTopDiv);
     line(0, yBelowSweep, width, yBelowSweep);
 
+    //最下面界面分为左右部分
     stroke(220); strokeWeight(2);
     const midX = Math.round(width / 2) + 0.5;
     line(midX, yBelowSweep, midX, height - GRID.pad);
 
+    //右边部分再分左右
     stroke(200); strokeWeight(1.5);
     const midXRight = Math.round(RECT.rightHalf.x + RECT.rightHalf.w / 2) + 0.5;
     line(midXRight, RECT.rightHalf.y, RECT.rightHalf.x + RECT.rightHalf.w, RECT.rightHalf.y); // 顶边短刻度(可选)
