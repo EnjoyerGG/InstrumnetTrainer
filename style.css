@@ -71,131 +71,85 @@ canvas {
     /* 底部预留空间 */
 }
 
+:root {
+    --pad: 10px;
+    /* GRID.pad */
+    --notesH: 120px;
+    /* 上方滚动音符区域高度 NOTES_H */
+    --sweepH: 140px;
+    /* 中间 Sweep 面板高度 SWEEP_H */
+    /* HUD 顶边（= notesH + sweepH + pad）——贴着你画的那条白线下面 */
+    --hudTop: calc(var(--notesH) + var(--sweepH) + var(--pad));
+}
+
 /* 主音符画布挂在这个容器里——完全居中 */
 #score-wrap {
     position: relative;
-    width: 100%;
-    min-height: 100px;
-    /* 让它有可居中的高度 */
-    display: grid;
-    place-items: center;
-    /* 水平+垂直居中 */
+    display: block;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+#drum-wrap {
+    position: absolute !important;
+    transition: none !important;
+    /* 防止动画干扰 */
+    pointer-events: all;
+}
+
+#amp-hud {
+    position: absolute !important;
+    pointer-events: none;
+    /* 允许点击穿透到canvas */
+}
+
+#amp-hud canvas {
+    pointer-events: all;
+    /* canvas本身可点击 */
 }
 
 #score-wrap canvas {
     /* 保险：阻止内联元素带来的偏移 */
     display: block;
+    margin: 0 auto;
 }
 
-/* 鼓面：左下角悬浮。只改这两个数就能调大小 */
-#drum-wrap {
+#score-wrap>#amp-hud,
+#score-wrap>#drum-wrap {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: auto;
-    height: auto;
-    padding: 4px;
-    border: none;
-    background: rgba(58, 58, 60, 0.75);
-    backdrop-filter: blur(2px);
-    z-index: 60;
-}
-
-#mic-hud {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
+    /* 关键：相对 #score-wrap 绝对定位，覆盖在 canvas 上 */
     box-sizing: border-box;
-    padding: 12px 20px;
-    border: 1px solid #3b3e46;
+    z-index: 5;
+    background: rgba(31, 32, 36, .92);
+    border: 1px solid #777;
     border-radius: 12px;
-    background: rgba(24, 25, 28, .85);
-    backdrop-filter: blur(2px);
-    color: #ddd;
-    z-index: 50;
-    font-size: 12px;
 }
 
-#mic-hud .row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+/* —— 画布下面的 HUD 横向排版 —— */
+/* 让 #score-wrap 中的 canvas 后面的两个 HUD 走普通文流并肩排列 */
+#score-wrap>#amp-hud,
+#score-wrap>#drum-wrap {
+    top: calc(var(--notesH) + var(--sweepH) + var(--pad));
+    height: var(--meterH);
 }
 
-#mic-hud .led {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #666
+
+/* 左格：频谱+声压 */
+#score-wrap>#amp-hud {
+    left: var(--pad);
+    width: calc(50% - var(--pad)*1.5);
+    /* 左半 + 间距 */
+    pointer-events: none;
+    /* 不挡鼠标；需要交互就删掉 */
 }
 
-#mic-hud .led.ok {
-    background: #22c55e;
-    box-shadow: 0 0 10px #22c55e
-}
-
-#mic-hud .led.warn {
-    background: #f59e0b;
-    box-shadow: 0 0 8px #f59e0b
-}
-
-#mic-hud .led.err {
-    background: #ef4444;
-    box-shadow: 0 0 8px #ef4444
-}
-
-#mic-hud .bars .bar {
-    display: grid;
-    grid-template-columns: 22px 1fr 42px;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-}
-
-#mic-hud .bars .name {
-    justify-self: start;
-    opacity: .9
-}
-
-#mic-hud .bars .track {
-    height: 14px;
-    background: #1c1d21;
-    border-radius: 8px;
-    overflow: hidden
-}
-
-#mic-hud .bars .fill {
-    height: 100%;
-    width: 0%;
-    transition: width .08s linear
-}
-
-#mic-hud .bars .val {
-    justify-self: end;
-    font-variant-numeric: tabular-nums
-}
-
-#bar-O {
-    background: #54A8FF
-}
-
-#bar-P {
-    background: #FFD166
-}
-
-#bar-T {
-    background: #7BD88F
-}
-
-#bar-S {
-    background: #FF6B6B
-}
-
-#bar-BG {
-    background: #9b87f5
+/* 右格：鼓面圆盘 */
+#score-wrap>#drum-wrap {
+    right: var(--pad);
+    width: calc(50% - var(--pad)*1.5);
+    /* 右半 + 间距 */
+    /* 让它从中线右侧开始 */
+    left: auto;
 }
 
 .controls {

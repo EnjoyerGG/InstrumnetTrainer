@@ -1,9 +1,8 @@
-
-// SampleUI.js - 双面板音频分析器（左：分贝仪，右：频谱图）
+// audioAnalyzer.js - 双面板音频分析器（左：分贝仪，右：频谱图）
 (function (root) {
     const dpr = () => (window.devicePixelRatio || 1);
 
-    const SampleUI = {
+    const AudioAnalyzer = {
         // DOM
         _wrap: null,
         _canvas: null, _ctx: null,
@@ -412,6 +411,6 @@
     };
 
     // 导出
-    root.SampleUI = SampleUI;
+    root.AudioAnalyzer = AudioAnalyzer;
 
 })(window);
