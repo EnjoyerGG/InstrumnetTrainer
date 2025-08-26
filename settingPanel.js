@@ -97,13 +97,13 @@
 
             this._panel.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h3 style="margin: 0; color: #fff; font-size: 18px;">⚙️ 设置</h3>
+                    <h3 style="margin: 0; color: #fff; font-size: 18px;">⚙️ Setting</h3>
                     <button id="close-settings" style="background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="关闭">✕</button>
                 </div>
 
                 <!-- 速度控制区域 -->
                 <div style="margin-bottom: 24px; padding: 16px; background: #333; border-radius: 8px;">
-                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎵 速度控制</h4>
+                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎵 Speed Control</h4>
                     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
                         <label style="min-width: 80px; font-size: 13px; color: #ccc;">Speed:</label>
                         <input id="settings-speed-slider" type="range" min="0.1" max="0.4" step="0.01" value="0.3" 
@@ -118,38 +118,38 @@
 
                 <!-- 键盘操作指南 -->
                 <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
-                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">⌨️ 键盘操作指南</h4>
+                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">⌨️ Keyboard Shortcuts</h4>
                     <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 12px; line-height: 1.4;">
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'D'</code>
-                        <span style="color: #ccc;">切换调试模式（显示检测面板）</span>
+                        <span style="color: #ccc;">Toggle debug mode (show detection panel)</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'T'</code>
-                        <span style="color: #ccc;">开启/关闭鼓击检测</span>
+                        <span style="color: #ccc;">Enable/disable hit detection</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'1'-'5'</code>
-                        <span style="color: #ccc;">设置灵敏度（1=最不敏感，5=最敏感）</span>
+                        <span style="color: #ccc;">Set sensitivity (1 = lowest, 5 = highest)</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'R'</code>
-                        <span style="color: #ccc;">重置统计数据</span>
+                        <span style="color: #ccc;">Reset stats</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'I'</code>
-                        <span style="color: #ccc;">显示当前状态信息</span>
+                        <span style="color: #ccc;">Show current status</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'M'</code>
-                        <span style="color: #ccc;">切换 AMP/RMS 音量检测模式</span>
+                        <span style="color: #ccc;">Toggle AMP/RMS level detection</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'F'</code>
-                        <span style="color: #ccc;">切换音频响应速度（快速/平滑）</span>
+                        <span style="color: #ccc;">Toggle audio response speed (Fast/Smooth)</span>
                     </div>
                 </div>
 
                 <!-- 鼓击检测状态显示 -->
                 <div style="padding: 12px; background: #333; border-radius: 8px; border-left: 4px solid #22c55e;">
-                    <h4 style="margin: 0 0 8px 0; color: #22c55e; font-size: 13px; font-weight: bold;">🥁 鼓击检测状态</h4>
+                    <h4 style="margin: 0 0 8px 0; color: #22c55e; font-size: 13px; font-weight: bold;">🥁 Hit Detection Status</h4>
                     <div id="drum-status" style="font-size: 11px; color: #ccc;">
-                        检测器: <span id="drum-enabled" style="color: #22c55e;">启用</span> | 
-                        灵敏度: <span id="drum-sensitivity" style="color: #ffd400;">3/5</span> | 
-                        触发次数: <span id="drum-count" style="color: #fff;">0</span>
+                        Detector: <span id="drum-enabled" style="color: #22c55e;">Enabled</span> | 
+                        Sensitivity: <span id="drum-sensitivity" style="color: #ffd400;">3/5</span> | 
+                        Triggers: <span id="drum-count" style="color: #fff;">0</span>
                     </div>
                 </div>
             `;
