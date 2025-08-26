@@ -284,9 +284,10 @@ function setup() {
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
-        smoothing: 0.9,
+        smoothing: 0.1,
         vscale: 3.0,
-        historySec: 2.5
+        historySec: 2.5,
+        fastResponse: true     // 启用快速响应模式
     });
 
     // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
@@ -359,7 +360,10 @@ async function tryStartMicEarly() {
         if (!mic) mic = new p5.AudioIn();
         await mic.start();               // 触发权限弹窗；允许后即可就绪
         micReady = true;
-        //if (ampHUD?.tryEnableAmplitude) ampHUD.tryEnableAmplitude();
+        if (ampHUD?.preferAmplitude) {
+            // 延迟一小会儿再启用，规避某些浏览器刚接通前几帧的空输入
+            setTimeout(() => ampHUD.preferAmplitude(true), 70);
+        }
     } catch (e) {
         // 需要用户手势/被拒：挂一次性监听，任意点击/按键后重试
         const retry = async () => {
@@ -611,6 +615,24 @@ function drawNotesAndFeedback() {
         }
     }
     drawingContext.shadowBlur = 0;
+}
+
+//按下字母'm'用于切换AMP或者RMS
+function keyPressed() {
+    if (key === 'm' && ampHUD?.preferAmplitude) {
+        // 切换
+        if (ampHUD._preferAmp) {
+            ampHUD.preferAmplitude(false);   // 切回 RMS
+        } else {
+            ampHUD.preferAmplitude(true);    // 切到 AMP
+        }
+    }
+
+    if (key === 'f' && ampHUD?.setFastResponse) {
+        const current = ampHUD._fastResponse;
+        ampHUD.setFastResponse(!current);
+        console.log(`Fast response mode: ${!current ? 'ON' : 'OFF'}`);
+    }
 }
 
 /* ------------ Interaction ----------- */

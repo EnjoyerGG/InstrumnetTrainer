@@ -17,7 +17,7 @@
         _amp: null,
         _mic: null,
         _fft: null,
-        _smooth: 0.9,
+        _smooth: 0.1,
         _vscale: 3.0,
         _hist: [],
         _histMax: 0,          // 由面板宽度决定：1 像素一个样点
@@ -27,18 +27,21 @@
         _frame: 'rgba(255,255,255,0.18)',
         _grid: 'rgba(255,255,255,0.06)',
         _corner: 12,
+        _preferAmp: false,
+        _modeLabel: 'RMS', //面板右上角小徽标
+        _fastResponse: true,
 
-        init({ mic, rectProvider, smoothing = 0.9, vscale = 3.0, historySec = 2.5 } = {}) {
+        init({ mic, rectProvider, smoothing = 0.9, vscale = 3.0, historySec = 2.5, fastResponse = true } = {}) {
             this._rect = rectProvider || this._rect;
             this._smooth = clamp(smoothing, 0, 0.99);
             this._vscale = Math.max(1, vscale);
             this._historySec = Math.max(0.5, historySec);
+            this._fastResponse = fastResponse;
 
             this._mic = mic;
             this._amp = null;
             this._fft = new p5.FFT(0.85, 512);
             if (mic) this._fft.setInput(mic);
-            //this._amp.smooth(this._smooth);
 
             return this;
         },
@@ -47,10 +50,24 @@
             try {
                 if (!this._amp) {
                     this._amp = new p5.Amplitude();
-                    this._amp.smooth(this._smooth);
+                    const smoothValue = this._fastResponse ? 0.0 : this._smooth;
+                    this._amp.smooth(smoothValue);
                     if (this._mic) this._amp.setInput(this._mic);
                 }
             } catch (e) { /* 安静失败，保留 FFT-RMS 路径 */ }
+        },
+
+        preferAmplitude(on = true) {
+            this._preferAmp = !!on;
+            if (this._preferAmp) this.tryEnableAmplitude(); // 仅在需要时创建 worklet
+        },
+
+        setFastResponse(enabled = true) {
+            this._fastResponse = enabled;
+            if (this._amp) {
+                const smoothValue = this._fastResponse ? 0.0 : this._smooth;
+                this._amp.smooth(smoothValue);
+            }
         },
 
         _roundRect(ctx, x, y, w, h, r, fill, stroke) {
@@ -91,17 +108,26 @@
         _currentLevel() {
             let level = 0;
 
-            if (this._amp && this._amp.getLevel) {
+            if (this._preferAmp && this._amp && this._amp.getLevel) {
                 level = this._amp.getLevel() || 0;
+                this._modeLabel = 'AMP';
             } else if (this._fft) {
                 const wave = this._fft.waveform(512); // [-1,1]
                 let rms = 0;
                 for (let i = 0; i < wave.length; i++) rms += wave[i] * wave[i];
                 rms = Math.sqrt(rms / wave.length);   // 0..1 近似
                 // 指数平滑（与 p5.Amplitude.smooth 一致的效果）
-                const alpha = 1 - this._smooth;
-                this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
+                if (this._fastResponse) {
+                    // 快速响应模式：使用轻微的平滑或不平滑
+                    const alpha = 0.8;  // 快速响应，但避免过于抖动
+                    this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
+                } else {
+                    // 传统平滑模式
+                    const alpha = 1 - this._smooth;
+                    this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
+                }
                 level = this._ema;
+                this._modeLabel = this._fastResponse ? 'RMS*' : 'RMS';
             }
             return Math.min(1, Math.max(0, level));
         },
@@ -152,7 +178,7 @@
             // 红色扫描线（当前点）
             ctx.save();
             ctx.strokeStyle = 'rgba(255,64,64,0.9)';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 2;
             const cursorX = x + padL + this._hist.length;
             ctx.beginPath(); ctx.moveTo(cursorX + 0.5, y + padT); ctx.lineTo(cursorX + 0.5, y + padT + innerH); ctx.stroke();
             ctx.restore();
@@ -162,7 +188,14 @@
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
             ctx.font = 'bold 14px ui-sans-serif, system-ui, -apple-system';
             ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-            ctx.fillText('Amplitude (Mic)', x + 12, y + 10);
+            const title = this._fastResponse ? 'Amplitude (Fast)' : 'Amplitude (Smooth)';
+            ctx.fillText(title, x + 12, y + 10);
+
+            //在右上角dB左边画模式徽标
+            ctx.textAlign = 'right';
+            ctx.font = '  bold 15px ui-sans-serif, system-ui, -apple-system';
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fillText(this._modeLabel, x + w - 10, y + 30);
 
             ctx.textAlign = 'right';
             ctx.font = 'bold 18px ui-sans-serif, system-ui, -apple-system';
