@@ -31,6 +31,14 @@
         _modeLabel: 'RMS', //面板右上角小徽标
         _fastResponse: true,
 
+        _maxLevel: 0,         // 历史最大电平
+        _maxLevelDecay: 0.99,  // 更快的最大值衰减系数
+        _instantAdapt: false,  // 是否瞬间适应（避免动画效果）
+        _dynamicScale: true,  // 是否启用动态缩放
+        _overload: false,     // 过载指示
+        _overloadThreshold: 0.8, // 降低过载阈值
+        _targetFillRatio: 0.8, // 目标填充比例（波形最高点占面板高度的80%）
+
         init({ mic, rectProvider, smoothing = 0.9, vscale = 3.0, historySec = 2.5, fastResponse = true } = {}) {
             this._rect = rectProvider || this._rect;
             this._smooth = clamp(smoothing, 0, 0.99);
@@ -70,6 +78,27 @@
             }
         },
 
+        setDynamicScale(enabled = true) {
+            this._dynamicScale = enabled;
+            if (!enabled) {
+                this._maxLevel = 0; // 重置最大值
+            }
+        },
+
+        // 获取当前状态信息
+        getStatus() {
+            return {
+                dynamicScale: this._dynamicScale,
+                instantAdapt: this._instantAdapt,
+                currentMode: this._dynamicScale ?
+                    (this._instantAdapt ? 'INSTANT' : 'SMOOTH') : 'FIXED'
+            };
+        },
+
+        setInstantAdapt(enabled = true) {
+            this._instantAdapt = enabled;
+        },
+
         _roundRect(ctx, x, y, w, h, r, fill, stroke) {
             const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
             ctx.save();
@@ -104,6 +133,16 @@
             }
         },
 
+        // 计算有效的缩放系数
+        _getEffectiveScale() {
+            if (!this._dynamicScale || this._maxLevel <= 0) {
+                return this._vscale;
+            }
+            // 动态调整缩放，确保最大值不会超过面板高度的80%
+            const maxAllowedScale = this._targetFillRatio / this._maxLevel;
+            return Math.min(this._vscale, maxAllowedScale);
+        },
+
         // 计算 0..1 电平：优先用 p5.Amplitude；否则用 FFT 波形 RMS，并做平滑
         _currentLevel() {
             let level = 0;
@@ -116,6 +155,7 @@
                 let rms = 0;
                 for (let i = 0; i < wave.length; i++) rms += wave[i] * wave[i];
                 rms = Math.sqrt(rms / wave.length);   // 0..1 近似
+
                 // 指数平滑（与 p5.Amplitude.smooth 一致的效果）
                 if (this._fastResponse) {
                     // 快速响应模式：使用轻微的平滑或不平滑
@@ -129,7 +169,30 @@
                 level = this._ema;
                 this._modeLabel = this._fastResponse ? 'RMS*' : 'RMS';
             }
-            return Math.min(1, Math.max(0, level));
+
+            level = Math.min(1, Math.max(0, level));
+            // 更新最大电平跟踪
+            if (level > this._maxLevel) {
+                this._maxLevel = level;
+            } else {
+                // 根据设置决定衰减方式
+                if (this._instantAdapt) {
+                    // 瞬间适应模式：如果当前电平明显小于最大值，快速降低最大值
+                    if (level < this._maxLevel * 0.5) {
+                        this._maxLevel = Math.max(level, this._maxLevel * 0.8);
+                    } else {
+                        this._maxLevel *= this._maxLevelDecay;
+                    }
+                } else {
+                    // 渐进模式：缓慢衰减
+                    this._maxLevel *= this._maxLevelDecay;
+                }
+            }
+
+            // 检测过载
+            this._overload = level > this._overloadThreshold;
+
+            return level;
         },
 
         render(ctx, x, y, w, h) {
@@ -154,6 +217,9 @@
             this._hist.push(level);
             if (this._hist.length > this._histMax) this._hist.shift();
 
+            // 获取有效缩放系数
+            const effectiveScale = this._getEffectiveScale();
+
             // 把历史画成折线
             ctx.save();
             ctx.beginPath();
@@ -163,13 +229,16 @@
             const baseY = y + padT + innerH;
             // 第一段
             if (this._hist.length > 0) {
-                const y0 = baseY - Math.min(innerH - 1, this._hist[0] * innerH * this._vscale);
+                const safeHeight = this._hist[0] * innerH * effectiveScale;
+                const y0 = baseY - Math.min(innerH * 0.98, safeHeight);
                 ctx.moveTo(x + padL, y0);
             }
             // 其余段
             for (let i = 1; i < this._hist.length; i++) {
                 const px = x + padL + i;
-                const py = baseY - Math.min(innerH - 1, this._hist[i] * innerH * this._vscale);
+                // 确保波形绝对不超出边界，留出安全边距
+                const safeHeight = this._hist[i] * innerH * effectiveScale;
+                const py = baseY - Math.min(innerH * 0.98, safeHeight);
                 ctx.lineTo(px, py);
             }
             ctx.stroke();
@@ -182,6 +251,19 @@
             const cursorX = x + padL + this._hist.length;
             ctx.beginPath(); ctx.moveTo(cursorX + 0.5, y + padT); ctx.lineTo(cursorX + 0.5, y + padT + innerH); ctx.stroke();
             ctx.restore();
+
+            // 过载指示器
+            if (this._overload) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(255,0,0,0.3)';
+                ctx.fillRect(x + 2, y + 2, w - 4, 20);
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.font = 'bold 12px ui-sans-serif, system-ui, -apple-system';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('OVERLOAD', x + w / 2, y + 12);
+                ctx.restore();
+            }
 
             // 标题 & dB 读数
             ctx.save();
@@ -197,8 +279,17 @@
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
             ctx.fillText(this._modeLabel, x + w - 180, y + 30);
 
+            // 动态缩放指示
+            if (this._dynamicScale && effectiveScale < this._vscale) {
+                ctx.fillStyle = 'rgba(0,255,0,0.6)';
+                ctx.font = '10px ui-sans-serif, system-ui, -apple-system';
+                ctx.fillText('AUTO', x + w - 60, y + 45);
+            }
+
             ctx.textAlign = 'right';
             ctx.font = 'bold 18px ui-sans-serif, system-ui, -apple-system';
+            // 过载时用红色显示dB值
+            ctx.fillStyle = this._overload ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.85)';
             // 典型范围 -60 ~ -10 dBFS；很安静时显示 “-inf”
             const label = (level <= 1e-6) ? '−∞ dB' : `${db.toFixed(1)} dB`;
             ctx.fillText(label, x + w - 12, y + 8);

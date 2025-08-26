@@ -296,6 +296,7 @@ function setup() {
         historySec: 2.5,
         fastResponse: true     // 启用快速响应模式
     });
+    //ampHUD.setInstantAdapt(true);
 
     //初始化Conga打击检测器
     drumTrigger = DrumTrigger.init({
@@ -718,6 +719,26 @@ function keyPressed() {
     if (key === 'i' && drumTrigger) {
         const stats = drumTrigger.getStats();
         console.log('Drum Trigger Stats:', stats);
+    }
+
+    // Amplitude 面板缩放模式切换
+    if (key === 'a' && ampHUD) {
+        // 切换动态缩放开关
+        const status = ampHUD.getStatus();
+        ampHUD.setDynamicScale(!status.dynamicScale);
+        const newStatus = ampHUD.getStatus();
+        console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
+    }
+    if (key === 's' && ampHUD) {
+        // 切换瞬间适应模式（仅在动态缩放开启时有效）
+        const status = ampHUD.getStatus();
+        if (status.dynamicScale) {
+            ampHUD.setInstantAdapt(!status.instantAdapt);
+            const newStatus = ampHUD.getStatus();
+            console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
+        } else {
+            console.log('Dynamic scaling is OFF - enable with "a" key first');
+        }
     }
 
 }
