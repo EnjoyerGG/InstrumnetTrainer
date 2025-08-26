@@ -110,7 +110,7 @@
 
             if (this._preferAmp && this._amp && this._amp.getLevel) {
                 level = this._amp.getLevel() || 0;
-                this._modeLabel = 'AMP';
+                this._modeLabel = this._fastResponse ? 'AMP*' : 'AMP';
             } else if (this._fft) {
                 const wave = this._fft.waveform(512); // [-1,1]
                 let rms = 0;
