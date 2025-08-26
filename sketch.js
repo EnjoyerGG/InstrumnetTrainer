@@ -228,9 +228,9 @@ function layoutRects() {
 function setup() {
     if (isMobile()) {
         pixelDensity(1);
-        frameRate(45);
+        frameRate(30);
     } else {
-        frameRate(60);
+        frameRate(45);
     }
 
     const NOTES_H = 120;
@@ -536,6 +536,9 @@ function startCountdown(opts = {}) {
 }
 
 /* ------------ Draw Loop ----------- */
+let frameTimeBuffer = [];
+let lastOptimizeCheck = 0;
+let performanceMode = 'normal'; // 'normal' | 'performance'
 function draw() {
     // Sweep 导出队列
     if (window.SweepMode?.getCurrentCycle) {
@@ -550,9 +553,17 @@ function draw() {
             _lastCycleForSnap = cur;
         }
     }
+
+    const frameStart = performance.now();
     background('#3a3a3a');
     judgeLineGlow *= 0.9; if (judgeLineGlow < 0.01) judgeLineGlow = 0;
-    drawGrid();
+    // 根据性能模式调整绘制
+    if (performanceMode === 'performance') {
+        // 性能模式：跳帧绘制网格
+        if (frameCount % 2 === 0) drawGrid();
+    } else {
+        drawGrid();
+    }
 
     // 判定竖线（到 Sweep 顶部）
     let glowLevel = lerp(2, 18, judgeLineGlow);
@@ -564,6 +575,7 @@ function draw() {
     strokeWeight(judgeLineGlow > 0.2 ? 4 : 1.5);
     const splitY = RECT.sweep.y - GRID.pad;
     line(rm.judgeLineX, 0, rm.judgeLineX, splitY - 1);
+    drawingContext.restore();
 
     // 倒计时
     if (counting) {
@@ -594,11 +606,23 @@ function draw() {
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
 
+    if (performanceMode === 'performance') {
+        // 性能模式：降低HUD更新频率
+        if (frameCount % 2 === 0) {
+            fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
+            ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+        }
+    } else {
+        fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
+        ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+    }
+
     // 左侧：FFT 频谱
     fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
     //中间：AMP面板
     ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
 
+    //debug面板
     if (debugMode && drumTrigger) {
         const debugW = 200, debugH = 120;
         const debugX = width - debugW - 10;
@@ -627,6 +651,29 @@ function draw() {
     pop();
     // 绘制右下角状态
     drawPerformanceStatus();
+
+    //性能监控
+    const frameTime = performance.now() - frameStart;
+    frameTimeBuffer.push(frameTime);
+    if (frameTimeBuffer.length > 10) frameTimeBuffer.shift();
+
+    // 每2秒检查一次性能
+    if (millis() - lastOptimizeCheck > 2000) {
+        const avgFrameTime = frameTimeBuffer.reduce((a, b) => a + b, 0) / frameTimeBuffer.length;
+        const targetFrameTime = 1000 / (isMobile() ? 30 : 45);
+
+        if (avgFrameTime > targetFrameTime * 1.2 && performanceMode === 'normal') {
+            // 性能不足，切换到性能模式
+            performanceMode = 'performance';
+            console.log('Switching to performance mode');
+        } else if (avgFrameTime < targetFrameTime * 0.8 && performanceMode === 'performance') {
+            // 性能充足，切换回普通模式
+            performanceMode = 'normal';
+            console.log('Switching to normal mode');
+        }
+
+        lastOptimizeCheck = millis();
+    }
 }
 
 // 状态跟踪函数

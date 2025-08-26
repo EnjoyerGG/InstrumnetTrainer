@@ -124,11 +124,9 @@ class RhythmManager {
         }
 
         if (bestIdx < 0) {
-            // 策略1：忽略（什么都不做）
-            // 策略2：将“最接近的未判定音符”判 Miss（更严格）
-            // 这里采用忽略，避免误伤
             return;
         }
+
         const st = this.feedbackStates[bestIdx];
         st.judged = true;
         st.hitTime = hitTime;
@@ -143,7 +141,7 @@ class RhythmManager {
             // 否则需要等到 checkAutoMiss() 扫描后才显示
             st.result = "Miss";
         }
-        st.fadeTimer = 2000;
+        st.fadeTimer = 1000;
 
         // 添加这行来更新状态跟踪器
         if (typeof updateStatusTracker === 'function') {
@@ -157,15 +155,23 @@ class RhythmManager {
     }
 
     checkAutoMiss() {
-        // 只判定当前可见的本轮音符
         const now = this._t() % this.totalDuration;
+        const deltaMs = deltaTime; // p5.js 提供的帧间时间
+
         for (let i = 0; i < this.scoreNotes.length; i++) {
             const n = this.scoreNotes[i];
             const state = this.feedbackStates[i];
+
+            // 批量更新 fadeTimer
+            if (state.judged && state.fadeTimer > 0) {
+                state.fadeTimer = Math.max(0, state.fadeTimer - deltaMs);
+            }
+
+            // 自动Miss检查
             if (!state.judged && now - n.time > MISS_WINDOW && now - n.time < this.noteInterval) {
                 state.judged = true;
                 state.result = "Miss";
-                state.fadeTimer = 2000;
+                state.fadeTimer = 1000;
             }
         }
     }
