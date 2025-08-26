@@ -682,8 +682,8 @@ function drawPerformanceStatus() {
     push();
 
     // 位置：顶区底部偏右，给一整行空间
-    const baseY = RECT.top.h - 20;
-    const baseX = width - 320;   // 往左留出宽度，避免被挤出
+    const baseY = RECT.top.h - 25;
+    const baseX = width - 350;   // 往左留出宽度，避免被挤出
 
     // 计算数据
     const totalNotes = rm.scoreNotes ? rm.scoreNotes.length : 0;
@@ -699,7 +699,7 @@ function drawPerformanceStatus() {
     const quality = getCurrentSyncQuality(); // {label, color}
 
     // 文本样式：粗体、左对齐、单行
-    textSize(15);
+    textSize(16);
     textStyle(BOLD);
     textAlign(LEFT, TOP);
     noStroke();
