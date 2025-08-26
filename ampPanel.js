@@ -195,7 +195,7 @@
             ctx.textAlign = 'right';
             ctx.font = '  bold 15px ui-sans-serif, system-ui, -apple-system';
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
-            ctx.fillText(this._modeLabel, x + w - 10, y + 30);
+            ctx.fillText(this._modeLabel, x + w - 180, y + 30);
 
             ctx.textAlign = 'right';
             ctx.font = 'bold 18px ui-sans-serif, system-ui, -apple-system';
