@@ -254,6 +254,15 @@ function setup() {
     rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
+    // 初始化音符点亮反馈
+    NoteIlluminateFeedback.init({
+        rm,
+        laneTopY: () => laneTopY(),
+        laneBottomY: () => laneBottomY(),
+        isBottomDrum: (n) => isBottomDrum(n),
+        glyphForAbbr: (ab) => glyphForAbbr(ab)
+    });
+
     // 初始化 Sweep
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
@@ -580,7 +589,7 @@ function draw() {
     //更新鼓击检测器
     drumTrigger?.update?.();
     // 绘制音符与反馈
-    drawNotesAndFeedback();
+    NoteIlluminateFeedback.render();
 
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
@@ -742,49 +751,50 @@ function drawGrid() {
     line(0, yBot, width, yBot);
 }
 
-function drawNotesAndFeedback() {
-    const notes = rm.getVisibleNotes();
-    drawingContext.shadowBlur = 6;
-    drawingContext.shadowColor = '#888';
+// function drawNotesAndFeedback() {
+//     const notes = rm.getVisibleNotes();
+//     drawingContext.shadowBlur = 6;
+//     drawingContext.shadowColor = '#888';
 
-    for (const n of notes) {
-        const xN = rm.getScrollX(n._displayTime ?? n.time);
-        const y = isBottomDrum(n) ? laneBottomY() : laneTopY();
-        fill(n.accent === 1 ? 'gold' : color(200, 180));
-        noStroke();
-        ellipse(xN, y, 20);
+//     for (const n of notes) {
+//         const xN = rm.getScrollX(n._displayTime ?? n.time);
+//         const y = isBottomDrum(n) ? laneBottomY() : laneTopY();
+//         fill(n.accent === 1 ? 'gold' : color(200, 180));
+//         noStroke();
+//         ellipse(xN, y, 20);
 
-        fill('#eeeeee');
-        textSize(12);
-        textAlign(CENTER, TOP);
-        textStyle(BOLD);
-        text(glyphForAbbr(n.abbr), xN, y + 12);
-        textStyle(NORMAL);
+//         fill('#eeeeee');
+//         textSize(12);
+//         textAlign(CENTER, TOP);
+//         textStyle(BOLD);
+//         text(glyphForAbbr(n.abbr), xN, y + 12);
+//         textStyle(NORMAL);
 
-        if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
-            const state = rm.feedbackStates[n._feedbackIdx];
-            if (state.fadeTimer > 0) state.fadeTimer -= deltaTime;
-            const alpha = constrain(map(state.fadeTimer, 0, 2000, 0, 255), 0, 255);
-            const col = state.result === "Perfect" ? color(174, 79, 214, alpha)
-                : state.result === "Good" ? color(85, 187, 90, alpha)
-                    : color(211, 47, 47, alpha);
-            fill(col);
-            textSize(14);
-            textAlign(CENTER);
-            text(state.result, xN, y - 30);
+//         if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
+//             const state = rm.feedbackStates[n._feedbackIdx];
+//             if (state.fadeTimer > 0) state.fadeTimer -= deltaTime;
+//             const alpha = constrain(map(state.fadeTimer, 0, 2000, 0, 255), 0, 255);
+//             const col = state.result === "Perfect" ? color(174, 79, 214, alpha)
+//                 : state.result === "Good" ? color(85, 187, 90, alpha)
+//                     : color(211, 47, 47, alpha);
+//             fill(col);
+//             textSize(14);
+//             textAlign(CENTER);
+//             text(state.result, xN, y - 30);
 
-            if (state.result !== 'Miss') {
-                const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time; // ms（早负晚正）
-                const pxOffset = constrain(dt * PX_PER_MS, -20, 20);
-                fill(0, alpha);
-                ellipse(xN + pxOffset, y, 10);
-            }
-        }
-    }
-    drawingContext.shadowBlur = 0;
-}
+//             if (state.result !== 'Miss') {
+//                 const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time; // ms（早负晚正）
+//                 const pxOffset = constrain(dt * PX_PER_MS, -20, 20);
+//                 fill(0, alpha);
+//                 ellipse(xN + pxOffset, y, 10);
+//             }
+//         }
+//     }
+//     drawingContext.shadowBlur = 0;
+// }
 
 //按下字母'm'用于切换AMP或者RMS
+
 function keyPressed() {
     if (key === 'm' && ampHUD?.preferAmplitude) {
         // 切换
