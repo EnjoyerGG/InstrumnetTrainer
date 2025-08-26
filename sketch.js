@@ -348,7 +348,6 @@ function setup() {
     select('#pause-btn').mousePressed(handlePause);
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(handleExport);
-    select('#totals').html(`Notes ${rm.scoreNotes.length}`);
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
         select('#speed-val').html(speedVal.toFixed(2));
@@ -547,12 +546,6 @@ function draw() {
     drumTrigger?.update?.();
     // 绘制音符与反馈
     drawNotesAndFeedback();
-
-    // 统计
-    const { hit, miss } = rm.getStats();
-    const info = `Notes ${rm.scoreNotes.length} | Hits ${hit} | Miss ${miss}`;
-    noStroke(); fill(240); textSize(16); textAlign(RIGHT, BOTTOM);
-    text(info, width - 12, laneBottomY() + 40);
 
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
