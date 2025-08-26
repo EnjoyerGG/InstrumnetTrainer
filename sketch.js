@@ -284,7 +284,7 @@ function setup() {
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
-        smoothing: 0.1,
+        smoothing: 0.85,
         vscale: 3.0,
         historySec: 2.5,
         fastResponse: true     // 启用快速响应模式
@@ -631,7 +631,8 @@ function keyPressed() {
     if (key === 'f' && ampHUD?.setFastResponse) {
         const current = ampHUD._fastResponse;
         ampHUD.setFastResponse(!current);
-        console.log(`Fast response mode: ${!current ? 'ON' : 'OFF'}`);
+        const mode = !current ? 'FAST (0.0/0.9 smooth)' : 'SMOOTH (0.85/0.15 smooth)';
+        console.log(`Audio response mode: ${mode}`);
     }
 }
 
