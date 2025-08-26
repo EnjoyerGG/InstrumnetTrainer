@@ -249,3 +249,37 @@ canvas {
     right: var(--pad);
     height: var(--meterH);
 }
+
+/*隐藏滑块面板*/
+/* 仅隐藏“顶部工具条(#ui)”里的速度滑块与BPM显示 */
+#ui #speed-slider {
+    display: none !important;
+}
+
+#ui #speed-val {
+    display: none !important;
+}
+
+/* 如果 BPM 外面还有一层 <span>BPM: <span id="bpm-val">..</span></span> */
+#ui #bpm-val {
+    display: none !important;
+}
+
+#ui span:has(#bpm-val) {
+    display: none !important;
+}
+
+#ui label[for="speed-slider"] {
+    display: none !important;
+}
+
+#ui label:has(#speed-slider) {
+    display: none !important;
+}
+
+/* 明确：在设置面板内始终显示（可选的兜底规则） */
+#settings-panel #speed-slider,
+#settings-panel #speed-val,
+#settings-panel #bpm-val {
+    display: inline-block !important;
+}

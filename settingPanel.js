@@ -48,11 +48,9 @@
             // 悬停效果
             this._gearBtn.addEventListener('mouseenter', () => {
                 this._gearBtn.style.background = '#666';
-                this._gearBtn.style.transform = 'rotate(90deg)';
             });
             this._gearBtn.addEventListener('mouseleave', () => {
                 this._gearBtn.style.background = '#555';
-                this._gearBtn.style.transform = 'rotate(0deg)';
             });
 
             // 插入到 UI 区域
