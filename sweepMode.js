@@ -163,7 +163,7 @@
             const r = this._rect();
             const now = this._nowMs();
             const phaseNow = (now * this._speedMul + this._startGapMs + this._phaseBiasMs);
-            const curCyc = Math.floor(phaseNow / this._loopMs);
+            //const curCyc = Math.floor(phaseNow / this._loopMs);
             const virt = phaseNow % this._loopMs;                         // 本轮内的时间（0~loopMs）
             const cyc = Math.floor(phaseNow / this._loopMs);             // 所在循环号（可为很大的整数）
 

@@ -683,7 +683,7 @@ function drawPerformanceStatus() {
 
     // 位置：顶区底部偏右，给一整行空间
     const baseY = RECT.top.h - 20;
-    const baseX = width - 270;   // 往左留出宽度，避免被挤出
+    const baseX = width - 320;   // 往左留出宽度，避免被挤出
 
     // 计算数据
     const totalNotes = rm.scoreNotes ? rm.scoreNotes.length : 0;
