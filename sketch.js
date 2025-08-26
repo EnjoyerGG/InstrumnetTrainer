@@ -680,53 +680,44 @@ function getCurrentSyncQuality() {
 function drawPerformanceStatus() {
     if (!window.statusTracker) return;
     push();
-    // 位置设置 (右下角)
-    const statusW = 180;
-    const statusH = 50;
-    const statusX = width - statusW - 15;
-    const statusY = RECT.top.h - statusH - 10;
 
-    // 背景
-    fill(40, 44, 52, 220);
-    stroke(34, 197, 94);
-    strokeWeight(2);
-    rect(statusX, statusY, statusW, statusH, 8);
+    // 位置：顶区底部偏右，给一整行空间
+    const baseY = RECT.top.h - 20;
+    const baseX = width - 270;   // 往左留出宽度，避免被挤出
 
-    // 获取音符总数（从json文件加载的）
+    // 计算数据
     const totalNotes = rm.scoreNotes ? rm.scoreNotes.length : 0;
-
-    // Hit Rate
     const hitRate = `${window.statusTracker.successfulHits}/${totalNotes}`;
-    const percentage = totalNotes > 0 ?
-        Math.round((window.statusTracker.successfulHits / totalNotes) * 100) : 0;
+    const percentage = totalNotes > 0 ? Math.round((window.statusTracker.successfulHits / totalNotes) * 100) : 0;
 
-    // 根据百分比设置颜色
-    let rateColor = '#ff4444'; // 红色 (差)
-    if (percentage >= 80) rateColor = '#00ff88'; // 绿色 (优秀)
-    else if (percentage >= 60) rateColor = '#88ff00'; // 黄绿 (良好)
-    else if (percentage >= 40) rateColor = '#ffaa00'; // 橙色 (一般)
+    // 命中率颜色（保持原来的分档）
+    let rateColor = '#ff4444';
+    if (percentage >= 80) rateColor = '#00ff88';
+    else if (percentage >= 60) rateColor = '#88ff00';
+    else if (percentage >= 40) rateColor = '#ffaa00';
 
-    fill(255, 212, 0);
-    textSize(12);
+    const quality = getCurrentSyncQuality(); // {label, color}
+
+    // 文本样式：粗体、左对齐、单行
+    textSize(15);
+    textStyle(BOLD);
     textAlign(LEFT, TOP);
-    text('Hit Rate:', statusX + 8, statusY + 6);
+    noStroke();
 
-    fill(255);
-    textSize(12);
-    text(hitRate, statusX + 60, statusY + 5);
+    // 逐段绘制，颜色保持不变
+    let x = baseX, y = baseY;
 
-    fill(rateColor);
-    textSize(11);
-    text(`(${percentage}%)`, statusX + 115, statusY + 6);
+    // Hit Rate: xx/yy (zz%)
+    fill(208, 209, 210); text('Hit Rate:', x, y); x += textWidth('Hit Rate: ') + 4;
+    fill(255); text(hitRate, x, y); x += textWidth(hitRate + ' ');
+    fill(rateColor); text(`(${percentage}%)`, x, y); x += textWidth(`(${percentage}%)`);
 
-    // In Sync
-    const quality = getCurrentSyncQuality();
-    fill(255, 212, 0);
-    text('In Sync:', statusX + 8, statusY + 25);
+    // 分隔符
+    fill(200); text('  |  ', x, y); x += textWidth('  |  ');
 
-    fill(quality.color);
-    textSize(12);
-    text(quality.label, statusX + 60, statusY + 24);
+    // In Sync: Quality
+    fill(208, 209, 210); text('In Sync:', x, y); x += textWidth('In Sync: ') + 4;
+    fill(quality.color); text(quality.label, x, y);
 
     pop();
 }
