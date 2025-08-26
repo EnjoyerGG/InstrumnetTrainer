@@ -15,11 +15,14 @@
     const Panel = {
         _rect: () => ({ x: 0, y: 0, w: 0, h: 0 }),
         _amp: null,
+        _mic: null,
+        _fft: null,
         _smooth: 0.9,
         _vscale: 3.0,
         _hist: [],
         _histMax: 0,          // 由面板宽度决定：1 像素一个样点
         _historySec: 2.5,     // 目标时间窗（秒）
+        _ema: 0,
         _bg: '#111319',
         _frame: 'rgba(255,255,255,0.18)',
         _grid: 'rgba(255,255,255,0.06)',
@@ -31,11 +34,23 @@
             this._vscale = Math.max(1, vscale);
             this._historySec = Math.max(0.5, historySec);
 
-            this._amp = new p5.Amplitude();
-            if (mic) this._amp.setInput(mic);
-            this._amp.smooth(this._smooth);
+            this._mic = mic;
+            this._amp = null;
+            this._fft = new p5.FFT(0.85, 512);
+            if (mic) this._fft.setInput(mic);
+            //this._amp.smooth(this._smooth);
 
             return this;
+        },
+
+        tryEnableAmplitude() {
+            try {
+                if (!this._amp) {
+                    this._amp = new p5.Amplitude();
+                    this._amp.smooth(this._smooth);
+                    if (this._mic) this._amp.setInput(this._mic);
+                }
+            } catch (e) { /* 安静失败，保留 FFT-RMS 路径 */ }
         },
 
         _roundRect(ctx, x, y, w, h, r, fill, stroke) {
@@ -54,8 +69,6 @@
 
         _drawBG(ctx, x, y, w, h) {
             this._roundRect(ctx, x, y, w, h, this._corner, this._bg, this._frame);
-
-            // 横向网格
             ctx.save();
             ctx.strokeStyle = this._grid;
             ctx.lineWidth = 1;
@@ -74,10 +87,31 @@
             }
         },
 
+        // 计算 0..1 电平：优先用 p5.Amplitude；否则用 FFT 波形 RMS，并做平滑
+        _currentLevel() {
+            let level = 0;
+
+            if (this._amp && this._amp.getLevel) {
+                level = this._amp.getLevel() || 0;
+            } else if (this._fft) {
+                const wave = this._fft.waveform(512); // [-1,1]
+                let rms = 0;
+                for (let i = 0; i < wave.length; i++) rms += wave[i] * wave[i];
+                rms = Math.sqrt(rms / wave.length);   // 0..1 近似
+                // 指数平滑（与 p5.Amplitude.smooth 一致的效果）
+                const alpha = 1 - this._smooth;
+                this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
+                level = this._ema;
+            }
+            return Math.min(1, Math.max(0, level));
+        },
+
         render(ctx, x, y, w, h) {
             const r = this._rect();
             if (r && r.w && r.h) { x = r.x; y = r.y; w = r.w; h = r.h; }
             if (!w || !h) return;
+
+            if (this._mic && this._fft) { try { this._fft.setInput(this._mic); } catch (e) { } }
 
             this._drawBG(ctx, x, y, w, h);
 
@@ -87,10 +121,7 @@
             this._ensureHistCapacity(innerW);
 
             // 取当前音量（0..1），并转 dBFS（仅用于读数显示）
-            let level = 0;
-            if (this._amp && typeof this._amp.getLevel === 'function') {
-                level = this._amp.getLevel() || 0;
-            }
+            const level = this._currentLevel();
             const db = 20 * Math.log10(Math.max(1e-6, level)); // 负值，越接近 0 越响
 
             // 维护历史：右进左出

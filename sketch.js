@@ -26,6 +26,7 @@ let chartJSON;
 let hasEverStarted = false;
 let isPaused = false;
 let countdownForResume = false;
+let micReady = false;
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -179,7 +180,7 @@ function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.u
 
 const GRID = { pad: 10, topHRatio: 0.5 };
 const RECT = {
-    top: {}, amp: {}, sweep: {}, fft: {}, amp: {}, drum: {}
+    top: {}, sweep: {}, fft: {}, amp: {}, drum: {}
 };
 let _canvasHost;
 
@@ -280,6 +281,16 @@ function setup() {
         vscale: 2,
         lift: 5
     })
+    ampHUD = AmpPanel.init({
+        mic,
+        rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
+        smoothing: 0.9,
+        vscale: 3.0,
+        historySec: 2.5
+    });
+
+    // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
+    tryStartMicEarly();
 
     //UI绑定
     select('#metro-toggle').mousePressed(() => {
@@ -336,10 +347,34 @@ function setup() {
     });
 }
 
+async function tryStartMicEarly() {
+    try {
+        // 有些浏览器允许无手势 resume；允许的话就先试一下
+        if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
+            await getAudioContext().resume().catch(() => { });
+        }
+    } catch (_) { }
+
+    try {
+        if (!mic) mic = new p5.AudioIn();
+        await mic.start();               // 触发权限弹窗；允许后即可就绪
+        micReady = true;
+        //if (ampHUD?.tryEnableAmplitude) ampHUD.tryEnableAmplitude();
+    } catch (e) {
+        // 需要用户手势/被拒：挂一次性监听，任意点击/按键后重试
+        const retry = async () => {
+            try { if (getAudioContext().state !== 'running') await getAudioContext().resume().catch(() => { }); } catch (_) { }
+            try { if (!mic) mic = new p5.AudioIn(); await mic.start(); micReady = true; } catch (_) { }
+        };
+        window.addEventListener('pointerdown', retry, { once: true });
+        window.addEventListener('touchstart', retry, { once: true, passive: true });
+        window.addEventListener('keydown', retry, { once: true });
+    }
+}
+
 /* ------------ Control Functions ------------- */
 async function handleStart() {
     if (running || counting) return;
-
     await window.userStartAudio?.();
     try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
 
@@ -492,6 +527,8 @@ function draw() {
 
     // 左侧：FFT 频谱
     fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
+    //中间：AMP面板
+    ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
 
     // 分隔线（仅水平两条，去掉中间竖线）
     push();
