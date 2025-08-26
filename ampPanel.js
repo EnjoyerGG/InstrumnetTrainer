@@ -282,8 +282,8 @@
             // 动态缩放指示
             if (this._dynamicScale && effectiveScale < this._vscale) {
                 ctx.fillStyle = 'rgba(0,255,0,0.6)';
-                ctx.font = '10px ui-sans-serif, system-ui, -apple-system';
-                ctx.fillText('AUTO', x + w - 60, y + 45);
+                ctx.font = 'bold 12px ui-sans-serif, system-ui, -apple-system';
+                ctx.fillText('AUTO', x + w - 15, y + 30);
             }
 
             ctx.textAlign = 'right';
