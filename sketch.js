@@ -17,7 +17,7 @@ window.userStartAudio = async function () {
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
-let rm, metro, mic, fftHUD, ampHUD;
+let rm, metro, mic, fftHUD, ampHUD, drumTrigger;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0;
@@ -27,6 +27,7 @@ let hasEverStarted = false;
 let isPaused = false;
 let countdownForResume = false;
 let micReady = false;
+let debugMode = false;  //可以用鼠标进行debug
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -225,7 +226,12 @@ function layoutRects() {
 
 /* ------------ Setup --------------- */
 function setup() {
-    if (isMobile()) { pixelDensity(1); frameRate(45); } else { frameRate(60); }
+    if (isMobile()) {
+        pixelDensity(1);
+        frameRate(45);
+    } else {
+        frameRate(60);
+    }
 
     const NOTES_H = 120;
     const METER_H = 200;
@@ -280,7 +286,8 @@ function setup() {
         smoothing: 0.85,
         vscale: 2,
         lift: 5
-    })
+    });
+
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
@@ -289,6 +296,26 @@ function setup() {
         historySec: 2.5,
         fastResponse: true     // 启用快速响应模式
     });
+
+    //初始化Conga打击检测器
+    drumTrigger = DrumTrigger.init({
+        mic,
+        debug: true,
+        onTrigger: (reason) => {
+            //检测到鼓击时，执行和鼠标点击相同的操作
+            if (running) {
+                rm.registerHit();
+                SweepMode?.addHitNow?.();
+                judgeLineGlow = 1;
+                if (debugMode) {
+                    console.log(`Drum hit triggered by: ${reason}`);
+                }
+            }
+        }
+    });
+    // 默认启用鼓击检测，设置中等灵敏度
+    drumTrigger.enable(true);
+    drumTrigger.setSensitivity(0.6);
 
     // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
     tryStartMicEarly();
@@ -516,7 +543,8 @@ function draw() {
         rm.checkAutoMiss();
         rm.checkLoopAndRestart();
     }
-
+    //更新鼓击检测器
+    drumTrigger?.update?.();
     // 绘制音符与反馈
     drawNotesAndFeedback();
 
@@ -533,6 +561,13 @@ function draw() {
     fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
     //中间：AMP面板
     ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+
+    if (debugMode && drumTrigger) {
+        const debugW = 200, debugH = 120;
+        const debugX = width - debugW - 10;
+        const debugY = 10;
+        drumTrigger.renderDebugPanel?.(drawingContext, debugX, debugY, debugW, debugH);
+    }
 
     // 分隔线（仅水平两条，去掉中间竖线）
     push();
@@ -634,14 +669,48 @@ function keyPressed() {
         const mode = !current ? 'FAST (0.0/0.9 smooth)' : 'SMOOTH (0.85/0.15 smooth)';
         console.log(`Audio response mode: ${mode}`);
     }
+
+    // 鼓击检测
+    if (key === 'd') {
+        // 切换调试模式
+        debugMode = !debugMode;
+        drumTrigger?.setDebug?.(debugMode);
+        console.log(`Debug mode: ${debugMode ? 'ON' : 'OFF'}`);
+    }
+    if (key === 't' && drumTrigger) {
+        // 切换鼓击检测开关
+        const isEnabled = !drumTrigger._isEnabled;
+        drumTrigger.enable(isEnabled);
+        console.log(`Drum trigger: ${isEnabled ? 'ON' : 'OFF'}`);
+    }
+    // 调节灵敏度 (1-5)
+    if (key >= '1' && key <= '5' && drumTrigger) {
+        const level = parseInt(key);
+        const sensitivity = level / 5.0;  // 0.2, 0.4, 0.6, 0.8, 1.0
+        drumTrigger.setSensitivity(sensitivity);
+        console.log(`Drum sensitivity: ${level}/5 (${sensitivity.toFixed(1)})`);
+    }
+
+    // 重置统计
+    if (key === 'r' && drumTrigger) {
+        drumTrigger.resetStats();
+        console.log('Drum trigger stats reset');
+    }
+    // 显示当前状态
+    if (key === 'i' && drumTrigger) {
+        const stats = drumTrigger.getStats();
+        console.log('Drum Trigger Stats:', stats);
+    }
+
 }
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
-    // 通用击打处理
-    if (running) {
+    //鼠标点击仅在调试模式下工作，主要用于测试
+    if (running && debugMode) {
         rm.registerHit();
         SweepMode?.addHitNow?.();
         judgeLineGlow = 1;
+        console.log('Manual hit (debug mode)');
     }
 }
