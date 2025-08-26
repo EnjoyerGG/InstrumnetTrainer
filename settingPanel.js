@@ -120,26 +120,32 @@
                 <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
                     <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">⌨️ Keyboard Shortcuts</h4>
                     <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 12px; line-height: 1.4;">
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'D'</code>
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'d'</code>
                         <span style="color: #ccc;">Toggle debug mode (show detection panel)</span>
                         
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'T'</code>
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'t'</code>
                         <span style="color: #ccc;">Enable/disable hit detection</span>
                         
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'1'-'5'</code>
                         <span style="color: #ccc;">Set sensitivity (1 = lowest, 5 = highest)</span>
                         
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'R'</code>
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'r'</code>
                         <span style="color: #ccc;">Reset stats</span>
                         
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'I'</code>
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'i'</code>
                         <span style="color: #ccc;">Show current status</span>
                         
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'M'</code>
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'m'</code>
                         <span style="color: #ccc;">Toggle AMP/RMS level detection</span>
-                        
-                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'F'</code>
+
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'f'</code>
                         <span style="color: #ccc;">Toggle audio response speed (Fast/Smooth)</span>
+
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'a'</code>
+                        <span style="color: #ccc;">Toggle dynamic scaling (Fixed/Smooth)</span>
+
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'s'</code>
+                        <span style="color: #ccc;">Toggle adaptation speed (Instant/Smooth)</span>
                     </div>
                 </div>
 
