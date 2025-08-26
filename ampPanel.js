@@ -148,7 +148,7 @@
 
             // 取当前音量（0..1），并转 dBFS（仅用于读数显示）
             const level = this._currentLevel();
-            const db = 20 * Math.log10(Math.max(1e-6, level)); // 负值，越接近 0 越响
+            const db = -20 * Math.log10(Math.max(1e-6, level)); // 负值，越接近 0 越响
 
             // 维护历史：右进左出
             this._hist.push(level);
