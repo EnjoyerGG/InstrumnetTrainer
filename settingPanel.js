@@ -1,0 +1,284 @@
+// settingsPanel.js - 设置面板模块
+// 提供齿轮按钮和可折叠的设置界面，包含速度控制和键盘指南
+
+(function (root) {
+    const SettingsPanel = {
+        _isVisible: false,
+        _overlay: null,
+        _panel: null,
+        _gearBtn: null,
+
+        // 回调函数
+        _onSpeedChange: null,
+        _onBPMChange: null,
+
+        init({ onSpeedChange, onBPMChange } = {}) {
+            this._onSpeedChange = onSpeedChange;
+            this._onBPMChange = onBPMChange;
+
+            this._createGearButton();
+            this._createSettingsPanel();
+            this._bindEvents();
+
+            return this;
+        },
+
+        _createGearButton() {
+            // 创建齿轮按钮
+            this._gearBtn = document.createElement('button');
+            this._gearBtn.id = 'settings-btn';
+            this._gearBtn.innerHTML = '⚙️';
+            this._gearBtn.style.cssText = `
+                margin-left: 8px;
+                padding: 8px 12px;
+                background: #555;
+                color: white;
+                border: 1px solid #666;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                transition: all 0.2s ease;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 40px;
+                height: 36px;
+            `;
+
+            // 悬停效果
+            this._gearBtn.addEventListener('mouseenter', () => {
+                this._gearBtn.style.background = '#666';
+                this._gearBtn.style.transform = 'rotate(90deg)';
+            });
+            this._gearBtn.addEventListener('mouseleave', () => {
+                this._gearBtn.style.background = '#555';
+                this._gearBtn.style.transform = 'rotate(0deg)';
+            });
+
+            // 插入到 UI 区域
+            const uiDiv = document.getElementById('ui');
+            if (uiDiv) {
+                uiDiv.appendChild(this._gearBtn);
+            }
+        },
+
+        _createSettingsPanel() {
+            // 创建遮罩层
+            this._overlay = document.createElement('div');
+            this._overlay.id = 'settings-overlay';
+            this._overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.5);
+                display: none;
+                z-index: 1000;
+                backdrop-filter: blur(2px);
+            `;
+
+            // 创建设置面板
+            this._panel = document.createElement('div');
+            this._panel.id = 'settings-panel';
+            this._panel.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #2a2a2a;
+                border: 2px solid #555;
+                border-radius: 12px;
+                padding: 24px;
+                min-width: 400px;
+                max-width: 600px;
+                color: white;
+                font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            `;
+
+            this._panel.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; color: #fff; font-size: 18px;">⚙️ 设置</h3>
+                    <button id="close-settings" style="background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="关闭">✕</button>
+                </div>
+
+                <!-- 速度控制区域 -->
+                <div style="margin-bottom: 24px; padding: 16px; background: #333; border-radius: 8px;">
+                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎵 速度控制</h4>
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                        <label style="min-width: 80px; font-size: 13px; color: #ccc;">Speed:</label>
+                        <input id="settings-speed-slider" type="range" min="0.1" max="0.4" step="0.01" value="0.3" 
+                               style="flex: 1; height: 6px; background: #555; outline: none; border-radius: 3px;" />
+                        <span id="settings-speed-val" style="min-width: 50px; font-size: 13px; color: #fff; font-weight: bold;">0.30</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="min-width: 80px; font-size: 13px; color: #ccc;">BPM:</span>
+                        <span id="settings-bpm-val" style="font-size: 16px; color: #ffd400; font-weight: bold;">120</span>
+                    </div>
+                </div>
+
+                <!-- 键盘操作指南 -->
+                <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
+                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">⌨️ 键盘操作指南</h4>
+                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 12px; line-height: 1.4;">
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'D'</code>
+                        <span style="color: #ccc;">切换调试模式（显示检测面板）</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'T'</code>
+                        <span style="color: #ccc;">开启/关闭鼓击检测</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'1'-'5'</code>
+                        <span style="color: #ccc;">设置灵敏度（1=最不敏感，5=最敏感）</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'R'</code>
+                        <span style="color: #ccc;">重置统计数据</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'I'</code>
+                        <span style="color: #ccc;">显示当前状态信息</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'M'</code>
+                        <span style="color: #ccc;">切换 AMP/RMS 音量检测模式</span>
+                        
+                        <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'F'</code>
+                        <span style="color: #ccc;">切换音频响应速度（快速/平滑）</span>
+                    </div>
+                </div>
+
+                <!-- 鼓击检测状态显示 -->
+                <div style="padding: 12px; background: #333; border-radius: 8px; border-left: 4px solid #22c55e;">
+                    <h4 style="margin: 0 0 8px 0; color: #22c55e; font-size: 13px; font-weight: bold;">🥁 鼓击检测状态</h4>
+                    <div id="drum-status" style="font-size: 11px; color: #ccc;">
+                        检测器: <span id="drum-enabled" style="color: #22c55e;">启用</span> | 
+                        灵敏度: <span id="drum-sensitivity" style="color: #ffd400;">3/5</span> | 
+                        触发次数: <span id="drum-count" style="color: #fff;">0</span>
+                    </div>
+                </div>
+            `;
+
+            this._overlay.appendChild(this._panel);
+            document.body.appendChild(this._overlay);
+        },
+
+        _bindEvents() {
+            // 齿轮按钮点击
+            this._gearBtn?.addEventListener('click', () => {
+                this.toggle();
+            });
+
+            // 关闭按钮
+            const closeBtn = document.getElementById('close-settings');
+            closeBtn?.addEventListener('click', () => {
+                this.hide();
+            });
+
+            // 点击遮罩关闭
+            this._overlay?.addEventListener('click', (e) => {
+                if (e.target === this._overlay) {
+                    this.hide();
+                }
+            });
+
+            // ESC 键关闭
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this._isVisible) {
+                    this.hide();
+                    e.preventDefault();
+                }
+            });
+
+            // 速度滑块事件
+            const speedSlider = document.getElementById('settings-speed-slider');
+            speedSlider?.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                this.updateSpeedDisplay(value);
+                this._onSpeedChange?.(value);
+            });
+        },
+
+        // 显示设置面板
+        show() {
+            this._isVisible = true;
+            this._overlay.style.display = 'block';
+            // 防止页面滚动
+            document.body.style.overflow = 'hidden';
+
+            // 更新鼓击状态显示
+            this.updateDrumStatus();
+        },
+
+        // 隐藏设置面板
+        hide() {
+            this._isVisible = false;
+            this._overlay.style.display = 'none';
+            // 恢复页面滚动
+            document.body.style.overflow = 'auto';
+        },
+
+        // 切换显示状态
+        toggle() {
+            if (this._isVisible) {
+                this.hide();
+            } else {
+                this.show();
+            }
+        },
+
+        // 更新速度显示
+        updateSpeedDisplay(speed) {
+            const speedVal = document.getElementById('settings-speed-val');
+            const bpmVal = document.getElementById('settings-bpm-val');
+
+            if (speedVal) {
+                speedVal.textContent = speed.toFixed(2);
+            }
+
+            // 计算 BPM (需要外部提供 speedToBPM 函数)
+            if (bpmVal && window.speedToBPM) {
+                const bpm = Math.round(window.speedToBPM(speed));
+                bpmVal.textContent = bpm;
+            }
+        },
+
+        // 同步滑块值
+        syncSpeedSlider(speed) {
+            const slider = document.getElementById('settings-speed-slider');
+            if (slider) {
+                slider.value = speed;
+                this.updateSpeedDisplay(speed);
+            }
+        },
+
+        // 更新鼓击状态显示
+        updateDrumStatus(drumTrigger = null) {
+            const enabledEl = document.getElementById('drum-enabled');
+            const sensitivityEl = document.getElementById('drum-sensitivity');
+            const countEl = document.getElementById('drum-count');
+
+            if (drumTrigger) {
+                const stats = drumTrigger.getStats?.() || {};
+                const isEnabled = stats.isEnabled || false;
+                const sensitivity = (stats.volumeThreshold || 0.15) * 5; // 粗略换算
+                const count = stats.triggerCount || 0;
+
+                if (enabledEl) {
+                    enabledEl.textContent = isEnabled ? '启用' : '关闭';
+                    enabledEl.style.color = isEnabled ? '#22c55e' : '#ef4444';
+                }
+                if (sensitivityEl) {
+                    sensitivityEl.textContent = `${Math.round(sensitivity)}/5`;
+                }
+                if (countEl) {
+                    countEl.textContent = count;
+                }
+            }
+        },
+
+        // 获取当前状态
+        isVisible() {
+            return this._isVisible;
+        }
+    };
+
+    root.SettingsPanel = SettingsPanel;
+})(window);

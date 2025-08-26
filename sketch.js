@@ -317,6 +317,28 @@ function setup() {
     drumTrigger.enable(true);
     drumTrigger.setSensitivity(0.6);
 
+    //初始化设置面板
+    settingsPanel = SettingsPanel.init({
+        onSpeedChange: (speed) => {
+            const bpmVal = speedToBPM(speed);
+            // 更新节拍器BPM
+            metro.setBPM(bpmVal);
+            rm.setBPM(bpmVal);
+            rm.setSpeedFactor(speed);
+            // 同步其他组件
+            SweepMode?.setSpeedMultiplier?.(1);
+            // 如果正在运行且节拍器可用，更新调度器
+            if (metronomeEnabled && running && metro.isLoaded()) {
+                metro.flushFuture();
+                resetMetronomeSchedulerState();
+                armNextTickNow();
+                schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
+            }
+            // 重置能量统计
+            _emaE = 0, _emaVar = 1;
+        }
+    });
+
     // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
     tryStartMicEarly();
 
