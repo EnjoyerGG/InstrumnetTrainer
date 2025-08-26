@@ -141,7 +141,7 @@ class RhythmManager {
             // 否则需要等到 checkAutoMiss() 扫描后才显示
             st.result = "Miss";
         }
-        st.fadeTimer = 1000;
+        st.fadeTimer = 3000;
 
         // 添加这行来更新状态跟踪器
         if (typeof updateStatusTracker === 'function') {
@@ -171,7 +171,7 @@ class RhythmManager {
             if (!state.judged && now - n.time > MISS_WINDOW && now - n.time < this.noteInterval) {
                 state.judged = true;
                 state.result = "Miss";
-                state.fadeTimer = 1000;
+                state.fadeTimer = 3000;
             }
         }
     }
