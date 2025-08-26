@@ -323,7 +323,9 @@ function setup() {
     //UI绑定
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
-        select('#metro-toggle').html(metronomeEnabled ? 'Metronome Off' : 'Metronome On');
+        //select('#metro-toggle').html(metronomeEnabled ? 'Metronome Off' : 'Metronome On');
+        updateMetroBtnUI(); // ← 每次切换后更新颜色
+
         if (metronomeEnabled) {
             metro.enable(true);
             if (running) { resetMetronomeSchedulerState(); armNextTickNow(); }
@@ -332,7 +334,8 @@ function setup() {
             stopScoreTickScheduler();
         }
     });
-    select('#metro-toggle').html('Metronome On');
+    select('#metro-toggle').html('Metronome');
+    updateMetroBtnUI();
     metro.enable(false);
 
     // 速度/BPM
@@ -695,6 +698,21 @@ function keyPressed() {
         console.log('Drum Trigger Stats:', stats);
     }
 
+}
+
+//节拍器按钮开启时变成绿色
+function updateMetroBtnUI() {
+    const btn = select('#metro-toggle');
+    if (!btn) return;
+    if (metronomeEnabled) {
+        btn.style('background', '#22c55e'); // green-500
+        btn.style('color', '#0b1a0b');      // 深色文字更清晰
+        btn.style('border', '1px solid #16a34a');
+    } else {
+        btn.style('background', '#444');    // 关：灰
+        btn.style('color', '#eee');
+        btn.style('border', '1px solid #555');
+    }
 }
 
 /* ------------ Interaction ----------- */
