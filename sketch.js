@@ -339,6 +339,13 @@ function setup() {
             _emaE = 0, _emaVar = 1;
         }
     });
+    window.statusTracker = {
+        successfulHits: 0,
+        recentResults: [],
+        maxRecentResults: 10,
+        currentInputLevel: 0,
+        lastUpdateTime: 0
+    };
 
     // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
     tryStartMicEarly();
@@ -477,6 +484,8 @@ function handleReset() {
     SweepMode.clearHits();
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
+
+    resetStatusTracker();
 }
 
 function handleExport() {
@@ -606,6 +615,119 @@ function draw() {
     const midXRight = Math.round(RECT.rightHalf.x + RECT.rightHalf.w / 2) + 0.5;
     line(midXRight, RECT.rightHalf.y, RECT.rightHalf.x + RECT.rightHalf.w, RECT.rightHalf.y); // 顶边短刻度(可选)
     line(midXRight, RECT.rightHalf.y, midXRight, RECT.rightHalf.y + RECT.rightHalf.h);
+    pop();
+    // 绘制右下角状态
+    drawPerformanceStatus();
+}
+
+// 状态跟踪函数
+function updateStatusTracker(result) {
+    if (!window.statusTracker) return;
+
+    window.statusTracker.totalHits++;
+
+    if (result === 'Perfect' || result === 'Good') {
+        window.statusTracker.successfulHits++;
+    }
+
+    window.statusTracker.recentResults.push(result);
+    if (window.statusTracker.recentResults.length > window.statusTracker.maxRecentResults) {
+        window.statusTracker.recentResults.shift();
+    }
+
+    window.statusTracker.lastUpdateTime = millis();
+}
+
+// 重置状态跟踪器
+function resetStatusTracker() {
+    if (!window.statusTracker) return;
+    window.statusTracker.successfulHits = 0;
+    window.statusTracker.recentResults = [];
+    window.statusTracker.currentInputLevel = 0;
+}
+
+// 获取当前同步质量
+function getCurrentSyncQuality() {
+    const SYNC_QUALITY = {
+        EXCELLENT: { label: 'Excellent', color: '#00ff88' },
+        GOOD: { label: 'Good', color: '#88ff00' },
+        FAIR: { label: 'Fair', color: '#ffaa00' },
+        POOR: { label: 'Poor', color: '#ff4444' }
+    };
+
+    if (!window.statusTracker || window.statusTracker.recentResults.length < 3) {
+        return SYNC_QUALITY.FAIR;
+    }
+
+    const recent = window.statusTracker.recentResults.slice(-8);
+    const perfectCount = recent.filter(r => r === 'Perfect').length;
+    const goodCount = recent.filter(r => r === 'Good').length;
+    const successRate = (perfectCount + goodCount) / recent.length;
+    const perfectRate = perfectCount / recent.length;
+
+    if (perfectRate >= 0.6) {
+        return SYNC_QUALITY.EXCELLENT;
+    } else if (successRate >= 0.7) {
+        return SYNC_QUALITY.GOOD;
+    } else if (successRate >= 0.4) {
+        return SYNC_QUALITY.FAIR;
+    } else {
+        return SYNC_QUALITY.POOR;
+    }
+}
+
+// 绘制右下角性能状态
+function drawPerformanceStatus() {
+    if (!window.statusTracker) return;
+    push();
+    // 位置设置 (右下角)
+    const statusW = 180;
+    const statusH = 50;
+    const statusX = width - statusW - 15;
+    const statusY = RECT.top.h - statusH - 10;
+
+    // 背景
+    fill(40, 44, 52, 220);
+    stroke(34, 197, 94);
+    strokeWeight(2);
+    rect(statusX, statusY, statusW, statusH, 8);
+
+    // 获取音符总数（从json文件加载的）
+    const totalNotes = rm.scoreNotes ? rm.scoreNotes.length : 0;
+
+    // Hit Rate
+    const hitRate = `${window.statusTracker.successfulHits}/${totalNotes}`;
+    const percentage = totalNotes > 0 ?
+        Math.round((window.statusTracker.successfulHits / totalNotes) * 100) : 0;
+
+    // 根据百分比设置颜色
+    let rateColor = '#ff4444'; // 红色 (差)
+    if (percentage >= 80) rateColor = '#00ff88'; // 绿色 (优秀)
+    else if (percentage >= 60) rateColor = '#88ff00'; // 黄绿 (良好)
+    else if (percentage >= 40) rateColor = '#ffaa00'; // 橙色 (一般)
+
+    fill(255, 212, 0);
+    textSize(12);
+    textAlign(LEFT, TOP);
+    text('Hit Rate:', statusX + 8, statusY + 6);
+
+    fill(255);
+    textSize(12);
+    text(hitRate, statusX + 60, statusY + 5);
+
+    fill(rateColor);
+    textSize(11);
+    text(`(${percentage}%)`, statusX + 115, statusY + 6);
+
+    // In Sync
+    const quality = getCurrentSyncQuality();
+    fill(255, 212, 0);
+    text('In Sync:', statusX + 8, statusY + 25);
+
+    fill(quality.color);
+    textSize(12);
+    text(quality.label, statusX + 60, statusY + 24);
+
     pop();
 }
 

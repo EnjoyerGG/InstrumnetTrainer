@@ -144,6 +144,11 @@ class RhythmManager {
             st.result = "Miss";
         }
         st.fadeTimer = 2000;
+
+        // 添加这行来更新状态跟踪器
+        if (typeof updateStatusTracker === 'function') {
+            updateStatusTracker(st.result);
+        }
     }
 
     setBPM(bpm) {
@@ -207,6 +212,9 @@ class RhythmManager {
         if (idx !== this._loopIdx) {
             this._loopIdx = idx;
             this.feedbackStates = this._emptyFeedback();
+            if (typeof resetStatusTracker === 'function') {
+                resetStatusTracker();
+            }
         }
     }
 

@@ -47,10 +47,10 @@
 
             // 悬停效果
             this._gearBtn.addEventListener('mouseenter', () => {
-                this._gearBtn.style.background = '#666';
+                this._gearBtn.style.background = '#757575ff';
             });
             this._gearBtn.addEventListener('mouseleave', () => {
-                this._gearBtn.style.background = '#555';
+                this._gearBtn.style.background = '#323232ff';
             });
 
             // 插入到 UI 区域
@@ -148,16 +148,6 @@
                         <span style="color: #ccc;">Toggle adaptation speed (Instant/Smooth)</span>
                     </div>
                 </div>
-
-                <!-- 鼓击检测状态显示 -->
-                <div style="padding: 12px; background: #333; border-radius: 8px; border-left: 4px solid #22c55e;">
-                    <h4 style="margin: 0 0 8px 0; color: #22c55e; font-size: 13px; font-weight: bold;">🥁 Hit Detection Status</h4>
-                    <div id="drum-status" style="font-size: 11px; color: #ccc;">
-                        Detector: <span id="drum-enabled" style="color: #22c55e;">Enabled</span> | 
-                        Sensitivity: <span id="drum-sensitivity" style="color: #ffd400;">3/5</span> | 
-                        Triggers: <span id="drum-count" style="color: #fff;">0</span>
-                    </div>
-                </div>
             `;
 
             this._overlay.appendChild(this._panel);
@@ -206,9 +196,6 @@
             this._overlay.style.display = 'block';
             // 防止页面滚动
             document.body.style.overflow = 'hidden';
-
-            // 更新鼓击状态显示
-            this.updateDrumStatus();
         },
 
         // 隐藏设置面板
@@ -250,31 +237,6 @@
             if (slider) {
                 slider.value = speed;
                 this.updateSpeedDisplay(speed);
-            }
-        },
-
-        // 更新鼓击状态显示
-        updateDrumStatus(drumTrigger = null) {
-            const enabledEl = document.getElementById('drum-enabled');
-            const sensitivityEl = document.getElementById('drum-sensitivity');
-            const countEl = document.getElementById('drum-count');
-
-            if (drumTrigger) {
-                const stats = drumTrigger.getStats?.() || {};
-                const isEnabled = stats.isEnabled || false;
-                const sensitivity = (stats.volumeThreshold || 0.15) * 5; // 粗略换算
-                const count = stats.triggerCount || 0;
-
-                if (enabledEl) {
-                    enabledEl.textContent = isEnabled ? '启用' : '关闭';
-                    enabledEl.style.color = isEnabled ? '#22c55e' : '#ef4444';
-                }
-                if (sensitivityEl) {
-                    sensitivityEl.textContent = `${Math.round(sensitivity)}/5`;
-                }
-                if (countEl) {
-                    countEl.textContent = count;
-                }
             }
         },
 
