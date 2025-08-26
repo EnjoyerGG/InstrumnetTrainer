@@ -12,29 +12,40 @@
         _isEnabled: false,
         _isDebug: false,
 
-        // 音量检测参数
-        _volumeThreshold: 0.15,        // 音量阈值 (0-1)
-        _volumeChangeThreshold: 0.08,   // 音量变化率阈值
+        // 瞬态检测参数（鼓声的关键特征）
+        _transientRatio: 3.0,          // 瞬态攻击比率：当前音量 / 历史平均值
+        _sustainCheckFrames: 8,         // 检查持续时间的帧数
+        _maxSustainRatio: 0.6,         // 最大持续音量比率（鼓声应该快速衰减）
+
+        // 频谱特征参数
+        _lowFreqRange: [80, 800],      // 鼓声低频主体范围 (Hz)
+        _midFreqRange: [800, 4000],    // 中频范围
+        _highFreqRange: [4000, 12000], // 高频瞬态范围
+        _spectralBalance: 0.3,         // 低频与高频能量比率阈值
+
+        // 基础检测参数
+        _volumeThreshold: 0.08,        // 降低基础音量阈值
         _volumeHistory: [],
-        _volumeHistorySize: 5,
+        _volumeHistorySize: 12,        // 增加历史记录长度
 
-        // 高频检测参数 (检测敲击的特征频率)
-        _highFreqStart: 2000,          // 高频开始频率 (Hz)
-        _highFreqEnd: 8000,            // 高频结束频率 (Hz)
-        _highFreqThreshold: 0.03,      // 高频能量阈值
-        _highFreqHistory: [],
-        _highFreqHistorySize: 3,
+        // 背景噪音自适应
+        _backgroundNoise: 0.02,        // 背景噪音电平
+        _noiseAdaptRate: 0.999,        // 背景噪音适应速率
 
-        // 防抖参数
-        _debounceMs: 120,              // 防抖时间 (毫秒)
+        // 防抖和状态跟踪
+        _debounceMs: 80,               // 减少防抖时间
         _lastTriggerTime: 0,
+        _isInTransient: false,         // 当前是否在瞬态中
+        _transientStartTime: 0,
+        _transientPeakLevel: 0,
 
         // 统计与调试
         _triggerCount: 0,
+        _falsePositiveCount: 0,
         _lastTriggerReason: '',
 
         // 回调函数
-        _onTrigger: null,              // 检测到打击时的回调
+        _onTrigger: null,
 
         // ===== 初始化 =====
         init({ mic, onTrigger, debug = false } = {}) {
@@ -44,13 +55,12 @@
 
             if (mic) {
                 // 创建 FFT 分析器用于频谱分析
-                this._fft = new p5.FFT(0.8, 1024);
+                this._fft = new p5.FFT(0.75, 1024);
                 this._fft.setInput(mic);
             }
 
             // 初始化历史记录
             this._volumeHistory = new Array(this._volumeHistorySize).fill(0);
-            this._highFreqHistory = new Array(this._highFreqHistorySize).fill(0);
 
             if (this._isDebug) {
                 console.log('DrumTrigger initialized');
@@ -71,34 +81,15 @@
             this._isDebug = debug;
         },
 
-        // ===== 参数调节 =====
-        setVolumeThreshold(threshold) {
-            this._volumeThreshold = clamp(threshold, 0, 1);
-            if (this._isDebug) {
-                console.log(`Volume threshold set to: ${this._volumeThreshold}`);
-            }
-        },
-
-        setHighFreqThreshold(threshold) {
-            this._highFreqThreshold = clamp(threshold, 0, 0.5);
-            if (this._isDebug) {
-                console.log(`High freq threshold set to: ${this._highFreqThreshold}`);
-            }
-        },
-
-        setDebounceTime(ms) {
-            this._debounceMs = Math.max(50, ms);
-        },
-
         setSensitivity(level) {
             // 便捷方法：设置整体灵敏度 (0-1, 0.5为默认)
             const factor = clamp(level, 0, 1);
-            this._volumeThreshold = 0.15 * (2 - factor);          // 灵敏度高 -> 阈值低
-            this._volumeChangeThreshold = 0.08 * (2 - factor);
-            this._highFreqThreshold = 0.03 * (2 - factor);
+            this._volumeThreshold = 0.08 * (2 - factor);          // 灵敏度高 -> 阈值低
+            this._transientRatio = 2.0 + factor * 2.0;  // 2.0 - 4.0
+            this._spectralBalance = 0.2 + factor * 0.2; // 0.2 - 0.4
 
             if (this._isDebug) {
-                console.log(`Sensitivity set to: ${level} (vol: ${this._volumeThreshold.toFixed(3)}, change: ${this._volumeChangeThreshold.toFixed(3)}, freq: ${this._highFreqThreshold.toFixed(3)})`);
+                console.log(`Sensitivity set to: ${level} (vol: ${this._volumeThreshold.toFixed(3)}, trans: ${this._transientRatio.toFixed(3)}, spec: ${this._spectralBalance.toFixed(3)})`);
             }
         },
 
@@ -108,44 +99,36 @@
 
             // 防抖检查
             const now = millis();
-            if (now - this._lastTriggerTime < this._debounceMs) return;
-
-            // 获取当前音频数据
             const currentVolume = this._getCurrentVolume();
-            const currentHighFreq = this._getCurrentHighFreqEnergy();
+            const spectralFeatures = this._analyzeSpectrum();
+
+            // 更新背景噪音估计
+            this._updateBackgroundNoise(currentVolume);
 
             // 更新历史记录
-            this._updateHistory(currentVolume, currentHighFreq);
+            this._updateVolumeHistory(currentVolume);
 
-            // 多重检测方法
-            const triggers = {
-                volume: this._checkVolumeThreshold(currentVolume),
-                change: this._checkVolumeChange(currentVolume),
-                highFreq: this._checkHighFreqSpike(currentHighFreq),
-            };
+            // 检测鼓声特征
+            const drumFeatures = this._analyzeDrumFeatures(currentVolume, spectralFeatures);
 
-            // 判断是否触发 (任一方法检测到即可)
-            let shouldTrigger = false;
-            let reason = [];
+            // 状态机：跟踪瞬态过程
+            this._updateTransientState(currentVolume, now);
 
-            if (triggers.volume) { shouldTrigger = true; reason.push('VOL'); }
-            if (triggers.change) { shouldTrigger = true; reason.push('CHANGE'); }
-            if (triggers.highFreq) { shouldTrigger = true; reason.push('FREQ'); }
-
-            if (shouldTrigger) {
-                this._triggerHit(reason.join('+'));
+            // 判定是否为鼓声
+            if (this._isDrumHit(drumFeatures, now)) {
+                this._triggerHit(drumFeatures.reason);
             }
 
             // 调试输出
-            if (this._isDebug && frameCount % 30 === 0) { // 每半秒输出一次
-                console.log(`Vol: ${currentVolume.toFixed(3)}, HighFreq: ${currentHighFreq.toFixed(4)}, Triggers: ${Object.values(triggers).some(t => t) ? 'YES' : 'NO'}`);
+            if (this._isDebug && frameCount % 45 === 0) {
+                console.log(`Vol: ${currentVolume.toFixed(3)}, BG: ${this._backgroundNoise.toFixed(3)}, Transient: ${this._isInTransient}, Features: ${drumFeatures.score.toFixed(2)}`);
             }
         },
 
         // ===== 内部检测方法 =====
         _getCurrentVolume() {
             // 使用 RMS 音量计算
-            const waveform = this._fft.waveform(256);
+            const waveform = this._fft.waveform(512);
             let rms = 0;
             for (let i = 0; i < waveform.length; i++) {
                 rms += waveform[i] * waveform[i];
@@ -153,61 +136,155 @@
             return Math.sqrt(rms / waveform.length);
         },
 
-        _getCurrentHighFreqEnergy() {
-            // 分析高频段的能量
+        _analyzeSpectrum() {
             const spectrum = this._fft.analyze();
-            const nyquist = 22050; // p5.js 默认采样率的一半
+            const nyquist = 22050;
             const binSize = nyquist / spectrum.length;
 
-            const startBin = Math.floor(this._highFreqStart / binSize);
-            const endBin = Math.floor(this._highFreqEnd / binSize);
+            const getLowEnergy = () => {
+                const start = Math.floor(this._lowFreqRange[0] / binSize);
+                const end = Math.floor(this._lowFreqRange[1] / binSize);
+                return this._getFreqEnergy(spectrum, start, end);
+            };
 
+            const getMidEnergy = () => {
+                const start = Math.floor(this._midFreqRange[0] / binSize);
+                const end = Math.floor(this._midFreqRange[1] / binSize);
+                return this._getFreqEnergy(spectrum, start, end);
+            };
+
+            const getHighEnergy = () => {
+                const start = Math.floor(this._highFreqRange[0] / binSize);
+                const end = Math.floor(this._highFreqRange[1] / binSize);
+                return this._getFreqEnergy(spectrum, start, end);
+            };
+
+            return {
+                lowEnergy: getLowEnergy(),
+                midEnergy: getMidEnergy(),
+                highEnergy: getHighEnergy(),
+                totalEnergy: getLowEnergy() + getMidEnergy() + getHighEnergy()
+            };
+        },
+
+        _getFreqEnergy(spectrum, startBin, endBin) {
             let energy = 0;
             let count = 0;
             for (let i = startBin; i < endBin && i < spectrum.length; i++) {
-                energy += spectrum[i] / 255; // 归一化到 0-1
+                energy += spectrum[i] / 255;
                 count++;
             }
-
             return count > 0 ? energy / count : 0;
         },
 
-        _updateHistory(volume, highFreq) {
-            // 滚动更新历史记录
+        _updateBackgroundNoise(currentVolume) {
+            // 只在安静时更新背景噪音
+            if (currentVolume < this._backgroundNoise * 2) {
+                this._backgroundNoise = this._backgroundNoise * this._noiseAdaptRate +
+                    currentVolume * (1 - this._noiseAdaptRate);
+            }
+        },
+
+        _updateVolumeHistory(volume) {
             this._volumeHistory.push(volume);
             if (this._volumeHistory.length > this._volumeHistorySize) {
                 this._volumeHistory.shift();
             }
+        },
 
-            this._highFreqHistory.push(highFreq);
-            if (this._highFreqHistory.length > this._highFreqHistorySize) {
-                this._highFreqHistory.shift();
+        _analyzeDrumFeatures(currentVolume, spectralFeatures) {
+            let score = 0;
+            let reasons = [];
+
+            // 1. 音量阈值检查（基础条件）
+            const volumeAboveThreshold = currentVolume > this._volumeThreshold;
+            const volumeAboveBackground = currentVolume > this._backgroundNoise * 3;
+
+            if (!volumeAboveThreshold || !volumeAboveBackground) {
+                return { score: 0, reason: 'LOW_VOLUME' };
+            }
+
+            // 2. 瞬态攻击检查（关键特征）
+            if (this._volumeHistory.length >= 4) {
+                const recentAvg = this._getRecentAverage();
+                const transientRatio = currentVolume / Math.max(recentAvg, this._backgroundNoise * 2);
+
+                if (transientRatio > this._transientRatio) {
+                    score += 3.0;
+                    reasons.push('TRANSIENT');
+                }
+            }
+
+            // 3. 频谱形状检查（鼓声特征）
+            const spectralRatio = spectralFeatures.lowEnergy / Math.max(spectralFeatures.highEnergy, 0.01);
+            if (spectralRatio > 1.5 && spectralFeatures.lowEnergy > this._spectralBalance) {
+                score += 2.0;
+                reasons.push('SPECTRUM');
+            }
+
+            // 4. 中频能量检查（避免纯低频或纯高频噪音）
+            if (spectralFeatures.midEnergy > spectralFeatures.totalEnergy * 0.2) {
+                score += 1.0;
+                reasons.push('MIDFREQ');
+            }
+
+            // 5. 动态范围检查
+            const dynamicRange = currentVolume / Math.max(this._backgroundNoise, 0.001);
+            if (dynamicRange > 8) {
+                score += 1.5;
+                reasons.push('DYNAMIC');
+            }
+
+            return {
+                score: score,
+                reason: reasons.join('+') || 'WEAK',
+                features: {
+                    volume: currentVolume,
+                    transientRatio: currentVolume / Math.max(this._getRecentAverage(), this._backgroundNoise * 2),
+                    spectralRatio: spectralRatio,
+                    dynamicRange: dynamicRange
+                }
+            };
+        },
+
+        _getRecentAverage() {
+            if (this._volumeHistory.length < 3) return this._backgroundNoise;
+            const recent = this._volumeHistory.slice(-4, -1); // 排除当前值
+            return recent.reduce((sum, v) => sum + v, 0) / recent.length;
+        },
+
+        _updateTransientState(currentVolume, now) {
+            if (!this._isInTransient) {
+                // 检测瞬态开始
+                const recentAvg = this._getRecentAverage();
+                if (currentVolume > recentAvg * this._transientRatio && currentVolume > this._volumeThreshold) {
+                    this._isInTransient = true;
+                    this._transientStartTime = now;
+                    this._transientPeakLevel = currentVolume;
+                }
+            } else {
+                // 瞬态进行中
+                this._transientPeakLevel = Math.max(this._transientPeakLevel, currentVolume);
+
+                // 检测瞬态结束条件
+                const duration = now - this._transientStartTime;
+                const sustainRatio = currentVolume / this._transientPeakLevel;
+
+                if (duration > 300 || sustainRatio < this._maxSustainRatio) {
+                    this._isInTransient = false;
+                }
             }
         },
 
-        _checkVolumeThreshold(volume) {
-            // 简单音量阈值检测
-            return volume > this._volumeThreshold;
-        },
 
-        _checkVolumeChange(volume) {
-            // 音量变化率检测
-            if (this._volumeHistory.length < 2) return false;
+        _isDrumHit(drumFeatures, now) {
+            // 防抖检查
+            if (now - this._lastTriggerTime < this._debounceMs) return false;
 
-            const prevVolume = this._volumeHistory[this._volumeHistory.length - 2];
-            const change = volume - prevVolume;
+            // 需要足够高的特征分数
+            const minScore = 4.0; // 至少需要多个特征同时满足
 
-            return change > this._volumeChangeThreshold;
-        },
-
-        _checkHighFreqSpike(highFreq) {
-            // 高频能量突增检测
-            if (this._highFreqHistory.length < 2) return false;
-
-            const avgPrevious = this._highFreqHistory.slice(0, -1).reduce((a, b) => a + b, 0) / (this._highFreqHistory.length - 1);
-            const spike = highFreq - avgPrevious;
-
-            return spike > this._highFreqThreshold;
+            return drumFeatures.score >= minScore && drumFeatures.reason.includes('TRANSIENT');
         },
 
         _triggerHit(reason) {
@@ -216,10 +293,9 @@
             this._lastTriggerReason = reason;
 
             if (this._isDebug) {
-                console.log(`🥁 Hit detected! Reason: ${reason}, Count: ${this._triggerCount}`);
+                console.log(`🥁 Drum detected! Features: ${reason}, Count: ${this._triggerCount}`);
             }
 
-            // 调用回调函数
             if (this._onTrigger) {
                 this._onTrigger(reason);
             }
@@ -229,53 +305,57 @@
         getStats() {
             return {
                 triggerCount: this._triggerCount,
+                falsePositiveCount: this._falsePositiveCount,
                 lastTriggerReason: this._lastTriggerReason,
                 isEnabled: this._isEnabled,
                 volumeThreshold: this._volumeThreshold,
-                highFreqThreshold: this._highFreqThreshold,
+                transientRatio: this._transientRatio,
+                backgroundNoise: this._backgroundNoise,
                 debounceMs: this._debounceMs
             };
         },
 
         resetStats() {
             this._triggerCount = 0;
+            this._falsePositiveCount = 0;
             this._lastTriggerReason = '';
         },
 
-        // ===== 实时调节界面（可选） =====
         renderDebugPanel(ctx, x, y, w, h) {
             if (!this._isDebug || !ctx) return;
 
-            // 简单的调试信息面板
             ctx.save();
 
             // 背景
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             ctx.fillRect(x, y, w, h);
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.strokeRect(x, y, w, h);
 
             // 文字信息
             ctx.fillStyle = 'white';
-            ctx.font = '12px monospace';
+            ctx.font = '11px monospace';
             ctx.textAlign = 'left';
+
+            const currentVolume = this._volumeHistory[this._volumeHistory.length - 1] || 0;
+            const recentAvg = this._getRecentAverage();
 
             const lines = [
                 `Drum Trigger: ${this._isEnabled ? 'ON' : 'OFF'}`,
-                `Count: ${this._triggerCount}`,
+                `Hits: ${this._triggerCount} | FP: ${this._falsePositiveCount}`,
+                `Vol: ${currentVolume.toFixed(3)} | Avg: ${recentAvg.toFixed(3)}`,
+                `BG: ${this._backgroundNoise.toFixed(3)} | Ratio: ${this._transientRatio.toFixed(1)}`,
+                `Transient: ${this._isInTransient ? 'YES' : 'NO'}`,
                 `Last: ${this._lastTriggerReason}`,
-                `Vol Thr: ${this._volumeThreshold.toFixed(3)}`,
-                `Freq Thr: ${this._highFreqThreshold.toFixed(4)}`,
                 `Debounce: ${this._debounceMs}ms`
             ];
 
             for (let i = 0; i < lines.length; i++) {
-                ctx.fillText(lines[i], x + 8, y + 16 + i * 14);
+                ctx.fillText(lines[i], x + 6, y + 14 + i * 12);
             }
 
             ctx.restore();
         }
     };
-
     root.DrumTrigger = DrumTrigger;
 })(window);
