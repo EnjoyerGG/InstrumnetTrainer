@@ -6,97 +6,113 @@
             "time": 0.0,
             "type": "palm",
             "abbr": "P",
-            "accent": 1
+            "accent": 1,
+            "clave32": 1
         },
         {
             "time": 0.5,
             "type": "tip",
             "abbr": "T",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 1.0,
             "type": "slap",
             "abbr": "S",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 1.5,
             "type": "tip",
             "abbr": "T",
-            "accent": 0
+            "accent": 0,
+            "clave32": 1
         },
         {
             "time": 2.0,
             "type": "palm",
             "abbr": "P",
-            "accent": 1
+            "accent": 1,
+            "clave32": 0
         },
         {
             "time": 2.5,
             "type": "tip",
             "abbr": "T",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 3.0,
             "type": "open",
             "abbr": "O",
-            "accent": 0
+            "accent": 0,
+            "clave32": 1
         },
         {
             "time": 3.5,
             "type": "open",
             "abbr": "O",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 4.0,
             "type": "palm",
             "abbr": "P",
-            "accent": 1
+            "accent": 1,
+            "clave32": 0
         },
         {
             "time": 4.5,
             "type": "tip",
             "abbr": "T",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 5.0,
             "type": "slap",
             "abbr": "S",
-            "accent": 0
+            "accent": 0,
+            "clave32": 1
         },
         {
             "time": 5.5,
             "type": "open",
             "abbr": "o",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 6.0,
             "type": "open",
             "abbr": "o",
-            "accent": 1
+            "accent": 1,
+            "clave32": 1
         },
         {
             "time": 6.5,
             "type": "tip",
             "abbr": "T",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 7.0,
             "type": "open",
             "abbr": "O",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         },
         {
             "time": 7.5,
             "type": "open",
             "abbr": "O",
-            "accent": 0
+            "accent": 0,
+            "clave32": 0
         }
     ]
 }
