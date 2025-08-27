@@ -1,5 +1,5 @@
-// settingsPanel.js - 设置面板模块
-// 提供齿轮按钮和可折叠的设置界面，包含速度控制和键盘指南
+// settingsPanel.js - 设置面板模块（优化版）
+// 移除速度控制，专注于键盘指南和其他设置
 
 (function (root) {
     const SettingsPanel = {
@@ -88,6 +88,10 @@
             `;
 
             this._panel.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; color: #fff; font-size: 18px;">⚙️ Settings & Keyboard Shortcuts</h3>
+                    <button id="close-settings" style="background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="关闭">✕</button>
+                </div>
 
                 <!-- 键盘操作指南 -->
                 <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
@@ -119,6 +123,49 @@
 
                         <code style="background: #444; padding: 2px 6px; border-radius: 3px; color: #ffd400;">'s'</code>
                         <span style="color: #ccc;">Toggle adaptation speed (Instant/Smooth)</span>
+                    </div>
+                </div>
+
+                <!-- 交互式设置控件 -->
+                <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
+                    <h4 style="margin: 0 0 16px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎛️ 交互式控制</h4>
+                    
+                    <!-- Hit Detection Toggle -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                        <span style="color: #ccc; font-size: 13px;">Hit Detection:</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="detection-toggle" checked 
+                                   style="transform: scale(1.2); cursor: pointer;" />
+                            <span id="detection-status" style="color: #88ff00; font-size: 13px; min-width: 60px;">已启用</span>
+                        </div>
+                    </div>
+
+                    <!-- Sensitivity Slider -->
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="color: #ccc; font-size: 13px;">Sensitivity Level：</span>
+                            <span id="sensitivity-val" style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 50px;">中等</span>
+                        </div>
+                        <input id="sensitivity-slider" type="range" min="1" max="5" step="1" value="3" 
+                               style="width: 100%; height: 6px; background: linear-gradient(90deg, #ff6b6b 0%, #ffaa00 25%, #ffd400 50%, #88ff00 75%, #00ff88 100%); 
+                                      border-radius: 3px; outline: none; cursor: pointer; transition: all 0.2s ease;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-top: 2px;">
+                            <span>low</span>
+                            <span>middle</span>
+                            <span>high</span>
+                        </div>
+                    </div>
+
+                    <!-- Static Status Info -->
+                    <div style="display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid #444;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span style="color: #ccc; font-size: 13px;">Mic Input:</span>
+                            <span style="color: #88ff00; font-size: 13px;">Active</span>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span style="color: #ccc; font-size: 13px;">Performance Mode:</span>
+                            <span style="color: #ffd400; font-size: 13px;">Auto</span>
+                        </div>
                     </div>
                 </div>
             `;
@@ -153,7 +200,80 @@
                     e.preventDefault();
                 }
             });
+
+            // 检测开关事件
+            document.addEventListener('change', (e) => {
+                if (e.target && e.target.id === 'detection-toggle') {
+                    const isEnabled = e.target.checked;
+                    if (window.drumTrigger) {
+                        window.drumTrigger.enable(isEnabled);
+                        console.log(`Audio detection: ${isEnabled ? 'ON' : 'OFF'}`);
+
+                        // 更新开关标签
+                        const label = e.target.nextElementSibling;
+                        if (label) {
+                            label.textContent = isEnabled ? 'Enabled' : 'Disabled';
+                            label.style.color = isEnabled ? '#88ff00' : '#ff6b6b';
+                        }
+                    }
+                }
+            });
+
+            // 灵敏度滑块事件
+            document.addEventListener('input', (e) => {
+                if (e.target && e.target.id === 'sensitivity-slider') {
+                    const level = parseInt(e.target.value);
+                    const sensitivity = level / 5.0;  // 转换为0.2到1.0的范围
+
+                    if (window.drumTrigger) {
+                        window.drumTrigger.setSensitivity(sensitivity);
+                        console.log(`Audio sensitivity: ${level}/5 (${sensitivity.toFixed(1)})`);
+                    }
+
+                    // 更新显示标签
+                    this.updateSensitivityDisplay(level);
+                }
+            });
         },
+
+        // 更新灵敏度显示
+        updateSensitivityDisplay(level) {
+            const labels = ['', 'Low', 'Low+', 'Medium', 'High', 'Max'];
+            const colors = ['', '#ff6b6b', '#ff9500', '#ffd400', '#88ff00', '#00ff88'];
+
+            const valSpan = document.getElementById('sensitivity-val');
+            if (valSpan && level >= 1 && level <= 5) {
+                valSpan.textContent = labels[level];
+                valSpan.style.color = colors[level];
+            }
+        },
+
+        // 同步当前设置到UI
+        syncSettings() {
+            if (!this._isVisible) return;
+
+            // 同步检测开关状态
+            const toggleInput = document.getElementById('detection-toggle');
+            const toggleLabel = toggleInput?.nextElementSibling;
+            if (toggleInput && window.drumTrigger) {
+                const isEnabled = window.drumTrigger._isEnabled;
+                toggleInput.checked = isEnabled;
+                if (toggleLabel) {
+                    toggleLabel.textContent = isEnabled ? 'Enabled' : 'Disabled';
+                    toggleLabel.style.color = isEnabled ? '#88ff00' : '#ff6b6b';
+                }
+            }
+
+            // 同步灵敏度滑块（如果可以获取当前值）
+            const sensitivitySlider = document.getElementById('sensitivity-slider');
+            if (sensitivitySlider && window.drumTrigger && window.drumTrigger._sensitivity) {
+                const currentSensitivity = window.drumTrigger._sensitivity;
+                const level = Math.round(currentSensitivity * 5); // 转换回1-5级别
+                sensitivitySlider.value = level;
+                this.updateSensitivityDisplay(level);
+            }
+        },
+
 
         // 显示设置面板
         show() {
@@ -161,6 +281,9 @@
             this._overlay.style.display = 'block';
             // 防止页面滚动
             document.body.style.overflow = 'hidden';
+
+            // 同步当前设置到UI
+            setTimeout(() => this.syncSettings(), 50);
         },
 
         // 隐藏设置面板
