@@ -138,11 +138,12 @@ function scheduleTicksOnce() {
 
         // 检查是否应该播放
         let shouldPlay = true;
-        if (currentMode === 'clave32') {
-            shouldPlay = n.clave32 === 1;
-        } else if (currentMode === 'clave23') {
+        if (currentMode === 'clave23') {
             shouldPlay = n.clave23 === 1;
         }
+        // else if (currentMode === 'clave32') {
+        //     shouldPlay = n.clave32 === 1;
+        // }
 
         if (shouldPlay) {
             const sf = rm?.speedFactor || 1;
@@ -351,6 +352,14 @@ function setup() {
         glyphForAbbr: (ab) => glyphForAbbr(ab)
     });
 
+    // 初始化打击标记系统
+    HitMarkers.init({
+        rm,
+        laneTopY: () => laneTopY(),
+        laneBottomY: () => laneBottomY(),
+        isBottomDrum: (n) => isBottomDrum(n)
+    });
+
     // === 临时修复：如果字段丢失，手动添加 ===
     if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave32' in rm.scoreNotes[0])) {
         console.warn('检测到clave字段丢失，正在修复...');
@@ -359,8 +368,7 @@ function setup() {
         for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
             const originalNote = chartJSON.conga[i];
             const scoreNote = rm.scoreNotes[i];
-
-            scoreNote.clave32 = originalNote.clave32;
+            //scoreNote.clave32 = originalNote.clave32;
             scoreNote.clave23 = originalNote.clave23;
         }
 
@@ -425,8 +433,10 @@ function setup() {
         onTrigger: (reason) => {
             //检测到鼓击时，执行和鼠标点击相同的操作
             if (running) {
+                const hitTime = rm._t();
                 rm.registerHit();
                 SweepMode?.addHitNow?.();
+                HitMarkers.addHitMarker(hitTime);  // 添加打击标记
                 judgeLineGlow = 1;
                 if (debugMode) {
                     console.log(`Drum hit triggered by: ${reason}`);
@@ -597,6 +607,7 @@ function handleReset() {
     SweepMode.snapToLeft();
 
     StarEffects.clear();
+    HitMarkers.clearAllMarkers();  // 清除所有打击标记
     resetStatusTracker();
 }
 
@@ -705,6 +716,9 @@ function draw() {
     drumTrigger?.update?.();
     // 绘制音符与反馈
     NoteIlluminateFeedback.render();
+
+    // 绘制打击标记
+    HitMarkers.render();
 
     //更新和绘制星星特效
     StarEffects.update(deltaTime || 16.67);
@@ -1004,8 +1018,10 @@ function updateMetroBtnUI() {
 function mousePressed() {
     //鼠标点击仅在调试模式下工作，主要用于测试
     if (running && debugMode) {
+        const hitTime = rm._t();
         rm.registerHit();
         SweepMode?.addHitNow?.();
+        HitMarkers.addHitMarker(hitTime);  // 添加打击标记
         judgeLineGlow = 1;
         console.log('Manual hit (debug mode)');
     }

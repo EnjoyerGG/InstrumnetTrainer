@@ -8,10 +8,10 @@ const HitMarkers = (() => {
     // 配置
     const MARKER_CONFIG = {
         radius: 4,           // 标记点半径
-        color: '#ff6b6b',    // 红色标记
-        strokeColor: '#fff', // 白色边框
-        strokeWeight: 1.5,
-        alpha: 0.9
+        color: '#000000',    // 红色标记
+        strokeColor: 'none', // 白色边框
+        strokeWeight: 0,
+        alpha: 1.0
     };
 
     function init(config) {
@@ -34,9 +34,23 @@ const HitMarkers = (() => {
         // 计算当前循环内的时间
         const cycleTime = hitTime % rm.totalDuration;
 
-        // 判断打击在哪个轨道（上轨道还是下轨道）
-        // 这里可以根据实际需求调整逻辑
-        const lane = 'center'; // 默认在中间，也可以根据打击的音符类型来判断
+        // 找到最接近的音符来判断应该在哪个轨道
+        let closestNote = null;
+        let minDiff = Infinity;
+
+        for (const note of rm.scoreNotes) {
+            const diff = Math.abs(note.time - cycleTime);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestNote = note;
+            }
+        }
+
+        // 根据音符类型判断轨道位置
+        let lane = 'center';
+        if (closestNote && minDiff < 100) { // 在100ms内的音符
+            lane = isBottomDrum(closestNote) ? 'bottom' : 'top';
+        }
 
         hitMarkers.push({
             time: cycleTime,
