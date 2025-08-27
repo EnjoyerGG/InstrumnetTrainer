@@ -112,36 +112,92 @@ function scheduleTicksOnce() {
         if (t < ctxNow - 1.5) schedulerState.scheduledNotes.delete(k);
     }
 
-    // start index
-    let idx = schedulerState.lastIdx >= 0
-        ? (schedulerState.lastIdx + 1) % notes.length
-        : notes.findIndex(n => n.time >= nowMs) || 0;
+    const currentRhythm = RhythmSelector.getCurrentPattern();
+    if (currentRhythm.pattern === null) {
+        // start index
+        let idx = schedulerState.lastIdx >= 0
+            ? (schedulerState.lastIdx + 1) % notes.length
+            : notes.findIndex(n => n.time >= nowMs) || 0;
 
-    let count = 0;
-    while (count < notes.length) {
-        const n = notes[idx];
-        let dt = n.time - nowMs;
-        if (dt < 0) dt += rm.totalDuration;
-        if (dt > aheadMs) break;
+        let count = 0;
+        while (count < notes.length) {
+            const n = notes[idx];
+            let dt = n.time - nowMs;
+            if (dt < 0) dt += rm.totalDuration;
+            if (dt > aheadMs) break;
 
-        const sf = rm?.speedFactor || 1;
+            const sf = rm?.speedFactor || 1;
+            const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
+            const strong = ((n.accent | 0) === 1);
+
+            const lastWhen = schedulerState.scheduledNotes.get(idx) ?? -Infinity;
+            const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;
+            const guarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
+
+            if (!recentlyScheduled && !guarded) {
+                metro.scheduleAt(when, strong);
+                schedulerState.scheduledNotes.set(idx, when);
+            }
+            schedulerState.lastIdx = idx;
+            idx = (idx + 1) % notes.length;
+            count++;
+        }
+    } else {
+        // 新的Clave节奏逻辑
+        scheduleClavePattern(currentRhythm.pattern, nowMs, aheadMs, ctxNow);
+    }
+    schedulerState.forceWindowMs = null;
+}
+
+function scheduleClavePattern(pattern, nowMs, aheadMs, ctxNow) {
+    const sf = rm?.speedFactor || 1;
+    const eighthDuration = rm.noteInterval; // 8分音符时长
+    const patternDuration = pattern.lengthEighths * eighthDuration; // 完整模式时长
+
+    // 计算当前在模式中的位置
+    const patternTime = nowMs % patternDuration;
+    const currentEighth = Math.floor(patternTime / eighthDuration);
+
+    // 为每个事件安排调度
+    for (const event of pattern.events) {
+        let eventTime = event.eighth * eighthDuration;
+        let dt = eventTime - patternTime;
+
+        // 处理跨模式边界的情况
+        if (dt < 0) {
+            dt += patternDuration;
+        }
+
+        if (dt > aheadMs) continue;
+
         const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
-        const strong = ((n.accent | 0) === 1);
+        const strong = event.accent === 1;
 
-        const lastWhen = schedulerState.scheduledNotes.get(idx) ?? -Infinity;
+        // 生成唯一键来避免重复调度
+        const eventKey = `clave_${event.eighth}_${Math.floor(nowMs / patternDuration)}`;
+
+        const lastWhen = schedulerState.scheduledNotes.get(eventKey) ?? -Infinity;
         const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;
         const guarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
 
         if (!recentlyScheduled && !guarded) {
             metro.scheduleAt(when, strong);
-            schedulerState.scheduledNotes.set(idx, when);
+            schedulerState.scheduledNotes.set(eventKey, when);
         }
-        schedulerState.lastIdx = idx;
-        idx = (idx + 1) % notes.length;
-        count++;
     }
-    schedulerState.forceWindowMs = null;
 }
+
+window.onRhythmModeChange = function (mode, modeData) {
+    console.log(`Rhythm mode changed to: ${modeData.name}`);
+
+    // 如果节拍器正在运行，重置调度器状态
+    if (metronomeEnabled && running && metro.isLoaded()) {
+        metro.flushFuture();
+        resetMetronomeSchedulerState();
+        armNextTickNow();
+        schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
+    }
+};
 
 function armNextTickNow() {
     if (!metronomeEnabled || !metro || !metro.isLoaded() || !rm?.scoreNotes?.length) return;
@@ -286,6 +342,9 @@ function setup() {
     // 初始化节拍器
     metro.onloaded(() => { console.log("Metronome loaded!"); metro.reset(); });
 
+    // 初始化节奏选择器
+    RhythmSelector.init();
+
     // 初始化麦克风 & 分析器
     mic = new p5.AudioIn();
     mic.start();
@@ -362,7 +421,7 @@ function setup() {
     // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
     tryStartMicEarly();
 
-    //UI绑定
+    //原有节拍器
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
         //select('#metro-toggle').html(metronomeEnabled ? 'Metronome Off' : 'Metronome On');
@@ -924,15 +983,23 @@ function keyPressed() {
 //节拍器按钮开启时变成绿色
 function updateMetroBtnUI() {
     const btn = select('#metro-toggle');
+    const arrowBtn = select('#rhythm-arrow');
     if (!btn) return;
-    if (metronomeEnabled) {
-        btn.style('background', '#22c55e'); // green-500
-        btn.style('color', '#0b1a0b');      // 深色文字更清晰
-        btn.style('border', '1px solid #16a34a');
-    } else {
-        btn.style('background', '#444');    // 关：灰
-        btn.style('color', '#eee');
-        btn.style('border', '1px solid #555');
+
+    const bgColor = metronomeEnabled ? '#22c55e' : '#444';
+    const textColor = metronomeEnabled ? '#0b1a0b' : '#eee';
+    const borderColor = metronomeEnabled ? '#16a34a' : '#555';
+
+    btn.style('background', bgColor);
+    btn.style('color', textColor);
+    btn.style('border', `1px solid ${borderColor}`);
+
+    // 同步箭头按钮样式
+    if (arrowBtn) {
+        arrowBtn.style('background', bgColor);
+        arrowBtn.style('color', textColor);
+        arrowBtn.style('border', `1px solid ${borderColor}`);
+        arrowBtn.style('border-left', 'none');
     }
 }
 

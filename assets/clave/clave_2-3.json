@@ -1,25 +1,25 @@
 {
-    "clave32": {
+    "clave23": {
         "lengthEighths": 16,
         "events": [
             {
-                "eighth": 0,
+                "eighth": 2,
                 "accent": 1
             },
             {
-                "eighth": 3,
+                "eighth": 4,
                 "accent": 1
             },
             {
-                "eighth": 6,
+                "eighth": 8,
                 "accent": 1
             },
             {
-                "eighth": 10,
+                "eighth": 11,
                 "accent": 1
             },
             {
-                "eighth": 12,
+                "eighth": 14,
                 "accent": 1
             }
         ]
