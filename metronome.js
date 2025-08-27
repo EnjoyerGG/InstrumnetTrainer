@@ -12,24 +12,47 @@ class Metronome {
 
         this.enabled = false;
         this._timer = null;
-        this.buffers = { weak: null, strong: null };
+
+        this.buffers = { weak: null, strong: null, clave: null };
         this._pending = [];
         this.useInternalGrid = false;
     }
 
-    async preload(weakURL, strongURL) {
+    async preload(weakURL, strongURL, claveURL = null) {
         const fetchBuf = async (url) => {
             const res = await fetch(url); const ab = await res.arrayBuffer();
             return await this.ctx.decodeAudioData(ab);
         };
         this.buffers.weak = await fetchBuf(weakURL);
         this.buffers.strong = await fetchBuf(strongURL);
+        if (claveURL) {
+            this.buffers.clave = await fetchBuf(claveURL);
+        }
         console.log('Metronome loaded!');
     }
 
-    _schedule(time, strong = false) {
+    async setClaveSound(claveURL) {
+        if (claveURL) {
+            const fetchBuf = async (url) => {
+                const res = await fetch(url); const ab = await res.arrayBuffer();
+                return await this.ctx.decodeAudioData(ab);
+            };
+            this.buffers.clave = await fetchBuf(claveURL);
+            console.log('Clave sound loaded!');
+        }
+    }
+
+    _schedule(time, soundType = 'metronome', strong = false) {
         const src = this.ctx.createBufferSource();
-        src.buffer = strong ? this.buffers.strong : this.buffers.weak;
+
+        // 根据音效类型选择缓冲区
+        if (soundType === 'clave' && this.buffers.clave) {
+            src.buffer = this.buffers.clave;
+        } else {
+            // 默认使用 metronome 音效
+            src.buffer = strong ? this.buffers.strong : this.buffers.weak;
+        }
+
         src.connect(this.ctx.destination);
         src.start(time);
         this._pending.push({ src, at: time });
@@ -45,16 +68,15 @@ class Metronome {
         const ct = this.ctx.currentTime;
         while (this.nextNoteTime < ct + this.scheduleAheadTime) {
             const strong = (this.currentStep % (this.beatsPerBar * 2) === 0);
-            this._schedule(this.nextNoteTime, strong);
+            this._schedule(this.nextNoteTime, 'metronome', strong);
             this._advance();
         }
     }
 
-    scheduleAt(whenSec, strong = false) {
+    scheduleAt(whenSec, soundType = 'metronome', strong = false) {
         if (!this.isLoaded()) return;
-        this._schedule(whenSec, strong);
+        this._schedule(whenSec, soundType, strong);
     }
-
 
     setBPM(bpm) { this.bpm = Math.max(20, bpm); }
 

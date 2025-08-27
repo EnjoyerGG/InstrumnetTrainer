@@ -9,29 +9,11 @@ const RhythmSelector = (() => {
         },
         clave32: {
             name: 'Son 3-2 Clave',
-            pattern: {
-                lengthEighths: 16,
-                events: [
-                    { eighth: 0, accent: 1 },
-                    { eighth: 3, accent: 0 },
-                    { eighth: 6, accent: 1 },
-                    { eighth: 10, accent: 0 },
-                    { eighth: 12, accent: 1 }
-                ]
-            }
+            pattern: 'clave32' // 使用JSON中的clave32字段
         },
         clave23: {
             name: 'Son 2-3 Clave',
-            pattern: {
-                lengthEighths: 16,
-                events: [
-                    { eighth: 2, accent: 0 },
-                    { eighth: 4, accent: 1 },
-                    { eighth: 8, accent: 1 },
-                    { eighth: 11, accent: 0 },
-                    { eighth: 14, accent: 1 }
-                ]
-            }
+            pattern: 'clave23' // 使用JSON中的clave23字段
         }
     };
 
@@ -174,6 +156,37 @@ const RhythmSelector = (() => {
         }
     }
 
+    // 检查音符是否应该在当前模式下播放
+    function shouldPlayNote(note, mode) {
+        if (mode === 'metronome') {
+            return true; // metronome 模式播放所有音符
+        }
+
+        // clave 模式根据 JSON 数据中的字段判断
+        if (mode === 'clave32' && note.clave32 === 1) {
+            return true;
+        }
+        if (mode === 'clave23' && note.clave23 === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // 获取音符的重音强度
+    function getNoteAccent(note, mode) {
+        if (mode === 'metronome') {
+            return note.accent || 0;
+        }
+
+        // clave 模式中，能播放的音符都视为重音
+        if (shouldPlayNote(note, mode)) {
+            return 1;
+        }
+
+        return 0;
+    }
+
     // 公共接口
     return {
         init() {
@@ -189,24 +202,16 @@ const RhythmSelector = (() => {
         setMode,
         getCurrentPattern,
         getModes: () => RHYTHM_MODES,
+        shouldPlayNote,
+        getNoteAccent,
 
-        // 检查某个时间点是否应该发声
+        // 向后兼容的方法（保留原有接口）
         shouldTick(eighthIndex, patternLength) {
-            const pattern = getCurrentPattern().pattern;
-            if (!pattern) return true; // metronome模式始终发声
-
-            const normalizedIndex = eighthIndex % pattern.lengthEighths;
-            return pattern.events.some(event => event.eighth === normalizedIndex);
+            return true; // 这个方法现在主要用于UI，实际播放逻辑在新方法中
         },
 
-        // 获取某个时间点的重音强度
         getAccent(eighthIndex) {
-            const pattern = getCurrentPattern().pattern;
-            if (!pattern) return 1; // metronome模式默认重音
-
-            const normalizedIndex = eighthIndex % pattern.lengthEighths;
-            const event = pattern.events.find(event => event.eighth === normalizedIndex);
-            return event ? event.accent : 0;
+            return 1; // 向后兼容
         }
     };
 })();

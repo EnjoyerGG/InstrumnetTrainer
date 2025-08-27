@@ -89,6 +89,16 @@ function startScoreTickScheduler() { stopScoreTickScheduler(); const w = _ensure
 function stopScoreTickScheduler() { if (schedulerState.worker) schedulerState.worker.postMessage({ cmd: 'stop' }); }
 function resetMetronomeSchedulerState() { schedulerState.lastIdx = -1; schedulerState.lastNowMs = null; schedulerState.scheduledNotes.clear(); schedulerState.guardUntil = 0; schedulerState.forceWindowMs = null; }
 
+// 在 scheduleTicksOnce 函数的开头添加这个临时修复
+
+// 全面调试版本 - 替换你的 scheduleTicksOnce 函数
+
+// 修复后的 scheduleTicksOnce 函数 - 替换你现有的版本
+
+// 超详细调试版本 - 找出确切问题所在
+
+// 修复循环调度的 scheduleTicksOnce 函数
+
 function scheduleTicksOnce() {
     if (!metronomeEnabled || !running || !metro || !metro.isLoaded()) return;
 
@@ -112,80 +122,90 @@ function scheduleTicksOnce() {
         if (t < ctxNow - 1.5) schedulerState.scheduledNotes.delete(k);
     }
 
-    const currentRhythm = RhythmSelector.getCurrentPattern();
-    if (currentRhythm.pattern === null) {
-        // start index
-        let idx = schedulerState.lastIdx >= 0
-            ? (schedulerState.lastIdx + 1) % notes.length
-            : notes.findIndex(n => n.time >= nowMs) || 0;
+    const currentMode = RhythmSelector.getCurrentMode() || 'metronome';
 
-        let count = 0;
-        while (count < notes.length) {
-            const n = notes[idx];
-            let dt = n.time - nowMs;
-            if (dt < 0) dt += rm.totalDuration;
-            if (dt > aheadMs) break;
+    let scheduledCount = 0;
+    let checkedCount = 0;
 
+    // 遍历所有音符，找出需要调度的
+    for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+
+        // 计算到下次播放该音符的时间差
+        let dt = n.time - nowMs;
+
+        // 如果音符时间已过，计算到下个循环的时间
+        if (dt < 0) {
+            dt += rm.totalDuration;
+        }
+
+        // 如果超出预调度范围，跳过
+        if (dt > aheadMs) {
+            continue;
+        }
+
+        checkedCount++;
+
+        // 检查是否应该播放
+        let shouldPlay = true;
+        if (currentMode === 'clave32') {
+            shouldPlay = n.clave32 === 1;
+        } else if (currentMode === 'clave23') {
+            shouldPlay = n.clave23 === 1;
+        }
+
+        if (shouldPlay) {
             const sf = rm?.speedFactor || 1;
             const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
-            const strong = ((n.accent | 0) === 1);
 
-            const lastWhen = schedulerState.scheduledNotes.get(idx) ?? -Infinity;
+            const lastWhen = schedulerState.scheduledNotes.get(i) ?? -Infinity;
             const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;
             const guarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
 
             if (!recentlyScheduled && !guarded) {
-                metro.scheduleAt(when, strong);
-                schedulerState.scheduledNotes.set(idx, when);
+                try {
+                    if (currentMode === 'metronome') {
+                        const strong = ((n.accent | 0) === 1);
+                        metro.scheduleAt(when, 'metronome', strong);
+                        console.log(`✅ 调度 metronome: idx=${i}, time=${n.time}, dt=${dt.toFixed(1)}, when=${when.toFixed(3)}`);
+                    } else {
+                        metro.scheduleAt(when, 'clave', true);
+                        console.log(`✅ 调度 clave: idx=${i}, time=${n.time}, dt=${dt.toFixed(1)}, when=${when.toFixed(3)}, mode=${currentMode}`);
+                    }
+                    schedulerState.scheduledNotes.set(i, when);
+                    scheduledCount++;
+                } catch (error) {
+                    console.error(`❌ 调度失败: idx=${i}`, error);
+                }
             }
-            schedulerState.lastIdx = idx;
-            idx = (idx + 1) % notes.length;
-            count++;
         }
-    } else {
-        // 新的Clave节奏逻辑
-        scheduleClavePattern(currentRhythm.pattern, nowMs, aheadMs, ctxNow);
     }
+
+    console.log(`调度结果: 检查了 ${checkedCount} 个音符, 调度了 ${scheduledCount} 个, 模式=${currentMode}, nowMs=${nowMs.toFixed(1)}, totalDuration=${rm.totalDuration}`);
+
+    // 如果没有调度到任何音符，显示应该播放的音符列表用于调试
+    if (scheduledCount === 0) {
+        const shouldPlayNotes = notes.filter((n, i) => {
+            if (currentMode === 'clave32') return n.clave32 === 1;
+            if (currentMode === 'clave23') return n.clave23 === 1;
+            return true;
+        }).map((n, originalIndex) => {
+            const realIndex = notes.indexOf(n);
+            let dt = n.time - nowMs;
+            if (dt < 0) dt += rm.totalDuration;
+            return {
+                idx: realIndex,
+                time: n.time,
+                dt: dt.toFixed(1),
+                withinWindow: dt <= aheadMs
+            };
+        });
+
+        console.log(`应该播放的音符 (${currentMode}):`, shouldPlayNotes);
+    }
+
     schedulerState.forceWindowMs = null;
-}
-
-function scheduleClavePattern(pattern, nowMs, aheadMs, ctxNow) {
-    const sf = rm?.speedFactor || 1;
-    const eighthDuration = rm.noteInterval; // 8分音符时长
-    const patternDuration = pattern.lengthEighths * eighthDuration; // 完整模式时长
-
-    // 计算当前在模式中的位置
-    const patternTime = nowMs % patternDuration;
-    const currentEighth = Math.floor(patternTime / eighthDuration);
-
-    // 为每个事件安排调度
-    for (const event of pattern.events) {
-        let eventTime = event.eighth * eighthDuration;
-        let dt = eventTime - patternTime;
-
-        // 处理跨模式边界的情况
-        if (dt < 0) {
-            dt += patternDuration;
-        }
-
-        if (dt > aheadMs) continue;
-
-        const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
-        const strong = event.accent === 1;
-
-        // 生成唯一键来避免重复调度
-        const eventKey = `clave_${event.eighth}_${Math.floor(nowMs / patternDuration)}`;
-
-        const lastWhen = schedulerState.scheduledNotes.get(eventKey) ?? -Infinity;
-        const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;
-        const guarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
-
-        if (!recentlyScheduled && !guarded) {
-            metro.scheduleAt(when, strong);
-            schedulerState.scheduledNotes.set(eventKey, when);
-        }
-    }
-}
+};
 
 window.onRhythmModeChange = function (mode, modeData) {
     console.log(`Rhythm mode changed to: ${modeData.name}`);
@@ -227,7 +247,7 @@ function armNextTickNow() {
 function preload() {
     chartJSON = loadJSON('assets/tumbao.json');
     metro = new Metronome({ bpm: 120, beatsPerBar: 4 });
-    metro.preload('assets/metronome/Tic.wav', 'assets/metronome/Toc.wav');
+    metro.preload('assets/metronome/Tic.wav', 'assets/metronome/Toc.wav', 'assets/clave/Clave.wav');
 }
 
 /* ------------ Helpers ------------- */
@@ -310,6 +330,25 @@ function setup() {
     rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
+    // === 添加这段诊断代码 ===
+    console.log('=== JSON数据诊断 ===');
+    console.log('原始JSON数据:', chartJSON);
+    console.log('conga数组:', chartJSON.conga);
+    console.log('第一个音符原始数据:', chartJSON.conga[0]);
+    console.log('scoreNotes数据:', rm.scoreNotes);
+    console.log('第一个scoreNote:', rm.scoreNotes[0]);
+
+    // 检查字段是否存在
+    const firstNote = rm.scoreNotes[0];
+    console.log('字段检查:', {
+        hasTime: 'time' in firstNote,
+        hasType: 'type' in firstNote,
+        hasClave32: 'clave32' in firstNote,
+        hasClave23: 'clave23' in firstNote,
+        clave32Value: firstNote.clave32,
+        clave23Value: firstNote.clave23
+    });
+
     // 初始化音符点亮反馈
     NoteIlluminateFeedback.init({
         rm,
@@ -318,6 +357,23 @@ function setup() {
         isBottomDrum: (n) => isBottomDrum(n),
         glyphForAbbr: (ab) => glyphForAbbr(ab)
     });
+
+    // === 临时修复：如果字段丢失，手动添加 ===
+    if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave32' in rm.scoreNotes[0])) {
+        console.warn('检测到clave字段丢失，正在修复...');
+
+        // 重新从原始数据复制字段
+        for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
+            const originalNote = chartJSON.conga[i];
+            const scoreNote = rm.scoreNotes[i];
+
+            scoreNote.clave32 = originalNote.clave32;
+            scoreNote.clave23 = originalNote.clave23;
+        }
+
+        console.log('修复后的第一个音符:', rm.scoreNotes[0]);
+    }
+
 
     // 添加这行：初始化星星特效系统
     StarEffects.init();
