@@ -143,7 +143,7 @@
                     <!-- Sensitivity Slider -->
                     <div style="margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                            <span style="color: #ccc; font-size: 13px;">Sensitivity Level：</span>
+                            <span style="color: #ccc; font-size: 13px;">Sensitivity Level:</span>
                             <span id="sensitivity-val" style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 50px;">中等</span>
                         </div>
                         <input id="sensitivity-slider" type="range" min="1" max="5" step="1" value="3" 
