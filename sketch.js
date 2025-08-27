@@ -411,8 +411,8 @@ function setup() {
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
-        smoothing: 0.85,
-        vscale: 3.0,
+        smoothing: 0.7,
+        vscale: 5.0,
         historySec: 2.5,
         fastResponse: true     // 启用快速响应模式
     });
@@ -939,7 +939,7 @@ function keyPressed() {
     // 调节灵敏度 (1-5)
     if (key >= '1' && key <= '5' && drumTrigger) {
         const level = parseInt(key);
-        const sensitivity = level / 5.0;  // 0.2, 0.4, 0.6, 0.8, 1.0
+        const sensitivity = Math.pow(level / 5.0, 0.5); // 0.2, 0.4, 0.6, 0.8, 1.0
         drumTrigger.setSensitivity(sensitivity);
         console.log(`Drum sensitivity: ${level}/5 (${sensitivity.toFixed(1)})`);
     }

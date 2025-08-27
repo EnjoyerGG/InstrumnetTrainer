@@ -126,25 +126,15 @@
                     </div>
                 </div>
 
-                <!-- 交互式设置控件 -->
+                <!-- Interactive Controls -->
                 <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
-                    <h4 style="margin: 0 0 16px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎛️ 交互式控制</h4>
-                    
-                    <!-- Hit Detection Toggle -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                        <span style="color: #ccc; font-size: 13px;">Hit Detection:</span>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="detection-toggle" checked 
-                                   style="transform: scale(1.2); cursor: pointer;" />
-                            <span id="detection-status" style="color: #88ff00; font-size: 13px; min-width: 60px;">已启用</span>
-                        </div>
-                    </div>
+                    <h4 style="margin: 0 0 16px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎛️ Interactive Controls</h4>
 
                     <!-- Sensitivity Slider -->
                     <div style="margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                             <span style="color: #ccc; font-size: 13px;">Sensitivity Level:</span>
-                            <span id="sensitivity-val" style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 50px;">中等</span>
+                            <span id="sensitivity-val" style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 50px;">middle</span>
                         </div>
                         <input id="sensitivity-slider" type="range" min="1" max="5" step="1" value="3" 
                                style="width: 100%; height: 6px; background: linear-gradient(90deg, #ff6b6b 0%, #ffaa00 25%, #ffd400 50%, #88ff00 75%, #00ff88 100%); 
