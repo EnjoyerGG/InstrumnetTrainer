@@ -176,7 +176,7 @@ function scheduleTicksOnce() {
     // 如果没有调度到任何音符，显示应该播放的音符列表用于调试
     if (scheduledCount === 0) {
         const shouldPlayNotes = notes.filter((n, i) => {
-            if (currentMode === 'clave32') return n.clave32 === 1;
+            //if (currentMode === 'clave32') return n.clave32 === 1;
             if (currentMode === 'clave23') return n.clave23 === 1;
             return true;
         }).map((n, originalIndex) => {
@@ -336,9 +336,9 @@ function setup() {
     console.log('字段检查:', {
         hasTime: 'time' in firstNote,
         hasType: 'type' in firstNote,
-        hasClave32: 'clave32' in firstNote,
+        //hasClave32: 'clave32' in firstNote,
         hasClave23: 'clave23' in firstNote,
-        clave32Value: firstNote.clave32,
+        //clave32Value: firstNote.clave32,
         clave23Value: firstNote.clave23
     });
 

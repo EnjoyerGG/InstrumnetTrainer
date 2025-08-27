@@ -7,10 +7,10 @@ const RhythmSelector = (() => {
             name: 'Metronome',
             pattern: null // 使用原有的节拍器逻辑
         },
-        clave32: {
-            name: 'Son 3-2 Clave',
-            pattern: 'clave32' // 使用JSON中的clave32字段
-        },
+        // clave32: {
+        //     name: 'Son 3-2 Clave',
+        //     pattern: 'clave32' // 使用JSON中的clave32字段
+        // },
         clave23: {
             name: 'Son 2-3 Clave',
             pattern: 'clave23' // 使用JSON中的clave23字段
@@ -163,9 +163,9 @@ const RhythmSelector = (() => {
         }
 
         // clave 模式根据 JSON 数据中的字段判断
-        if (mode === 'clave32' && note.clave32 === 1) {
-            return true;
-        }
+        // if (mode === 'clave32' && note.clave32 === 1) {
+        //     return true;
+        // }
         if (mode === 'clave23' && note.clave23 === 1) {
             return true;
         }
