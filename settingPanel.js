@@ -8,18 +8,10 @@
         _panel: null,
         _gearBtn: null,
 
-        // 回调函数
-        _onSpeedChange: null,
-        _onBPMChange: null,
-
-        init({ onSpeedChange, onBPMChange } = {}) {
-            this._onSpeedChange = onSpeedChange;
-            this._onBPMChange = onBPMChange;
-
+        init() {
             this._createGearButton();
             this._createSettingsPanel();
             this._bindEvents();
-
             return this;
         },
 
@@ -96,25 +88,6 @@
             `;
 
             this._panel.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h3 style="margin: 0; color: #fff; font-size: 18px;">⚙️ Setting</h3>
-                    <button id="close-settings" style="background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="关闭">✕</button>
-                </div>
-
-                <!-- 速度控制区域 -->
-                <div style="margin-bottom: 24px; padding: 16px; background: #333; border-radius: 8px;">
-                    <h4 style="margin: 0 0 12px 0; color: #ffd400; font-size: 14px; font-weight: bold;">🎵 Speed Control</h4>
-                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                        <label style="min-width: 80px; font-size: 13px; color: #ccc;">Speed:</label>
-                        <input id="settings-speed-slider" type="range" min="0.1" max="0.4" step="0.01" value="0.3" 
-                               style="flex: 1; height: 6px; background: #555; outline: none; border-radius: 3px;" />
-                        <span id="settings-speed-val" style="min-width: 50px; font-size: 13px; color: #fff; font-weight: bold;">0.30</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="min-width: 80px; font-size: 13px; color: #ccc;">BPM:</span>
-                        <span id="settings-bpm-val" style="font-size: 16px; color: #ffd400; font-weight: bold;">120</span>
-                    </div>
-                </div>
 
                 <!-- 键盘操作指南 -->
                 <div style="margin-bottom: 20px; padding: 16px; background: #333; border-radius: 8px;">
@@ -180,14 +153,6 @@
                     e.preventDefault();
                 }
             });
-
-            // 速度滑块事件
-            const speedSlider = document.getElementById('settings-speed-slider');
-            speedSlider?.addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                this.updateSpeedDisplay(value);
-                this._onSpeedChange?.(value);
-            });
         },
 
         // 显示设置面板
@@ -212,31 +177,6 @@
                 this.hide();
             } else {
                 this.show();
-            }
-        },
-
-        // 更新速度显示
-        updateSpeedDisplay(speed) {
-            const speedVal = document.getElementById('settings-speed-val');
-            const bpmVal = document.getElementById('settings-bpm-val');
-
-            if (speedVal) {
-                speedVal.textContent = speed.toFixed(2);
-            }
-
-            // 计算 BPM (需要外部提供 speedToBPM 函数)
-            if (bpmVal && window.speedToBPM) {
-                const bpm = Math.round(window.speedToBPM(speed));
-                bpmVal.textContent = bpm;
-            }
-        },
-
-        // 同步滑块值
-        syncSpeedSlider(speed) {
-            const slider = document.getElementById('settings-speed-slider');
-            if (slider) {
-                slider.value = speed;
-                this.updateSpeedDisplay(speed);
             }
         },
 

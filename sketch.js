@@ -17,7 +17,7 @@ window.userStartAudio = async function () {
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
-let rm, metro, mic, fftHUD, ampHUD, drumTrigger;
+let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0;
@@ -88,16 +88,6 @@ function getAheadMs() { return Math.max(140, Math.min(320, rm.noteInterval * 0.7
 function startScoreTickScheduler() { stopScoreTickScheduler(); const w = _ensureSchedWorker(); w.postMessage({ cmd: 'interval', value: 25 }); w.postMessage({ cmd: 'start' }); }
 function stopScoreTickScheduler() { if (schedulerState.worker) schedulerState.worker.postMessage({ cmd: 'stop' }); }
 function resetMetronomeSchedulerState() { schedulerState.lastIdx = -1; schedulerState.lastNowMs = null; schedulerState.scheduledNotes.clear(); schedulerState.guardUntil = 0; schedulerState.forceWindowMs = null; }
-
-// 在 scheduleTicksOnce 函数的开头添加这个临时修复
-
-// 全面调试版本 - 替换你的 scheduleTicksOnce 函数
-
-// 修复后的 scheduleTicksOnce 函数 - 替换你现有的版本
-
-// 超详细调试版本 - 找出确切问题所在
-
-// 修复循环调度的 scheduleTicksOnce 函数
 
 function scheduleTicksOnce() {
     if (!metronomeEnabled || !running || !metro || !metro.isLoaded()) return;
@@ -245,7 +235,7 @@ function armNextTickNow() {
 
 /* ------------ p5 preload ------------- */
 function preload() {
-    chartJSON = loadJSON('assets/tumbao.json');
+    chartJSON = loadJSON('assets/bolero.json');
     metro = new Metronome({ bpm: 120, beatsPerBar: 4 });
     metro.preload('assets/metronome/Tic.wav', 'assets/metronome/Toc.wav', 'assets/clave/Clave.wav');
 }
@@ -254,6 +244,9 @@ function preload() {
 function speedToBPM(speed) { return BPM_MIN + (BPM_MAX - BPM_MIN) * (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN); }
 function bpmToSpeed(bpm) { return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPEED_MIN) / (BPM_MAX - BPM_MIN); }
 function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); }
+
+// 将speedToBPM函数导出到全局，供其他模块使用
+window.speedToBPM = speedToBPM;
 
 const GRID = { pad: 10, topHRatio: 0.5 };
 const RECT = {
@@ -269,7 +262,7 @@ function layoutRects() {
     const sweepH = SWEEP_H;
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
-    const insetTop = 8;   // ↑ 顶部收紧
+    const insetTop = 8;   // → 顶部收紧
     const insetRight = 10; // → 右侧收紧
     const insetBottom = 6;
 
@@ -445,27 +438,17 @@ function setup() {
     drumTrigger.enable(true);
     drumTrigger.setSensitivity(0.6);
 
-    //初始化设置面板
-    settingsPanel = SettingsPanel.init({
-        onSpeedChange: (speed) => {
-            const bpmVal = speedToBPM(speed);
-            // 更新节拍器BPM
-            metro.setBPM(bpmVal);
-            rm.setBPM(bpmVal);
-            rm.setSpeedFactor(speed);
-            // 同步其他组件
-            SweepMode?.setSpeedMultiplier?.(1);
-            // 如果正在运行且节拍器可用，更新调度器
-            if (metronomeEnabled && running && metro.isLoaded()) {
-                metro.flushFuture();
-                resetMetronomeSchedulerState();
-                armNextTickNow();
-                schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
-            }
-            // 重置能量统计
-            _emaE = 0, _emaVar = 1;
-        }
-    });
+    // 初始化设置面板并确保按钮出现在正确位置
+    settingsPanel = SettingsPanel.init();
+
+    // 将设置按钮移动到正确位置（速度控制后面）
+    const settingsBtn = document.getElementById('settings-btn');
+    const placeholder = document.getElementById('settings-placeholder');
+    if (settingsBtn && placeholder) {
+        // 替换占位符
+        placeholder.parentNode.replaceChild(settingsBtn, placeholder);
+    }
+
     window.statusTracker = {
         successfulHits: 0,
         recentResults: [],
@@ -480,7 +463,6 @@ function setup() {
     //原有节拍器
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
-        //select('#metro-toggle').html(metronomeEnabled ? 'Metronome Off' : 'Metronome On');
         updateMetroBtnUI(); // ← 每次切换后更新颜色
 
         if (metronomeEnabled) {
@@ -495,7 +477,7 @@ function setup() {
     updateMetroBtnUI();
     metro.enable(false);
 
-    // 速度/BPM
+    // 速度/BPM - 确保滑块功能正常
     let initSpeed = parseFloat(select('#speed-slider').value());
     select('#speed-val').html(initSpeed.toFixed(2));
     const initBpm = speedToBPM(initSpeed);
@@ -508,6 +490,8 @@ function setup() {
     select('#pause-btn').mousePressed(handlePause);
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(handleExport);
+
+    // 主界面速度滑块事件处理 - 不进行样式修改以保证功能正常
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
         select('#speed-val').html(speedVal.toFixed(2));
@@ -756,8 +740,8 @@ function draw() {
     // 分隔线（仅水平两条，去掉中间竖线）
     push();
     stroke(220); strokeWeight(2);
-    const yTopDiv = Math.round(RECT.sweep.y - GRID.pad) + 0.5;                    // Notes ↔ Sweep
-    const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5; // Sweep ↔ 下方 HUD
+    const yTopDiv = Math.round(RECT.sweep.y - GRID.pad) + 0.5;                    // Notes → Sweep
+    const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5; // Sweep → 下方 HUD
     line(0, yTopDiv, width, yTopDiv);
     line(0, yBelowSweep, width, yBelowSweep);
 
@@ -860,7 +844,7 @@ function drawPerformanceStatus() {
     if (!window.statusTracker) return;
     push();
 
-    // 位置：顶区底部偏右，给一整行空间
+    // 位置：顶区底部右右，给一整行空间
     const baseY = RECT.top.h - 25;
     const baseX = width - 350;   // 往左留出宽度，避免被挤出
 
@@ -921,50 +905,7 @@ function drawGrid() {
     line(0, yBot, width, yBot);
 }
 
-// function drawNotesAndFeedback() {
-//     const notes = rm.getVisibleNotes();
-//     drawingContext.shadowBlur = 6;
-//     drawingContext.shadowColor = '#888';
-
-//     for (const n of notes) {
-//         const xN = rm.getScrollX(n._displayTime ?? n.time);
-//         const y = isBottomDrum(n) ? laneBottomY() : laneTopY();
-//         fill(n.accent === 1 ? 'gold' : color(200, 180));
-//         noStroke();
-//         ellipse(xN, y, 20);
-
-//         fill('#eeeeee');
-//         textSize(12);
-//         textAlign(CENTER, TOP);
-//         textStyle(BOLD);
-//         text(glyphForAbbr(n.abbr), xN, y + 12);
-//         textStyle(NORMAL);
-
-//         if (n._isMainLoop && rm.feedbackStates[n._feedbackIdx]?.judged) {
-//             const state = rm.feedbackStates[n._feedbackIdx];
-//             if (state.fadeTimer > 0) state.fadeTimer -= deltaTime;
-//             const alpha = constrain(map(state.fadeTimer, 0, 2000, 0, 255), 0, 255);
-//             const col = state.result === "Perfect" ? color(174, 79, 214, alpha)
-//                 : state.result === "Good" ? color(85, 187, 90, alpha)
-//                     : color(211, 47, 47, alpha);
-//             fill(col);
-//             textSize(14);
-//             textAlign(CENTER);
-//             text(state.result, xN, y - 30);
-
-//             if (state.result !== 'Miss') {
-//                 const dt = state.hitTime - rm.scoreNotes[n._feedbackIdx].time; // ms（早负晚正）
-//                 const pxOffset = constrain(dt * PX_PER_MS, -20, 20);
-//                 fill(0, alpha);
-//                 ellipse(xN + pxOffset, y, 10);
-//             }
-//         }
-//     }
-//     drawingContext.shadowBlur = 0;
-// }
-
 //按下字母'm'用于切换AMP或者RMS
-
 function keyPressed() {
     if (key === 'm' && ampHUD?.preferAmplitude) {
         // 切换
