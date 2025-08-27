@@ -128,10 +128,16 @@ class RhythmManager {
         }
 
         const st = this.feedbackStates[bestIdx];
+        const hitNote = this.scoreNotes[bestIdx];
         st.judged = true;
         st.hitTime = hitTime;
         if (bestDiff <= PERFECT_WIN) {
             st.result = "Perfect";
+            if (typeof StarEffects !== 'undefined' && typeof isBottomDrum === 'function') {
+                const noteX = this.getScrollX(hitNote.time);
+                const noteY = isBottomDrum(hitNote) ? laneBottomY() : laneTopY();
+                StarEffects.triggerPerfect(noteX, noteY);
+            }
         } else if (bestDiff <= GOOD_WINDOW) {
             st.result = "Good";
         } else if (bestDiff <= MISS_WINDOW) {

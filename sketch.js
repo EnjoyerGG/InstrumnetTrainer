@@ -263,6 +263,9 @@ function setup() {
         glyphForAbbr: (ab) => glyphForAbbr(ab)
     });
 
+    // 添加这行：初始化星星特效系统
+    StarEffects.init();
+
     // 初始化 Sweep
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
@@ -494,6 +497,7 @@ function handleReset() {
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
 
+    StarEffects.clear();
     resetStatusTracker();
 }
 
@@ -602,6 +606,10 @@ function draw() {
     drumTrigger?.update?.();
     // 绘制音符与反馈
     NoteIlluminateFeedback.render();
+
+    //更新和绘制星星特效
+    StarEffects.update(deltaTime || 16.67);
+    StarEffects.render();
 
     // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
