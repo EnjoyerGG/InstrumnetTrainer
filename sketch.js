@@ -29,6 +29,7 @@ let countdownForResume = false;
 let micReady = false;
 let debugMode = false;
 let waitingForFirstHit = false;  //等待第一次打击
+let resumePosition = 0;
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -248,31 +249,62 @@ function armNextTickNow() {
     if (DEBUG) console.log(`启动调度: 下个音符在 ${dtNext.toFixed(0)}ms 后, 窗口=${schedulerState.forceWindowMs}ms`);
 }
 
+/* ------------ 修复的第一击启动函数 ------------ */
 function startPerformanceAfterFirstHit() {
     console.log('检测到第一击，开始演奏！');
+
     waitingForFirstHit = false;
     running = true;
     isPaused = false;
-    // 重置开始时间，让演奏从头开始
-    rm.reset();
-    //rm.resume();
-    rm.startTime = millis();
-    rm.paused = false;
-    SweepMode.clearHits();
-    SweepMode.snapToLeft();  // 扫条回到最左边
-    SweepMode.setStartGap(0); // 清除启动间隙
-    // 4. 重置反馈系统
-    rm.feedbackStates = rm._emptyFeedback();
-    rm._loopIdx = 0;
-    // 5. 清除打击标记和特效
-    HitMarkers.clearAllMarkers();
-    StarEffects.clear();
+
+    if (countdownForResume) {
+        console.log('=== 从暂停点恢复演奏 ===');
+
+        // 核心修复：重新计算startTime让当前时间对应到恢复位置
+        const targetPosition = resumePosition;
+        const currentMillis = millis();
+        rm.startTime = currentMillis - targetPosition / rm.speedFactor;
+        rm.paused = false;
+
+        console.log(`恢复到位置: ${targetPosition.toFixed(1)}ms`);
+
+        // 清除SweepMode的旧状态，但不强制重新定位
+        SweepMode.setStartGap(0);
+        SweepMode.clearHits();
+
+        // 验证恢复位置
+        setTimeout(() => {
+            const verifyPos = rm._t() % rm.totalDuration;
+            const diff = Math.abs(verifyPos - targetPosition);
+            console.log(`恢复验证: 目标${targetPosition.toFixed(1)}ms, 实际${verifyPos.toFixed(1)}ms, 偏差${diff.toFixed(1)}ms`);
+        }, 50);
+
+    } else {
+        console.log('=== 从头开始演奏 ===');
+
+        // 全新开始的重置逻辑
+        rm.reset();
+        rm.startTime = millis();
+        rm.paused = false;
+        resumePosition = 0;
+
+        SweepMode.clearHits();
+        SweepMode.snapToLeft();
+        SweepMode.setStartGap(0);
+
+        rm.feedbackStates = rm._emptyFeedback();
+        rm._loopIdx = 0;
+        HitMarkers.clearAllMarkers();
+        StarEffects.clear();
+    }
+
     // 启动节拍器（如果启用）
     if (metronomeEnabled) {
         metro.enable(true);
         resetMetronomeSchedulerState();
         armNextTickNow();
     }
+
     // 启动调度器
     startScoreTickScheduler();
     console.log('演奏已开始！');
@@ -647,12 +679,12 @@ async function tryStartMicEarly() {
 
 /* ------------ Control Functions ------------- */
 async function handleStart() {
-    if (running || counting) return;
+    if (running || counting || waitingForFirstHit) return;
     await window.userStartAudio?.();
     try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
 
     if (isPaused) {
-        const pauseMs = (rm.pauseAt - rm.startTime) % rm.totalDuration;
+        const pauseMs = resumePosition;// 直接使用存储的循环内位置
         const notes = rm.scoreNotes;
         for (let i = 0; i < notes.length; i++) {
             if (notes[i].time >= pauseMs) { schedulerState.lastIdx = i - 1; break; }
@@ -665,31 +697,47 @@ async function handleStart() {
     metro.reset();
     metro.useInternalGrid = false;
     resetMetronomeSchedulerState();
-    //startScoreTickScheduler();
 }
 
 function handlePause() {
     if (!running && !counting && !waitingForFirstHit) return;
+
     if (waitingForFirstHit) {
         // 在等待状态下暂停回到倒计时前状态
         waitingForFirstHit = false;
         counting = false;
         return;
     }
-    isPaused = true; running = false;
-    const currentMs = rm._t() % rm.totalDuration;
-    rm.pauseAt = rm.startTime + currentMs;
+
+    console.log('===== 暂停演奏 =====');
+
+    isPaused = true;
+    running = false;
+
+    //直接记录当前的循环内时间位置
+    const currentTime = rm._t();
+    resumePosition = currentTime % rm.totalDuration;
 
     counting = false;
     rm.pause();
+
     stopScoreTickScheduler();
     if (metro?.isLoaded) metro.flushFuture();
+
+    console.log('===== 暂停完成 =====');
 }
 
 function handleReset() {
-    running = false; counting = false; isPaused = false;
-    waitingForFirstHit = false;
-    rm.reset(); rm.pause(); rm.pauseAt = rm.startTime;
+    running = false;
+    counting = false;
+    isPaused = false;
+    waitingForFirstHit = false;  // 重置等待状态
+
+    resumePosition = 0; // 重置恢复位置
+
+    rm.reset();
+    rm.pause();
+    rm.pauseAt = rm.startTime;
 
     stopScoreTickScheduler();
     resetMetronomeSchedulerState();
@@ -746,7 +794,7 @@ function startCountdown(opts = {}) {
     }
 }
 
-/* ------------ 新增：等待第一击的视觉提示 ------------ */
+/* ------------ 改进的等待第一击视觉提示 ------------ */
 function drawWaitingForFirstHit() {
     push();
 
@@ -754,12 +802,28 @@ function drawWaitingForFirstHit() {
     fill(0, 0, 0, 120);
     rect(0, 0, width, RECT.top.h);
 
+    // 根据是否从暂停恢复显示不同文字
+    const mainText = countdownForResume ? 'Hit to Resume' : 'Hit to Start Performance';
+    let subText = '';
+
+    if (countdownForResume) {
+        const pausedMs = resumePosition;
+        subText = `Resume from ${(pausedMs / 1000).toFixed(1)}s`;
+    } else {
+        subText = 'Start from Beginning';
+    }
+
     // 主要提示文字
     textSize(48);
-    fill(255, 215, 0); // 金黄色
+    fill(255, 215, 0);
     textAlign(CENTER, CENTER);
     const cy = RECT.top.y + RECT.top.h / 2;
-    text('Hit to Start Performance', width / 2, cy - 20);
+    text(mainText, width / 2, cy - 20);
+
+    // 副提示文字
+    textSize(20);
+    fill(200, 200, 200);
+    text(subText, width / 2, cy + 25);
 
     // 鼓的图标 - 闪烁效果
     const alpha = map(sin(millis() * 0.006), -1, 1, 0.4, 1.0);
@@ -810,29 +874,23 @@ function draw() {
     line(rm.judgeLineX, 0, rm.judgeLineX, splitY - 1);
     drawingContext.restore();
 
-    // if (counting) {
-    //     const remain = COUNTDOWN_MS - (millis() - ctStart);
-    //     if (remain <= 0) {
-    //         counting = false; running = true; isPaused = false;
-    //         rm.resume();
-    //         if (metronomeEnabled) {
-    //             metro.enable(true);
-    //             if (!countdownForResume) resetMetronomeSchedulerState();
-    //             armNextTickNow();
-    //         }
-    //         startScoreTickScheduler();
-    //     } else {
-    //         drawCountdown(remain);
-    //     }
-    // }
+    // 修复的倒计时逻辑
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
         if (remain <= 0) {
             counting = false;
-            // 不立即开始，而是进入等待第一击状态
-            rm.pause();
+
+            // 进入等待状态时的处理：区分新开始和恢复
+            if (countdownForResume) {
+                // 从暂停恢复：不需要特别处理时间，保持暂停状态
+                console.log('倒计时结束，等待第一次打击以从暂停点恢复...');
+            } else {
+                // 全新开始：暂停时间管理器
+                rm.pause();
+                console.log('倒计时结束，时间已暂停，等待第一次打击从头开始...');
+            }
+
             waitingForFirstHit = true;
-            console.log('倒计时结束，等待第一次打击...');
         } else {
             drawCountdown(remain);
         }
