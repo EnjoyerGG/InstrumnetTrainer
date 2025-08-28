@@ -52,11 +52,14 @@
             const container = document.createElement('div');
             container.id = 'chart-selector-container';
             container.style.cssText = `
-                position: relative;
-                display: inline-block;
-                margin-right: 12px;
-                vertical-align: top;
-            `;
+    position: relative;
+    display: inline-block;
+    margin-right: 20px;         /* 增加右边距：从12px改为20px */
+    margin-left: 10px;          /* 添加左边距 */
+    margin-top: 5px;            /* 添加上边距 */
+    margin-bottom: 5px;         /* 添加下边距 */
+    vertical-align: middle;     /* 改变垂直对齐：从top改为middle */
+`;
 
             // 创建主按钮
             const button = document.createElement('button');
@@ -73,15 +76,18 @@
         padding: 12px 16px;
         font-size: 14px;
         font-weight: 500;
+        height: 32px;
         cursor: pointer;
         transition: all 0.2s ease;
-        min-width: 140px;
+        min-width: 100px;
         text-align: left;
         display: flex;
         justify-content: space-between;
         align-items: center;
         white-space: nowrap;
             `;
+
+
 
             // 创建下拉菜单
             const dropdown = document.createElement('div');
@@ -94,7 +100,7 @@
                 background: #333;
                 border: 1px solid #555;
                 border-top: none;
-                border-radius: 0 0 8px 8px;
+                border-radius: 6px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 z-index: 1000;
                 display: none;
