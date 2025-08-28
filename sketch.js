@@ -27,7 +27,7 @@ let hasEverStarted = false;
 let isPaused = false;
 let countdownForResume = false;
 let micReady = false;
-let debugMode = false;  //可以用鼠标进行debug
+let debugMode = false;
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -65,8 +65,16 @@ function isBottomDrum(n) {
 function laneTopY() { return rm.noteY - LANE_GAP / 2; }
 function laneBottomY() { return rm.noteY + LANE_GAP / 2; }
 
-/* ---------- Metronome scheduler ---------- */
-const schedulerState = { lastIdx: -1, lastNowMs: null, scheduledNotes: new Map(), guardUntil: 0, forceWindowMs: null, worker: null };
+/* ---------- 修复的节拍器调度系统 ---------- */
+const schedulerState = {
+    lastIdx: -1,
+    lastNowMs: null,
+    scheduledNotes: new Map(),
+    guardUntil: 0,
+    forceWindowMs: null,
+    worker: null,
+    lastCycle: -1
+};
 
 function _ensureSchedWorker() {
     if (schedulerState.worker) return schedulerState.worker;
@@ -84,10 +92,25 @@ function _ensureSchedWorker() {
     schedulerState.worker.onmessage = (e) => { if (e.data === 'tick') scheduleTicksOnce(); };
     return schedulerState.worker;
 }
+
 function getAheadMs() { return Math.max(140, Math.min(320, rm.noteInterval * 0.75)); }
-function startScoreTickScheduler() { stopScoreTickScheduler(); const w = _ensureSchedWorker(); w.postMessage({ cmd: 'interval', value: 25 }); w.postMessage({ cmd: 'start' }); }
-function stopScoreTickScheduler() { if (schedulerState.worker) schedulerState.worker.postMessage({ cmd: 'stop' }); }
-function resetMetronomeSchedulerState() { schedulerState.lastIdx = -1; schedulerState.lastNowMs = null; schedulerState.scheduledNotes.clear(); schedulerState.guardUntil = 0; schedulerState.forceWindowMs = null; }
+function startScoreTickScheduler() {
+    stopScoreTickScheduler();
+    const w = _ensureSchedWorker();
+    w.postMessage({ cmd: 'interval', value: 25 });
+    w.postMessage({ cmd: 'start' });
+}
+function stopScoreTickScheduler() {
+    if (schedulerState.worker) schedulerState.worker.postMessage({ cmd: 'stop' });
+}
+function resetMetronomeSchedulerState() {
+    schedulerState.lastIdx = -1;
+    schedulerState.lastNowMs = null;
+    schedulerState.scheduledNotes.clear();
+    schedulerState.guardUntil = 0;
+    schedulerState.forceWindowMs = null;
+    schedulerState.lastCycle = -1;
+}
 
 function scheduleTicksOnce() {
     if (!metronomeEnabled || !running || !metro || !metro.isLoaded()) return;
@@ -96,24 +119,32 @@ function scheduleTicksOnce() {
     const nowMs = rm._t() % rm.totalDuration;
     const aheadMs = schedulerState.forceWindowMs || getAheadMs();
 
-    // loop restart
-    if (schedulerState.lastNowMs != null && nowMs < schedulerState.lastNowMs - 5) {
+    // 检测循环重启 - 更准确的判断
+    const currentCycle = Math.floor(rm._t() / rm.totalDuration);
+    const isNewCycle = schedulerState.lastCycle !== -1 && currentCycle > schedulerState.lastCycle;
+
+    if (isNewCycle) {
+        if (DEBUG) console.log(`新循环开始: ${currentCycle}, 重置调度状态`);
         schedulerState.lastIdx = -1;
         schedulerState.scheduledNotes.clear();
-        schedulerState.guardUntil = 0;
+        schedulerState.guardUntil = ctxNow + 0.02;
     }
+    schedulerState.lastCycle = currentCycle;
     schedulerState.lastNowMs = nowMs;
 
     const notes = rm.scoreNotes;
     if (!notes || !notes.length) return;
 
-    // clean expired
+    // 清理过期音符 - 更保守的策略
+    const expiredKeys = [];
     for (const [k, t] of schedulerState.scheduledNotes) {
-        if (t < ctxNow - 1.5) schedulerState.scheduledNotes.delete(k);
+        if (t < ctxNow - 2.0) {
+            expiredKeys.push(k);
+        }
     }
+    expiredKeys.forEach(k => schedulerState.scheduledNotes.delete(k));
 
     const currentMode = RhythmSelector.getCurrentMode() || 'metronome';
-
     let scheduledCount = 0;
     let checkedCount = 0;
 
@@ -141,72 +172,63 @@ function scheduleTicksOnce() {
         if (currentMode === 'clave23') {
             shouldPlay = n.clave23 === 1;
         }
-        // else if (currentMode === 'clave32') {
-        //     shouldPlay = n.clave32 === 1;
-        // }
 
         if (shouldPlay) {
             const sf = rm?.speedFactor || 1;
             const when = ctxNow + Math.max(0, (dt + getMetroOffsetMs()) / (1000 * sf));
 
-            const lastWhen = schedulerState.scheduledNotes.get(i) ?? -Infinity;
-            const recentlyScheduled = Math.abs(when - lastWhen) < 0.04;
-            const guarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
+            // 防重复调度 - 改进的逻辑
+            const lastWhen = schedulerState.scheduledNotes.get(i);
+            const isRecentlyScheduled = lastWhen && Math.abs(when - lastWhen) < 0.1;
+            const isGuarded = schedulerState.guardUntil && when <= schedulerState.guardUntil;
+            const isTooEarly = when < ctxNow + 0.01;
 
-            if (!recentlyScheduled && !guarded) {
+            if (!isRecentlyScheduled && !isGuarded && !isTooEarly) {
                 try {
                     if (currentMode === 'metronome') {
                         const strong = ((n.accent | 0) === 1);
                         metro.scheduleAt(when, 'metronome', strong);
-                        console.log(`✅ 调度 metronome: idx=${i}, time=${n.time}, dt=${dt.toFixed(1)}, when=${when.toFixed(3)}`);
                     } else {
                         metro.scheduleAt(when, 'clave', true);
-                        console.log(`✅ 调度 clave: idx=${i}, time=${n.time}, dt=${dt.toFixed(1)}, when=${when.toFixed(3)}, mode=${currentMode}`);
                     }
                     schedulerState.scheduledNotes.set(i, when);
                     scheduledCount++;
+
+                    if (DEBUG) {
+                        console.log(`调度成功: ${currentMode}, idx=${i}, dt=${dt.toFixed(1)}ms, when=${when.toFixed(3)}s`);
+                    }
                 } catch (error) {
-                    console.error(`❌ 调度失败: idx=${i}`, error);
+                    console.error(`调度失败: idx=${i}`, error);
                 }
             }
         }
     }
 
-    console.log(`调度结果: 检查了 ${checkedCount} 个音符, 调度了 ${scheduledCount} 个, 模式=${currentMode}, nowMs=${nowMs.toFixed(1)}, totalDuration=${rm.totalDuration}`);
-
-    // 如果没有调度到任何音符，显示应该播放的音符列表用于调试
-    if (scheduledCount === 0) {
-        const shouldPlayNotes = notes.filter((n, i) => {
-            //if (currentMode === 'clave32') return n.clave32 === 1;
-            if (currentMode === 'clave23') return n.clave23 === 1;
-            return true;
-        }).map((n, originalIndex) => {
-            const realIndex = notes.indexOf(n);
-            let dt = n.time - nowMs;
-            if (dt < 0) dt += rm.totalDuration;
-            return {
-                idx: realIndex,
-                time: n.time,
-                dt: dt.toFixed(1),
-                withinWindow: dt <= aheadMs
-            };
-        });
-
-        console.log(`应该播放的音符 (${currentMode}):`, shouldPlayNotes);
+    // 调试信息 - 简化输出
+    if (DEBUG && scheduledCount > 0) {
+        console.log(`调度: ${scheduledCount}/${checkedCount} (${currentMode}), 时间=${nowMs.toFixed(0)}ms, 循环=${currentCycle}`);
     }
 
     schedulerState.forceWindowMs = null;
-};
+}
 
 window.onRhythmModeChange = function (mode, modeData) {
-    console.log(`Rhythm mode changed to: ${modeData.name}`);
+    console.log(`节拍模式变更: ${modeData.name}`);
 
-    // 如果节拍器正在运行，重置调度器状态
+    // 如果节拍器正在运行，平滑切换
     if (metronomeEnabled && running && metro.isLoaded()) {
-        metro.flushFuture();
-        resetMetronomeSchedulerState();
-        armNextTickNow();
-        schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
+        const ctxNow = metro.ctx.currentTime;
+        const futureNotes = [];
+        for (const [k, t] of schedulerState.scheduledNotes) {
+            if (t > ctxNow + 0.1) {
+                futureNotes.push(k);
+            }
+        }
+        futureNotes.forEach(k => schedulerState.scheduledNotes.delete(k));
+
+        schedulerState.forceWindowMs = getAheadMs();
+        scheduleTicksOnce();
+        schedulerState.guardUntil = ctxNow + 0.05;
     }
 };
 
@@ -222,16 +244,12 @@ function armNextTickNow() {
     const dtNext = (notes[nextIdx].time - nowMs + rm.totalDuration) % rm.totalDuration;
 
     schedulerState.lastIdx = (nextIdx - 1 + notes.length) % notes.length;
-    schedulerState.forceWindowMs = dtNext + 30;
+    schedulerState.forceWindowMs = Math.min(dtNext + 50, getAheadMs());
 
-    const prevIdx = schedulerState.lastIdx;
     scheduleTicksOnce();
-    if (schedulerState.lastIdx === prevIdx) {
-        const now2 = rm._t() % rm.totalDuration;
-        schedulerState.forceWindowMs = (rm.totalDuration - now2) + 30;
-        scheduleTicksOnce();
-    }
     startScoreTickScheduler();
+
+    if (DEBUG) console.log(`启动调度: 下个音符在 ${dtNext.toFixed(0)}ms 后, 窗口=${schedulerState.forceWindowMs}ms`);
 }
 
 /* ------------ p5 preload ------------- */
@@ -246,7 +264,6 @@ function speedToBPM(speed) { return BPM_MIN + (BPM_MAX - BPM_MIN) * (speed - SPE
 function bpmToSpeed(bpm) { return SPEED_MIN + (bpm - BPM_MIN) * (SPEED_MAX - SPEED_MIN) / (BPM_MAX - BPM_MIN); }
 function isMobile() { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent); }
 
-// 将speedToBPM函数导出到全局，供其他模块使用
 window.speedToBPM = speedToBPM;
 
 const GRID = { pad: 10, topHRatio: 0.5 };
@@ -258,24 +275,22 @@ let _canvasHost;
 function layoutRects() {
     const topH = Number.isFinite(GRID.topHpx) ? GRID.topHpx : Math.round(height * GRID.topHRatio);
 
-    // 布局顺序：Notes -> Sweep -> 底部HUD（左频谱/声谱独占整行）
     const sweepY = topH + GRID.pad;
     const sweepH = SWEEP_H;
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
-    const insetTop = 8;   // → 顶部收紧
-    const insetRight = 10; // → 右侧收紧
+    const insetTop = 8;
+    const insetRight = 10;
     const insetBottom = 6;
 
     const availW = width - GRID.pad * 2;
     const leftW = Math.round(availW / 2);
-    const gap = 8;          // 中间竖向缝
-    const pad = 8;          // 四周内边距
+    const gap = 8;
+    const pad = 8;
 
     RECT.top = { x: 0, y: 0, w: width, h: topH };
     RECT.sweep = { x: GRID.pad, y: sweepY, w: availW, h: sweepH };
     RECT.fft = { x: GRID.pad, y: hudY + insetTop, w: leftW - insetRight, h: hudH - insetBottom };
-    // 右半：再左右拆分
     RECT.rightHalf = { x: GRID.pad + leftW, y: hudY, w: availW - leftW, h: hudH };
     const halfW = Math.floor((RECT.rightHalf.w - gap - pad * 2) / 2);
 
@@ -291,7 +306,86 @@ function layoutRects() {
         w: RECT.rightHalf.w - pad * 2 - halfW - gap,
         h: RECT.rightHalf.h - pad * 2
     };
+}
 
+/* ------------ DrumTrigger 初始化函数 ------------ */
+function initDrumTriggerForMobile() {
+    console.log('移动端 DrumTrigger 初始化');
+    console.log('Audio context state:', getAudioContext()?.state);
+    console.log('Mic ready:', micReady);
+
+    try {
+        drumTrigger = DrumTrigger.init({
+            mic,
+            debug: true,
+            onTrigger: (reason) => {
+                console.log('移动端鼓击检测:', reason);
+                if (running) {
+                    const hitTime = rm._t();
+                    rm.registerHit();
+                    SweepMode?.addHitNow?.();
+                    HitMarkers.addHitMarker(hitTime);
+                    judgeLineGlow = 1;
+                }
+            }
+        });
+
+        drumTrigger.enable(true);
+        drumTrigger.setSensitivity(0.9);
+
+        console.log('移动端 DrumTrigger 初始化成功');
+
+        setTimeout(() => {
+            console.log('FFT 功能测试');
+            if (drumTrigger._fft) {
+                try {
+                    const spectrum = drumTrigger._fft.analyze();
+                    console.log('FFT 工作状态:', !!(spectrum && spectrum.length > 0));
+                    console.log('频谱数据长度:', spectrum?.length);
+                } catch (e) {
+                    console.error('FFT 测试失败:', e);
+                }
+            } else {
+                console.warn('FFT 分析器未创建');
+            }
+
+            if (mic) {
+                try {
+                    const level = mic.getLevel();
+                    console.log('当前音量级别:', level.toFixed(4));
+                } catch (e) {
+                    console.error('音量检测失败:', e);
+                }
+            }
+        }, 2000);
+
+    } catch (error) {
+        console.error('DrumTrigger 初始化失败:', error);
+    }
+}
+
+function initDrumTriggerForDesktop() {
+    console.log('桌面端 DrumTrigger 初始化');
+
+    drumTrigger = DrumTrigger.init({
+        mic,
+        debug: debugMode,
+        onTrigger: (reason) => {
+            if (running) {
+                const hitTime = rm._t();
+                rm.registerHit();
+                SweepMode?.addHitNow?.();
+                HitMarkers.addHitMarker(hitTime);
+                judgeLineGlow = 1;
+                if (debugMode) {
+                    console.log(`桌面端鼓击检测: ${reason}`);
+                }
+            }
+        }
+    });
+
+    drumTrigger.enable(true);
+    drumTrigger.setSensitivity(0.6);
 }
 
 /* ------------ Setup --------------- */
@@ -299,6 +393,8 @@ function setup() {
     if (isMobile()) {
         pixelDensity(1);
         frameRate(30);
+        debugMode = true;
+        console.log('移动端模式启用，调试模式开启');
     } else {
         frameRate(45);
     }
@@ -315,35 +411,28 @@ function setup() {
     _canvasHost.elt.style.position = 'relative';
     _canvasHost.elt.classList.add('fixed-hud');
 
-    // 首次与响应式布局
     layoutRects(cnv);
     window.addEventListener('resize', () => layoutRects(cnv));
 
-    // 初始化节奏管理器
     rm = new RhythmManager();
     rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
-    // === 添加这段诊断代码 ===
-    console.log('=== JSON数据诊断 ===');
+    console.log('JSON数据诊断');
     console.log('原始JSON数据:', chartJSON);
     console.log('conga数组:', chartJSON.conga);
     console.log('第一个音符原始数据:', chartJSON.conga[0]);
     console.log('scoreNotes数据:', rm.scoreNotes);
     console.log('第一个scoreNote:', rm.scoreNotes[0]);
 
-    // 检查字段是否存在
     const firstNote = rm.scoreNotes[0];
     console.log('字段检查:', {
         hasTime: 'time' in firstNote,
         hasType: 'type' in firstNote,
-        //hasClave32: 'clave32' in firstNote,
         hasClave23: 'clave23' in firstNote,
-        //clave32Value: firstNote.clave32,
         clave23Value: firstNote.clave23
     });
 
-    // 初始化音符点亮反馈
     NoteIlluminateFeedback.init({
         rm,
         laneTopY: () => laneTopY(),
@@ -352,7 +441,6 @@ function setup() {
         glyphForAbbr: (ab) => glyphForAbbr(ab)
     });
 
-    // 初始化打击标记系统
     HitMarkers.init({
         rm,
         laneTopY: () => laneTopY(),
@@ -360,26 +448,20 @@ function setup() {
         isBottomDrum: (n) => isBottomDrum(n)
     });
 
-    // === 临时修复：如果字段丢失，手动添加 ===
-    if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave32' in rm.scoreNotes[0])) {
+    if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave23' in rm.scoreNotes[0])) {
         console.warn('检测到clave字段丢失，正在修复...');
 
-        // 重新从原始数据复制字段
         for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
             const originalNote = chartJSON.conga[i];
             const scoreNote = rm.scoreNotes[i];
-            //scoreNote.clave32 = originalNote.clave32;
             scoreNote.clave23 = originalNote.clave23;
         }
 
         console.log('修复后的第一个音符:', rm.scoreNotes[0]);
     }
 
-
-    // 添加这行：初始化星星特效系统
     StarEffects.init();
 
-    // 初始化 Sweep
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
         rectProvider: () => RECT.sweep,
@@ -391,22 +473,17 @@ function setup() {
     SweepMode.setBeatMs(rm.noteInterval);
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode.snapToLeft();
-    //更改打击颜色
     SweepMode?.setHitColor('rgba(255,180,0,0.35)', 2);
-    SweepMode?.setHitGlow('rgba(255,210,80,0.90)', 14); // Sweep 发光
+    SweepMode?.setHitGlow('rgba(255,210,80,0.90)', 14);
     _lastCycleForSnap = SweepMode.getCurrentCycle();
 
-    // 初始化节拍器
     metro.onloaded(() => { console.log("Metronome loaded!"); metro.reset(); });
 
-    // 初始化节奏选择器
     RhythmSelector.init();
 
-    // 初始化麦克风 & 分析器
     mic = new p5.AudioIn();
     mic.start();
 
-    //初始化FFT面板
     fftHUD = FFTPanel.init({
         mic,
         rectProvider: () => RECT.fft,
@@ -418,44 +495,28 @@ function setup() {
 
     ampHUD = AmpPanel.init({
         mic,
-        rectProvider: () => RECT.amp,   // 你放 Amplitude 的矩形
+        rectProvider: () => RECT.amp,
         smoothing: 0.7,
         vscale: 5.0,
         historySec: 2.5,
-        fastResponse: true     // 启用快速响应模式
+        fastResponse: true
     });
-    //ampHUD.setInstantAdapt(true);
 
-    //初始化Conga打击检测器
-    drumTrigger = DrumTrigger.init({
-        mic,
-        debug: true,
-        onTrigger: (reason) => {
-            //检测到鼓击时，执行和鼠标点击相同的操作
-            if (running) {
-                const hitTime = rm._t();
-                rm.registerHit();
-                SweepMode?.addHitNow?.();
-                HitMarkers.addHitMarker(hitTime);  // 添加打击标记
-                judgeLineGlow = 1;
-                if (debugMode) {
-                    console.log(`Drum hit triggered by: ${reason}`);
-                }
-            }
-        }
-    });
-    // 默认启用鼓击检测，设置中等灵敏度
-    drumTrigger.enable(true);
-    drumTrigger.setSensitivity(0.6);
+    if (isMobile()) {
+        setTimeout(() => {
+            initDrumTriggerForMobile();
+        }, 1500);
+    } else {
+        setTimeout(() => {
+            initDrumTriggerForDesktop();
+        }, 500);
+    }
 
-    // 初始化设置面板并确保按钮出现在正确位置
     settingsPanel = SettingsPanel.init();
 
-    // 将设置按钮移动到正确位置（速度控制后面）
     const settingsBtn = document.getElementById('settings-btn');
     const placeholder = document.getElementById('settings-placeholder');
     if (settingsBtn && placeholder) {
-        // 替换占位符
         placeholder.parentNode.replaceChild(settingsBtn, placeholder);
     }
 
@@ -467,17 +528,18 @@ function setup() {
         lastUpdateTime: 0
     };
 
-    // 页面加载即尽力启动麦克风；若被策略拒绝，将在用户任何一次交互后自动重试
     tryStartMicEarly();
 
-    //原有节拍器
     select('#metro-toggle').mousePressed(() => {
         metronomeEnabled = !metronomeEnabled;
-        updateMetroBtnUI(); // ← 每次切换后更新颜色
+        updateMetroBtnUI();
 
         if (metronomeEnabled) {
             metro.enable(true);
-            if (running) { resetMetronomeSchedulerState(); armNextTickNow(); }
+            if (running) {
+                resetMetronomeSchedulerState();
+                armNextTickNow();
+            }
         } else {
             metro.enable(false);
             stopScoreTickScheduler();
@@ -487,7 +549,6 @@ function setup() {
     updateMetroBtnUI();
     metro.enable(false);
 
-    // 速度/BPM - 确保滑块功能正常
     let initSpeed = parseFloat(select('#speed-slider').value());
     select('#speed-val').html(initSpeed.toFixed(2));
     const initBpm = speedToBPM(initSpeed);
@@ -501,36 +562,30 @@ function setup() {
     select('#reset-btn').mousePressed(handleReset);
     select('#export-btn').mousePressed(handleExport);
 
-    // 主界面速度滑块事件处理 - 不进行样式修改以保证功能正常
     select('#speed-slider').input(() => {
         const speedVal = parseFloat(select('#speed-slider').value());
         select('#speed-val').html(speedVal.toFixed(2));
         const bpmVal = speedToBPM(speedVal);
         select('#bpm-val').html(Math.round(bpmVal));
 
-        // 更新节拍器BPM
         metro.setBPM(bpmVal);
         rm.setBPM(bpmVal);
         rm.setSpeedFactor(speedVal);
 
-        // 同步其他组件
         SweepMode?.setSpeedMultiplier?.(1);
 
-        // 如果正在运行且节拍器启用，更新调度器
         if (metronomeEnabled && running && metro.isLoaded()) {
             metro.flushFuture();
             resetMetronomeSchedulerState();
             armNextTickNow();
             schedulerState.guardUntil = metro.ctx.currentTime + 0.02;
         }
-        // 重置能量统计
         _emaE = 0, _emaVar = 1;
     });
 }
 
 async function tryStartMicEarly() {
     try {
-        // 有些浏览器允许无手势 resume；允许的话就先试一下
         if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
             await getAudioContext().resume().catch(() => { });
         }
@@ -538,14 +593,12 @@ async function tryStartMicEarly() {
 
     try {
         if (!mic) mic = new p5.AudioIn();
-        await mic.start();               // 触发权限弹窗；允许后即可就绪
+        await mic.start();
         micReady = true;
         if (ampHUD?.preferAmplitude) {
-            // 延迟一小会儿再启用，规避某些浏览器刚接通前几帧的空输入
             setTimeout(() => ampHUD.preferAmplitude(true), 70);
         }
     } catch (e) {
-        // 需要用户手势/被拒：挂一次性监听，任意点击/按键后重试
         const retry = async () => {
             try { if (getAudioContext().state !== 'running') await getAudioContext().resume().catch(() => { }); } catch (_) { }
             try { if (!mic) mic = new p5.AudioIn(); await mic.start(); micReady = true; } catch (_) { }
@@ -607,7 +660,7 @@ function handleReset() {
     SweepMode.snapToLeft();
 
     StarEffects.clear();
-    HitMarkers.clearAllMarkers();  // 清除所有打击标记
+    HitMarkers.clearAllMarkers();
     resetStatusTracker();
 }
 
@@ -652,9 +705,9 @@ function startCountdown(opts = {}) {
 /* ------------ Draw Loop ----------- */
 let frameTimeBuffer = [];
 let lastOptimizeCheck = 0;
-let performanceMode = 'normal'; // 'normal' | 'performance'
+let performanceMode = 'normal';
+
 function draw() {
-    // Sweep 导出队列
     if (window.SweepMode?.getCurrentCycle) {
         const cur = SweepMode.getCurrentCycle();
         if (_lastCycleForSnap == null) {
@@ -671,15 +724,13 @@ function draw() {
     const frameStart = performance.now();
     background('#3a3a3a');
     judgeLineGlow *= 0.9; if (judgeLineGlow < 0.01) judgeLineGlow = 0;
-    // 根据性能模式调整绘制
+
     if (performanceMode === 'performance') {
-        // 性能模式：跳帧绘制网格
         if (frameCount % 2 === 0) drawGrid();
     } else {
         drawGrid();
     }
 
-    // 判定竖线（到 Sweep 顶部）
     let glowLevel = lerp(2, 18, judgeLineGlow);
     let alpha = lerp(120, 255, judgeLineGlow);
     drawingContext.save();
@@ -691,7 +742,6 @@ function draw() {
     line(rm.judgeLineX, 0, rm.judgeLineX, splitY - 1);
     drawingContext.restore();
 
-    // 倒计时
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
         if (remain <= 0) {
@@ -712,23 +762,28 @@ function draw() {
         rm.checkAutoMiss();
         rm.checkLoopAndRestart();
     }
-    //更新鼓击检测器
-    drumTrigger?.update?.();
-    // 绘制音符与反馈
+
+    if (drumTrigger && drumTrigger._isEnabled) {
+        drumTrigger.update();
+
+        if (isMobile() && frameCount % 60 === 0) {
+            try {
+                const currentVol = drumTrigger._getCurrentVolume?.() || 0;
+                console.log(`移动端调试 - 音量: ${currentVol.toFixed(4)}, 启用: ${drumTrigger._isEnabled}, 触发次数: ${drumTrigger._triggerCount}`);
+            } catch (e) {
+                console.warn('移动端调试信息获取失败:', e);
+            }
+        }
+    }
+
     NoteIlluminateFeedback.render();
-
-    // 绘制打击标记
     HitMarkers.render();
-
-    //更新和绘制星星特效
     StarEffects.update(deltaTime || 16.67);
     StarEffects.render();
 
-    // Sweep
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
 
     if (performanceMode === 'performance') {
-        // 性能模式：降低HUD更新频率
         if (frameCount % 2 === 0) {
             fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
             ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
@@ -738,12 +793,9 @@ function draw() {
         ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
 
-    // 左侧：FFT 频谱
     fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
-    //中间：AMP面板
     ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
 
-    //debug面板
     if (debugMode && drumTrigger) {
         const debugW = 200, debugH = 120;
         const debugX = width - debugW - 10;
@@ -751,44 +803,37 @@ function draw() {
         drumTrigger.renderDebugPanel?.(drawingContext, debugX, debugY, debugW, debugH);
     }
 
-    // 分隔线（仅水平两条，去掉中间竖线）
     push();
     stroke(220); strokeWeight(2);
-    const yTopDiv = Math.round(RECT.sweep.y - GRID.pad) + 0.5;                    // Notes → Sweep
-    const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5; // Sweep → 下方 HUD
+    const yTopDiv = Math.round(RECT.sweep.y - GRID.pad) + 0.5;
+    const yBelowSweep = Math.round(RECT.sweep.y + RECT.sweep.h + GRID.pad) + 0.5;
     line(0, yTopDiv, width, yTopDiv);
     line(0, yBelowSweep, width, yBelowSweep);
 
-    //最下面界面分为左右部分
     stroke(220); strokeWeight(2);
     const midX = Math.round(width / 2) + 0.5;
     line(midX, yBelowSweep, midX, height - GRID.pad);
 
-    //右边部分再分左右
     stroke(200); strokeWeight(1.5);
     const midXRight = Math.round(RECT.rightHalf.x + RECT.rightHalf.w / 2) + 0.5;
-    line(midXRight, RECT.rightHalf.y, RECT.rightHalf.x + RECT.rightHalf.w, RECT.rightHalf.y); // 顶边短刻度(可选)
+    line(midXRight, RECT.rightHalf.y, RECT.rightHalf.x + RECT.rightHalf.w, RECT.rightHalf.y);
     line(midXRight, RECT.rightHalf.y, midXRight, RECT.rightHalf.y + RECT.rightHalf.h);
     pop();
-    // 绘制右下角状态
+
     drawPerformanceStatus();
 
-    //性能监控
     const frameTime = performance.now() - frameStart;
     frameTimeBuffer.push(frameTime);
     if (frameTimeBuffer.length > 10) frameTimeBuffer.shift();
 
-    // 每2秒检查一次性能
     if (millis() - lastOptimizeCheck > 2000) {
         const avgFrameTime = frameTimeBuffer.reduce((a, b) => a + b, 0) / frameTimeBuffer.length;
         const targetFrameTime = 1000 / (isMobile() ? 30 : 45);
 
         if (avgFrameTime > targetFrameTime * 1.2 && performanceMode === 'normal') {
-            // 性能不足，切换到性能模式
             performanceMode = 'performance';
             console.log('Switching to performance mode');
         } else if (avgFrameTime < targetFrameTime * 0.8 && performanceMode === 'performance') {
-            // 性能充足，切换回普通模式
             performanceMode = 'normal';
             console.log('Switching to normal mode');
         }
@@ -815,7 +860,6 @@ function updateStatusTracker(result) {
     window.statusTracker.lastUpdateTime = millis();
 }
 
-// 重置状态跟踪器
 function resetStatusTracker() {
     if (!window.statusTracker) return;
     window.statusTracker.successfulHits = 0;
@@ -823,7 +867,6 @@ function resetStatusTracker() {
     window.statusTracker.currentInputLevel = 0;
 }
 
-// 获取当前同步质量
 function getCurrentSyncQuality() {
     const SYNC_QUALITY = {
         EXCELLENT: { label: 'Excellent', color: '#00ff88' },
@@ -853,46 +896,37 @@ function getCurrentSyncQuality() {
     }
 }
 
-// 绘制右下角性能状态
 function drawPerformanceStatus() {
     if (!window.statusTracker) return;
     push();
 
-    // 位置：顶区底部右右，给一整行空间
     const baseY = RECT.top.h - 25;
-    const baseX = width - 350;   // 往左留出宽度，避免被挤出
+    const baseX = width - 350;
 
-    // 计算数据
     const totalNotes = rm.scoreNotes ? rm.scoreNotes.length : 0;
     const hitRate = `${window.statusTracker.successfulHits}/${totalNotes}`;
     const percentage = totalNotes > 0 ? Math.round((window.statusTracker.successfulHits / totalNotes) * 100) : 0;
 
-    // 命中率颜色（保持原来的分档）
     let rateColor = '#ff4444';
     if (percentage >= 80) rateColor = '#00ff88';
     else if (percentage >= 60) rateColor = '#88ff00';
     else if (percentage >= 40) rateColor = '#ffaa00';
 
-    const quality = getCurrentSyncQuality(); // {label, color}
+    const quality = getCurrentSyncQuality();
 
-    // 文本样式：粗体、左对齐、单行
     textSize(16);
     textStyle(BOLD);
     textAlign(LEFT, TOP);
     noStroke();
 
-    // 逐段绘制，颜色保持不变
     let x = baseX, y = baseY;
 
-    // Hit Rate: xx/yy (zz%)
     fill(208, 209, 210); text('Hit Rate:', x, y); x += textWidth('Hit Rate: ') + 4;
     fill(255); text(hitRate, x, y); x += textWidth(hitRate + ' ');
     fill(rateColor); text(`(${percentage}%)`, x, y); x += textWidth(`(${percentage}%)`);
 
-    // 分隔符
     fill(200); text('  |  ', x, y); x += textWidth('  |  ');
 
-    // In Sync: Quality
     fill(208, 209, 210); text('In Sync:', x, y); x += textWidth('In Sync: ') + 4;
     fill(quality.color); text(quality.label, x, y);
 
@@ -919,14 +953,12 @@ function drawGrid() {
     line(0, yBot, width, yBot);
 }
 
-//按下字母'm'用于切换AMP或者RMS
 function keyPressed() {
     if (key === 'm' && ampHUD?.preferAmplitude) {
-        // 切换
         if (ampHUD._preferAmp) {
-            ampHUD.preferAmplitude(false);   // 切回 RMS
+            ampHUD.preferAmplitude(false);
         } else {
-            ampHUD.preferAmplitude(true);    // 切到 AMP
+            ampHUD.preferAmplitude(true);
         }
     }
 
@@ -937,48 +969,39 @@ function keyPressed() {
         console.log(`Audio response mode: ${mode}`);
     }
 
-    // 鼓击检测
     if (key === 'd') {
-        // 切换调试模式
         debugMode = !debugMode;
         drumTrigger?.setDebug?.(debugMode);
         console.log(`Debug mode: ${debugMode ? 'ON' : 'OFF'}`);
     }
     if (key === 't' && drumTrigger) {
-        // 切换鼓击检测开关
         const isEnabled = !drumTrigger._isEnabled;
         drumTrigger.enable(isEnabled);
         console.log(`Drum trigger: ${isEnabled ? 'ON' : 'OFF'}`);
     }
-    // 调节灵敏度 (1-5)
     if (key >= '1' && key <= '5' && drumTrigger) {
         const level = parseInt(key);
-        const sensitivity = Math.pow(level / 5.0, 0.5); // 0.2, 0.4, 0.6, 0.8, 1.0
+        const sensitivity = Math.pow(level / 5.0, 0.5);
         drumTrigger.setSensitivity(sensitivity);
         console.log(`Drum sensitivity: ${level}/5 (${sensitivity.toFixed(1)})`);
     }
 
-    // 重置统计
     if (key === 'r' && drumTrigger) {
         drumTrigger.resetStats();
         console.log('Drum trigger stats reset');
     }
-    // 显示当前状态
     if (key === 'i' && drumTrigger) {
         const stats = drumTrigger.getStats();
         console.log('Drum Trigger Stats:', stats);
     }
 
-    // Amplitude 面板缩放模式切换
     if (key === 'a' && ampHUD) {
-        // 切换动态缩放开关
         const status = ampHUD.getStatus();
         ampHUD.setDynamicScale(!status.dynamicScale);
         const newStatus = ampHUD.getStatus();
         console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
     }
     if (key === 's' && ampHUD) {
-        // 切换瞬间适应模式（仅在动态缩放开启时有效）
         const status = ampHUD.getStatus();
         if (status.dynamicScale) {
             ampHUD.setInstantAdapt(!status.instantAdapt);
@@ -989,9 +1012,14 @@ function keyPressed() {
         }
     }
 
+    if (key === 'x' && isMobile()) {
+        console.log('手动触发移动端测试');
+        if (drumTrigger && drumTrigger._onTrigger) {
+            drumTrigger._onTrigger('MANUAL_MOBILE_TEST');
+        }
+    }
 }
 
-//节拍器按钮开启时变成绿色
 function updateMetroBtnUI() {
     const btn = select('#metro-toggle');
     const arrowBtn = select('#rhythm-arrow');
@@ -1005,7 +1033,6 @@ function updateMetroBtnUI() {
     btn.style('color', textColor);
     btn.style('border', `1px solid ${borderColor}`);
 
-    // 同步箭头按钮样式
     if (arrowBtn) {
         arrowBtn.style('background', bgColor);
         arrowBtn.style('color', textColor);
@@ -1016,13 +1043,24 @@ function updateMetroBtnUI() {
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
-    //鼠标点击仅在调试模式下工作，主要用于测试
     if (running && debugMode) {
         const hitTime = rm._t();
         rm.registerHit();
         SweepMode?.addHitNow?.();
-        HitMarkers.addHitMarker(hitTime);  // 添加打击标记
+        HitMarkers.addHitMarker(hitTime);
         judgeLineGlow = 1;
         console.log('Manual hit (debug mode)');
+    }
+}
+
+function touchStarted() {
+    if (running && (debugMode || isMobile())) {
+        const hitTime = rm._t();
+        rm.registerHit();
+        SweepMode?.addHitNow?.();
+        HitMarkers.addHitMarker(hitTime);
+        judgeLineGlow = 1;
+        console.log('触摸测试命中已注册 (移动端)');
+        return false;
     }
 }
