@@ -14,22 +14,10 @@
                 description: 'Classic Ravel Bolero rhythm'
             },
             {
-                id: 'rumba',
-                name: 'Rumba Clave',
-                file: 'assets/rumba.json',
-                description: 'Traditional Rumba pattern'
-            },
-            {
-                id: 'son',
-                name: 'Son Clave',
-                file: 'assets/son.json',
-                description: '2-3 Son clave pattern'
-            },
-            {
-                id: 'bossa',
-                name: 'Bossa Nova',
-                file: 'assets/bossa.json',
-                description: 'Brazilian Bossa Nova rhythm'
+                id: 'tumbao',
+                name: 'Tumbao',
+                file: 'assets/tumbao.json',
+                description: 'Traditional Tumbao pattern'
             }
         ],
 
@@ -79,35 +67,20 @@
             `;
             button.style.cssText = `
                 background: #444;
-                color: #eee;
-                border: 1px solid #555;
-                border-radius: 6px 0 0 6px;
-                padding: 12px 16px;
-                font-size: 14px;
-                font-weight: 500;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                min-width: 140px;
-                text-align: left;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            `;
-
-            // 创建下拉箭头按钮
-            const arrowBtn = document.createElement('button');
-            arrowBtn.id = 'chart-selector-arrow';
-            arrowBtn.innerHTML = '▼';
-            arrowBtn.style.cssText = `
-                background: #444;
-                color: #eee;
-                border: 1px solid #555;
-                border-left: none;
-                border-radius: 0 6px 6px 0;
-                padding: 12px 8px;
-                font-size: 12px;
-                cursor: pointer;
-                transition: all 0.2s ease;
+        color: #eee;
+        border: 1px solid #555;
+        border-radius: 6px;  /* 统一圆角，不再分离 */
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 140px;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        white-space: nowrap;
             `;
 
             // 创建下拉菜单
@@ -205,7 +178,6 @@
 
             // 组装UI
             container.appendChild(button);
-            container.appendChild(arrowBtn);
             container.appendChild(dropdown);
             container.appendChild(loadingIndicator);
 
@@ -221,7 +193,7 @@
             this.elements = {
                 container,
                 button,
-                arrowBtn,
+                arrowBtn: null,
                 dropdown,
                 loadingIndicator,
                 currentName: document.getElementById('chart-current-name')
@@ -230,9 +202,9 @@
 
         // 设置事件监听器
         setupEventListeners() {
-            const { button, arrowBtn, dropdown } = this.elements;
+            const { button, dropdown } = this.elements;
 
-            // 主按钮和箭头按钮点击
+            // 单个按钮点击事件
             const toggleDropdown = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -248,7 +220,6 @@
             };
 
             button.addEventListener('click', toggleDropdown);
-            arrowBtn.addEventListener('click', toggleDropdown);
 
             // 选项点击
             dropdown.addEventListener('click', (e) => {
@@ -274,20 +245,18 @@
             });
 
             // 鼠标悬停效果
-            [button, arrowBtn].forEach(btn => {
-                btn.addEventListener('mouseenter', () => {
-                    if (!this.isLoading) {
-                        btn.style.background = '#555';
-                        btn.style.borderColor = '#666';
-                    }
-                });
+            button.addEventListener('mouseenter', () => {
+                if (!this.isLoading) {
+                    button.style.background = '#555';
+                    button.style.borderColor = '#666';
+                }
+            });
 
-                btn.addEventListener('mouseleave', () => {
-                    if (!this.isLoading) {
-                        btn.style.background = '#444';
-                        btn.style.borderColor = '#555';
-                    }
-                });
+            button.addEventListener('mouseleave', () => {
+                if (!this.isLoading) {
+                    button.style.background = '#444';
+                    button.style.borderColor = '#555';
+                }
             });
         },
 
@@ -296,7 +265,11 @@
             if (this.isLoading) return;
 
             this.elements.dropdown.style.display = 'block';
-            this.elements.arrowBtn.innerHTML = '▲';
+            // 更新箭头方向
+            const arrowSpan = this.elements.button.querySelector('span:last-child');
+            if (arrowSpan) {
+                arrowSpan.innerHTML = '▲';
+            }
 
             // 更新选中状态
             const options = this.elements.dropdown.querySelectorAll('.chart-option');
@@ -312,7 +285,12 @@
         // 关闭下拉菜单
         closeDropdown() {
             this.elements.dropdown.style.display = 'none';
-            this.elements.arrowBtn.innerHTML = '▼';
+
+            // 恢复箭头方向
+            const arrowSpan = this.elements.button.querySelector('span:last-child');
+            if (arrowSpan) {
+                arrowSpan.innerHTML = '▼';
+            }
         },
 
         // 选择谱子
@@ -444,15 +422,11 @@
                 this.elements.loadingIndicator.style.display = 'block';
                 this.elements.dropdown.style.display = 'none';
                 this.elements.button.style.opacity = '0.6';
-                this.elements.arrowBtn.style.opacity = '0.6';
                 this.elements.button.style.cursor = 'not-allowed';
-                this.elements.arrowBtn.style.cursor = 'not-allowed';
             } else {
                 this.elements.loadingIndicator.style.display = 'none';
                 this.elements.button.style.opacity = '1';
-                this.elements.arrowBtn.style.opacity = '1';
                 this.elements.button.style.cursor = 'pointer';
-                this.elements.arrowBtn.style.cursor = 'pointer';
             }
         },
 
@@ -491,18 +465,14 @@
 
         // 更新按钮样式
         updateButtonStyle() {
-            // 可以在这里添加不同谱子的特殊样式
+            // 短暂显示绿色表示切换成功
             this.elements.button.style.background = '#22c55e';
             this.elements.button.style.borderColor = '#16a34a';
-            this.elements.arrowBtn.style.background = '#22c55e';
-            this.elements.arrowBtn.style.borderColor = '#16a34a';
 
-            // 短暂显示然后恢复
+            // 500ms后恢复原色
             setTimeout(() => {
                 this.elements.button.style.background = '#444';
                 this.elements.button.style.borderColor = '#555';
-                this.elements.arrowBtn.style.background = '#444';
-                this.elements.arrowBtn.style.borderColor = '#555';
             }, 500);
         },
 

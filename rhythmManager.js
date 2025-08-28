@@ -43,23 +43,43 @@ class RhythmManager {
     }
 
     /* ---------- 载入谱面 ---------- */
-    initChart(arr) {
+    initChart(arr, isMilliseconds = false) {
         this.resetState();
         for (const n of arr) {
-            const tMs = n.time * this.noteInterval + INITIAL_OFFSET;
+            let tMs;
+            if (isMilliseconds) {
+                // ★ 新增：直接使用毫秒时间（来自beats转换后的数据）
+                tMs = Number(n.time) || 0;
+            } else {
+                // ★ 保持原有逻辑：时间单位 * noteInterval + offset
+                const INITIAL_OFFSET = 100; // 让谱面整体右移100ms
+                const TAIL_GAP_EIGHTHS = 2;
+                tMs = n.time * this.noteInterval + INITIAL_OFFSET;
+            }
             this.scoreNotes.push({
                 time: tMs,
                 type: n.type,
-                abbr: n.abbr || n.type[0].toUpperCase(),
-                accent: (n.accent !== undefined ? n.accent : 0) | 0
+                abbr: n.abbr || (n.type ? n.type[0].toUpperCase() : ''),
+                accent: (n.accent !== undefined ? n.accent : 0) | 0,
+                // ★ 保留所有额外字段
+                clave23: n.clave23 || 0,
+                clave32: n.clave32 || 0,
+                // 保留原始数据的引用
+                _originalNote: n
             });
         }
         // 计算总时长
         const N = this.scoreNotes.length;
-        this.totalDuration = N > 0 ? (this.scoreNotes[N - 1].time + this.noteInterval * TAIL_GAP_EIGHTHS) : 0;
+        if (N > 0) {
+            const TAIL_GAP_EIGHTHS = 2;
+            const tailGapMs = isMilliseconds ? (this.noteInterval * TAIL_GAP_EIGHTHS) : 0;
+            this.totalDuration = this.scoreNotes[N - 1].time + tailGapMs;
+        } else {
+            this.totalDuration = 0;
+        }
         this.feedbackStates = this._emptyFeedback();
+        console.log(`RhythmManager初始化完成: ${N}个音符, 总时长=${this.totalDuration.toFixed(0)}ms, 毫秒模式=${isMilliseconds}`);
     }
-
     _emptyFeedback() {
         return this.scoreNotes.map(() => ({
             judged: false, result: null, hitTime: null, fadeTimer: 0
@@ -104,6 +124,12 @@ class RhythmManager {
         };
         const want = norm(kind);
 
+        // ★ 调整判定窗口常量
+        const MISS_WINDOW = 140;     // ms：超出即 Miss
+        const EARLY_WINDOW = 25;
+        const PERFECT_WIN = 12;
+        const GOOD_WINDOW = 45;
+
         let bestDiff = Infinity;
         let bestIdx = -1;
 
@@ -131,6 +157,7 @@ class RhythmManager {
         const hitNote = this.scoreNotes[bestIdx];
         st.judged = true;
         st.hitTime = hitTime;
+
         if (bestDiff <= PERFECT_WIN) {
             st.result = "Perfect";
             if (typeof StarEffects !== 'undefined' && typeof isBottomDrum === 'function') {
@@ -163,6 +190,7 @@ class RhythmManager {
     checkAutoMiss() {
         const now = this._t() % this.totalDuration;
         const deltaMs = deltaTime; // p5.js 提供的帧间时间
+        const MISS_WINDOW = 140;
 
         for (let i = 0; i < this.scoreNotes.length; i++) {
             const n = this.scoreNotes[i];
@@ -193,13 +221,19 @@ class RhythmManager {
         const res = [];
         const N = this.scoreNotes.length;
         const offsetArr = [-1, 0, 1];
+
         for (let offset of offsetArr) {
             for (let i = 0; i < N; i++) {
                 const n = this.scoreNotes[i];
                 const t = n.time + offset * this.totalDuration;
                 // 可视区音符
                 if (now - t < 5000 && t - now < 1000 * 60) {
-                    res.push({ ...n, _feedbackIdx: i, _isMainLoop: offset === 0, _displayTime: t });
+                    res.push({
+                        ...n,
+                        _feedbackIdx: i,
+                        _isMainLoop: offset === 0,
+                        _displayTime: t
+                    });
                 }
             }
         }
@@ -211,7 +245,8 @@ class RhythmManager {
         let hit = 0, miss = 0;
         for (const n of this.feedbackStates) {
             if (!n.judged) continue;
-            if (n.result === "Perfect" || n.result === "Good") hit++; else miss++;
+            if (n.result === "Perfect" || n.result === "Good") hit++;
+            else miss++;
         }
         return { hit, miss };
     }

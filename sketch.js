@@ -259,7 +259,7 @@ function armNextTickNow() {
 
 /* ------------ p5 preload ------------- */
 function preload() {
-    chartJSON = loadJSON('assets/bolero.json');
+    //chartJSON = loadJSON('assets/bolero.json');
     metro = new Metronome({ bpm: 120, beatsPerBar: 4 });
     metro.preload('assets/metronome/Tic.wav', 'assets/metronome/Toc.wav', 'assets/clave/Clave.wav');
 }
@@ -433,23 +433,23 @@ function setup() {
     window.addEventListener('resize', () => layoutRects(cnv));
 
     rm = new RhythmManager();
-    rm.initChart(chartJSON.conga);
+    //rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
-    console.log('JSON数据诊断');
-    console.log('原始JSON数据:', chartJSON);
-    console.log('conga数组:', chartJSON.conga);
-    console.log('第一个音符原始数据:', chartJSON.conga[0]);
-    console.log('scoreNotes数据:', rm.scoreNotes);
-    console.log('第一个scoreNote:', rm.scoreNotes[0]);
+    // console.log('JSON数据诊断');
+    // console.log('原始JSON数据:', chartJSON);
+    // console.log('conga数组:', chartJSON.conga);
+    // console.log('第一个音符原始数据:', chartJSON.conga[0]);
+    // console.log('scoreNotes数据:', rm.scoreNotes);
+    // console.log('第一个scoreNote:', rm.scoreNotes[0]);
 
-    const firstNote = rm.scoreNotes[0];
-    console.log('字段检查:', {
-        hasTime: 'time' in firstNote,
-        hasType: 'type' in firstNote,
-        hasClave23: 'clave23' in firstNote,
-        clave23Value: firstNote.clave23
-    });
+    // const firstNote = rm.scoreNotes[0];
+    // console.log('字段检查:', {
+    //     hasTime: 'time' in firstNote,
+    //     hasType: 'type' in firstNote,
+    //     hasClave23: 'clave23' in firstNote,
+    //     clave23Value: firstNote.clave23
+    // });
 
     NoteIlluminateFeedback.init({
         rm,
@@ -466,17 +466,17 @@ function setup() {
         isBottomDrum: (n) => isBottomDrum(n)
     });
 
-    if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave23' in rm.scoreNotes[0])) {
-        console.warn('检测到clave字段丢失，正在修复...');
+    // if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave23' in rm.scoreNotes[0])) {
+    //     console.warn('检测到clave字段丢失，正在修复...');
 
-        for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
-            const originalNote = chartJSON.conga[i];
-            const scoreNote = rm.scoreNotes[i];
-            scoreNote.clave23 = originalNote.clave23;
-        }
+    //     for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
+    //         const originalNote = chartJSON.conga[i];
+    //         const scoreNote = rm.scoreNotes[i];
+    //         scoreNote.clave23 = originalNote.clave23;
+    //     }
 
-        console.log('修复后的第一个音符:', rm.scoreNotes[0]);
-    }
+    //     console.log('修复后的第一个音符:', rm.scoreNotes[0]);
+    // }
 
     StarEffects.init();
 
@@ -600,6 +600,238 @@ function setup() {
         }
         _emaE = 0, _emaVar = 1;
     });
+
+    //初始化谱子选择器
+    initChartSelector();
+}
+
+function initChartSelector() {
+    // 初始化谱子选择器
+    ChartSelector.init({
+        onChartChange: (chart, chartData) => {
+            console.log('Switching to chart:', chart.name);
+
+            // 如果正在运行，先停止
+            if (running || counting || waitingForFirstHit) {
+                handleReset();
+            }
+
+            // 应用新谱子
+            applyNewChart(chartData);
+        },
+
+        onLoadStart: (chart) => {
+            console.log('Loading chart:', chart.name);
+            // 可选：显示加载状态
+        },
+
+        onLoadComplete: (chart, chartData) => {
+            console.log('Chart loaded successfully:', chart.name);
+        },
+
+        onLoadError: (chart, error) => {
+            console.error('Failed to load chart:', chart.name, error);
+        }
+    });
+
+    // 加载默认谱子（Bolero）
+    loadDefaultChart();
+}
+
+function applyNewChart(chartData) {
+    try {
+        // 更新全局chartJSON变量
+        window.chartJSON = chartData;
+        // 简化：直接处理beats到毫秒的转换
+        const processedNotes = convertBeatsToMilliseconds(chartData.conga, chartData.bpm || 120);
+
+        // 重新初始化RhythmManager
+        rm.initChart(processedNotes, true); // true = 毫秒时间模式
+
+        // 如果JSON包含BPM信息，应用它
+        if (chartData.bpm && typeof chartData.bpm === 'number') {
+            const speed = bpmToSpeed(chartData.bpm);
+            rm.setBPM(chartData.bpm);
+            rm.setSpeedFactor(speed);
+
+            // 更新UI
+            const speedSlider = select('#speed-slider');
+            const speedVal = select('#speed-val');
+            const bpmVal = select('#bpm-val');
+
+            if (speedSlider && speedVal && bpmVal) {
+                speedSlider.value(speed);
+                speedVal.html(speed.toFixed(2));
+                bpmVal.html(Math.round(chartData.bpm));
+            }
+
+            console.log(`应用谱子BPM: ${chartData.bpm}, 速度因子: ${speed.toFixed(2)}`);
+        }
+
+        // 重新设置SweepMode
+        SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
+        SweepMode.setBeatMs(rm.noteInterval);
+        SweepMode.setStartGap(COUNTDOWN_MS || 0);
+        SweepMode.clearHits();
+        SweepMode.snapToLeft();
+
+        // 重新初始化反馈系统
+        // if (rm.scoreNotes && rm.scoreNotes.length > 0) {
+        //     // 确保所有必要的字段存在
+        //     for (let i = 0; i < rm.scoreNotes.length; i++) {
+        //         const scoreNote = rm.scoreNotes[i];
+        //         const originalNote = processedChartData.conga[i];
+
+        //         // 复制所有字段
+        //         scoreNote.clave23 = originalNote.clave23 || 0;
+        //         scoreNote.clave32 = originalNote.clave32 || 0;
+        //         scoreNote.accent = originalNote.accent || 0;
+        //         scoreNote.abbr = originalNote.abbr || originalNote.type?.[0]?.toUpperCase() || '';
+        //     }
+        // }
+
+        // 重置所有状态
+        running = false;
+        counting = false;
+        isPaused = false;
+        waitingForFirstHit = false;
+        pausedAtLoopTime = 0;
+        pausedAtWallTime = 0;
+        resumePosition = 0;
+        lastRMCycle = 0;
+
+        // 清除效果
+        StarEffects.clear();
+        HitMarkers.clearAllMarkers();
+        resetStatusTracker();
+
+        // 重置节拍器
+        if (metro) {
+            metro.reset();
+            resetMetronomeSchedulerState();
+        }
+
+        //const chartName = chartData.name || 'Unknown';
+        console.log(`新谱子应用成功: ${chartData.name || 'Unknown'}, ${rm.scoreNotes.length}个音符`);
+
+    } catch (error) {
+        console.error('应用新谱子失败:', error);
+        alert('切换谱子失败: ' + error.message);
+    }
+}
+
+// function processChartData(rawChartData) {
+//     // 创建处理后的数据副本
+//     const processedData = JSON.parse(JSON.stringify(rawChartData));
+
+//     // 获取BPM，默认使用120
+//     const bpm = rawChartData.bpm || 120;
+//     const beatDurationMs = 60000 / bpm; // 一拍的毫秒数
+
+//     console.log(`处理谱子数据: BPM=${bpm}, 每拍=${beatDurationMs.toFixed(1)}ms`);
+
+//     // 将beats时间转换为毫秒时间
+//     processedData.conga = rawChartData.conga.map((note, index) => {
+//         const processedNote = { ...note };
+
+//         // 将beats转换为毫秒
+//         processedNote.time = Math.round(note.time * beatDurationMs);
+
+//         // 确保必要字段存在
+//         if (!processedNote.abbr && processedNote.type) {
+//             processedNote.abbr = processedNote.type[0].toUpperCase();
+//         }
+
+//         // 设置默认值
+//         processedNote.accent = processedNote.accent || 0;
+//         processedNote.clave23 = processedNote.clave23 || 0;
+//         processedNote.clave32 = processedNote.clave32 || 0;
+
+//         return processedNote;
+//     });
+
+//     // 按时间排序（防止数据乱序）
+//     processedData.conga.sort((a, b) => a.time - b.time);
+
+//     console.log(`时间转换完成: ${processedData.conga.length}个音符, 时长=${Math.max(...processedData.conga.map(n => n.time)).toFixed(0)}ms`);
+
+//     return processedData;
+// }
+
+function convertBeatsToMilliseconds(congaArray, bpm) {
+    const beatDurationMs = 60000 / bpm;
+    console.log(`转换beats到毫秒: BPM=${bpm}, 每拍=${beatDurationMs.toFixed(1)}ms`);
+
+    const processedNotes = congaArray.map((note, index) => {
+        const processedNote = { ...note };
+
+        // 转换时间并添加起始延迟
+        const INITIAL_OFFSET = 100; // 500ms起始延迟
+        processedNote.time = Math.round(note.time * beatDurationMs) + INITIAL_OFFSET;
+
+        // 确保字段完整
+        if (!processedNote.abbr && processedNote.type) {
+            processedNote.abbr = processedNote.type[0].toUpperCase();
+        }
+        processedNote.accent = processedNote.accent || 0;
+        processedNote.clave23 = processedNote.clave23 || 0;
+        processedNote.clave32 = processedNote.clave32 || 0;
+
+        return processedNote;
+    });
+
+    processedNotes.sort((a, b) => a.time - b.time);
+
+    console.log(`时间转换完成: ${processedNotes.length}个音符, 最大时间=${Math.max(...processedNotes.map(n => n.time))}ms`);
+    return processedNotes;
+}
+
+
+async function loadDefaultChart() {
+    try {
+        // 首先尝试加载Tumbao谱子
+        let defaultFile = 'assets/tumbao.json';
+        let fallbackFile = 'assets/bolero.json';
+
+        let response = await fetch(defaultFile);
+        if (!response.ok) {
+            console.warn(`无法加载${defaultFile}，尝试加载${fallbackFile}`);
+            response = await fetch(fallbackFile);
+            if (!response.ok) {
+                throw new Error(`无法加载任何默认谱子: HTTP ${response.status}`);
+            }
+        }
+
+        const chartData = await response.json();
+
+        console.log('=== JSON数据诊断 ===');
+        console.log('原始JSON:', chartData);
+        console.log('conga数组长度:', chartData.conga?.length);
+        console.log('第一个音符:', chartData.conga?.[0]);
+
+        // 设置为当前谱子
+        window.chartJSON = chartData;
+        ChartSelector.currentChart = chartData;
+        applyNewChart(chartData);
+
+        // ★ 处理后的数据诊断
+        console.log('=== 处理后诊断 ===');
+        console.log('scoreNotes长度:', rm.scoreNotes?.length);
+        console.log('第一个scoreNote:', rm.scoreNotes?.[0]);
+        console.log('总时长:', rm.totalDuration + 'ms');
+
+        // 更新选择器显示的名称
+        const currentName = document.getElementById('chart-current-name');
+        if (currentName) {
+            currentName.textContent = chartData.name || 'Default';
+        }
+
+        console.log('默认谱子加载完成:', chartData.name || 'Unknown');
+
+    } catch (error) {
+        console.error('加载默认谱子失败:', error);
+        alert('无法加载默认谱子: ' + error.message);
+    }
 }
 
 async function tryStartMicEarly() {
