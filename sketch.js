@@ -759,7 +759,8 @@ function applyNewChart(chartData) {
 // }
 
 function convertBeatsToMilliseconds(congaArray, bpm) {
-    const beatDurationMs = 60000 / bpm;
+    const originalBeatDurationMs = 60000 / bpm;
+    const beatDurationMs = originalBeatDurationMs * 0.6;
     console.log(`转换beats到毫秒: BPM=${bpm}, 每拍=${beatDurationMs.toFixed(1)}ms`);
 
     const processedNotes = congaArray.map((note, index) => {
