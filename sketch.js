@@ -17,7 +17,7 @@ window.userStartAudio = async function () {
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
-let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel;
+let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel, scoreHUD;
 let running = false, counting = false;
 let ctStart = 0;
 let judgeLineGlow = 0;
@@ -237,6 +237,55 @@ window.onRhythmModeChange = function (mode, modeData) {
     }
 };
 
+function calculateHitTiming() {
+    // 根据你现有的判定逻辑调整
+    if (rm && rm.getTimingError) {
+        const error = Math.abs(rm.getTimingError());
+        if (error < 30) return 'perfect';
+        if (error < 80) return 'good';
+        return 'miss';
+    }
+    // 简化的随机判定（用于演示）
+    const rand = Math.random();
+    if (rand > 0.8) return 'perfect';  // 20% 完美
+    if (rand > 0.4) return 'good';     // 40% 良好  
+    return 'miss';                     // 40% 失误
+}
+
+function detectHitType() {
+    // 基于DrumTrigger的频谱分析
+    if (drumTrigger && drumTrigger._fft && !drumTrigger._fallbackMode) {
+        try {
+            const spectrum = drumTrigger._fft.analyze();
+            if (spectrum && spectrum.length > 0) {
+                // 分析不同频段的能量
+                const lowEnergy = spectrum.slice(0, 64).reduce((a, b) => a + b, 0) / 64;
+                const midEnergy = spectrum.slice(64, 256).reduce((a, b) => a + b, 0) / 192;
+                const highEnergy = spectrum.slice(256, 512).reduce((a, b) => a + b, 0) / 256;
+
+                const totalEnergy = lowEnergy + midEnergy + highEnergy;
+
+                // 基于频谱特征判断击打类型
+                if (lowEnergy / totalEnergy > 0.6) {
+                    return 'bass'; // 低频为主 = 低音
+                } else if (highEnergy / totalEnergy > 0.4) {
+                    return 'slap'; // 高频明显 = 掌击
+                } else if (midEnergy > lowEnergy && midEnergy > highEnergy) {
+                    return 'open'; // 中频为主 = 开音
+                } else {
+                    return 'tip'; // 其他情况 = 指尖
+                }
+            }
+        } catch (e) {
+            console.warn('频谱分析失败:', e);
+        }
+    }
+
+    // 回退到随机分配
+    const types = ['slap', 'open', 'tip', 'bass'];
+    return types[Math.floor(Math.random() * types.length)];
+}
+
 function armNextTickNow() {
     if (!metronomeEnabled || !metro || !metro.isLoaded() || !rm?.scoreNotes?.length) return;
 
@@ -273,7 +322,7 @@ window.speedToBPM = speedToBPM;
 
 const GRID = { pad: 10, topHRatio: 0.5 };
 const RECT = {
-    top: {}, sweep: {}, fft: {}, amp: {}, drum: {}
+    top: {}, sweep: {}, fft: {}, amp: {}, score: {}
 };
 let _canvasHost;
 
@@ -305,7 +354,7 @@ function layoutRects() {
         w: halfW,
         h: RECT.rightHalf.h - pad * 2
     };
-    RECT.drum = {
+    RECT.score = {
         x: RECT.rightHalf.x + pad + halfW + gap,
         y: RECT.rightHalf.y + pad,
         w: RECT.rightHalf.w - pad * 2 - halfW - gap,
@@ -338,6 +387,10 @@ function initDrumTriggerForMobile() {
                     SweepMode?.addHitNow?.();
                     HitMarkers.addHitMarker(hitTime);
                     judgeLineGlow = 1;
+
+                    const timing = calculateHitTiming();
+                    const hitType = detectHitType();
+                    scoreHUD?.registerHit?.(timing, hitType);
                 }
             }
         });
@@ -395,6 +448,12 @@ function initDrumTriggerForDesktop() {
                 SweepMode?.addHitNow?.();
                 HitMarkers.addHitMarker(hitTime);
                 judgeLineGlow = 1;
+
+                // ★ 添加ScorePanel集成
+                const timing = calculateHitTiming();
+                const hitType = detectHitType();
+                scoreHUD?.registerHit?.(timing, hitType);
+
                 if (debugMode) {
                     console.log(`桌面端鼓击检测: ${reason}`);
                 }
@@ -502,6 +561,11 @@ function setup() {
     mic = new p5.AudioIn();
     mic.start();
 
+    //初始化打分系统
+    scoreHUD = ScorePanel.init({
+        rectProvider: () => RECT.score,
+    })
+
     fftHUD = FFTPanel.init({
         mic,
         rectProvider: () => RECT.fft,
@@ -603,6 +667,47 @@ function setup() {
 
     //初始化谱子选择器
     initChartSelector();
+
+    //打分系统
+    setTimeout(() => {
+        if (window.rightPanelScoring) {
+            integrateScoring();
+        }
+    }, 2000);
+}
+
+function integrateScoring() {
+    // 集成击打检测
+    if (drumTrigger && drumTrigger._onTrigger) {
+        const originalTrigger = drumTrigger._onTrigger;
+        drumTrigger._onTrigger = function (reason) {
+            originalTrigger.call(this, reason);
+
+            // 计算击打质量
+            const timing = calculateHitTiming();
+            const hitType = detectHitType();
+
+            // 通知打分系统
+            window.scoringPanelInterface.onHit(timing, hitType);
+        };
+    }
+}
+
+function calculateHitTiming() {
+    // 根据你现有的判定逻辑
+    if (rm && rm.getTimingError) {
+        const error = Math.abs(rm.getTimingError());
+        if (error < 30) return 'perfect';
+        if (error < 80) return 'good';
+        return 'miss';
+    }
+    return 'good';
+}
+
+function detectHitType() {
+    // 基于现有音频分析或默认随机
+    const types = ['slap', 'open', 'tip', 'bass'];
+    return types[Math.floor(Math.random() * types.length)];
 }
 
 function initChartSelector() {
@@ -1041,7 +1146,7 @@ function handleReset() {
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
     SweepMode._phaseBiasMs = 0;
     SweepMode.snapToLeft();
-
+    scoreHUD?.reset?.();
     StarEffects.clear();
     HitMarkers.clearAllMarkers();
     resetStatusTracker();
@@ -1222,6 +1327,7 @@ function draw() {
 
     fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
     ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+    scoreHUD?.render?.(drawingContext, RECT.score.x, RECT.score.y, RECT.score.w, RECT.score.h);
 
     if (debugMode && drumTrigger) {
         const debugW = 200, debugH = 120;
@@ -1422,6 +1528,55 @@ function getCurrentSyncQuality() {
     }
 }
 
+function handleScorePanelClick(x, y, w, h) {
+    const padding = 6;
+
+    // 检查模式滑块点击
+    const sliderH = Math.floor(h * 0.15);
+    if (y >= padding && y <= padding + sliderH) {
+        // 切换模式
+        const newMode = !scoreHUD.getScoreData().isEntertainmentMode;
+        scoreHUD.setMode?.(newMode);
+        console.log(`模式切换: ${newMode ? '娱乐模式' : '练习模式'}`);
+        return;
+    }
+
+    // 检查右下角节拍选择器点击
+    const batteryY = padding + sliderH + padding;
+    const batteryH = Math.floor(h * 0.30);
+    const bottomY = batteryY + batteryH + padding;
+    const bottomH = h - bottomY - padding;
+    const halfW = Math.floor((w - padding * 3) / 2);
+
+    // 右下角区域
+    if (x >= padding + halfW + padding && y >= bottomY) {
+        const relX = x - (padding + halfW + padding);
+        const relY = y - bottomY;
+
+        // 计算点击的圆圈
+        const circleSize = Math.min(halfW / 3, bottomH / 4);
+        const centerX1 = halfW * 0.3;
+        const centerX2 = halfW * 0.7;
+        const centerY1 = bottomH * 0.4;
+        const centerY2 = bottomH * 0.75;
+
+        const circles = [
+            { x: centerX1, y: centerY1, index: 0 },
+            { x: centerX2, y: centerY1, index: 1 },
+            { x: centerX1, y: centerY2, index: 2 },
+            { x: centerX2, y: centerY2, index: 3 }
+        ];
+
+        circles.forEach(circle => {
+            const dist = Math.sqrt((relX - circle.x) ** 2 + (relY - circle.y) ** 2);
+            if (dist <= circleSize / 2) {
+                scoreHUD.selectRhythm?.(circle.index);
+                console.log(`选择节拍 ${circle.index + 1}`);
+            }
+        });
+    }
+}
+
 function drawPerformanceStatus() {
     if (!window.statusTracker) return;
     push();
@@ -1573,6 +1728,21 @@ function mousePressed() {
         console.log('手动触发第一击（调试模式）');
         startPerformanceAfterFirstHit();
         return;
+    }
+
+    // ★ 添加ScorePanel交互检测
+    if (scoreHUD && RECT.score) {
+        const mx = mouseX;
+        const my = mouseY;
+        const rect = RECT.score;
+
+        // 检查是否点击在ScorePanel区域内
+        if (mx >= rect.x && mx <= rect.x + rect.w &&
+            my >= rect.y && my <= rect.y + rect.h) {
+
+            handleScorePanelClick(mx - rect.x, my - rect.y, rect.w, rect.h);
+            return;
+        }
     }
 
     if (running && debugMode) {
