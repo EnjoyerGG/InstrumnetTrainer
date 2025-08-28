@@ -28,6 +28,11 @@ let isPaused = false;
 let countdownForResume = false;
 let micReady = false;
 let debugMode = false;
+let waitingForFirstHit = false;
+let resumePosition = 0;
+let pauseAtLoopTime = 0;
+let pauseAtWallTime = 0;
+let lastRMCycle = 0;
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -320,6 +325,13 @@ function initDrumTriggerForMobile() {
             debug: true,
             onTrigger: (reason) => {
                 console.log('移动端鼓击检测:', reason);
+
+                // ★ 检查是否在等待第一击状态
+                if (waitingForFirstHit) {
+                    startPerformanceAfterFirstHit();
+                    return; // 第一击不计入游戏判定
+                }
+
                 if (running) {
                     const hitTime = rm._t();
                     rm.registerHit();
@@ -371,6 +383,12 @@ function initDrumTriggerForDesktop() {
         mic,
         debug: debugMode,
         onTrigger: (reason) => {
+            // ★ 检查是否在等待第一击状态
+            if (waitingForFirstHit) {
+                startPerformanceAfterFirstHit();
+                return; // 第一击不计入游戏判定
+            }
+
             if (running) {
                 const hitTime = rm._t();
                 rm.registerHit();
@@ -609,6 +627,92 @@ async function tryStartMicEarly() {
     }
 }
 
+function startPerformanceAfterFirstHit() {
+    console.log('检测到第一击，开始演奏！');
+
+    waitingForFirstHit = false;
+    running = true;
+    isPaused = false;
+
+    if (countdownForResume) {
+        console.log('=== 从暂停点恢复演奏 ===');
+
+        // ★ 关键修复：使用精确的时间基准恢复
+        const currentWallTime = millis();
+        const targetLoopPosition = pausedAtLoopTime;  // 使用保存的精确循环内时间
+
+        // ★ 正确计算新的startTime：让当前wall时间对应到目标循环位置
+        rm.startTime = currentWallTime - (targetLoopPosition / rm.speedFactor);
+        rm.paused = false;
+
+        console.log(`恢复计算详情:
+- 目标循环位置: ${targetLoopPosition.toFixed(1)}ms
+- 当前wall时间: ${currentWallTime}ms  
+- 速度因子: ${rm.speedFactor}
+- 新startTime: ${rm.startTime.toFixed(1)}ms
+- 验证: rm._t() = ${rm._t().toFixed(1)}ms
+- 验证循环内: ${(rm._t() % rm.totalDuration).toFixed(1)}ms`);
+
+        // ★ 关键：确保SweepMode与RM完全同步
+        SweepMode.setStartGap(0);          // 清除倒计时间隙
+        SweepMode._phaseBiasMs = 0;        // 重置相位偏移
+
+        // ★ 恢复时重置循环计数器到当前循环
+        lastRMCycle = Math.floor(rm._t() / rm.totalDuration);
+        console.log(`设置循环计数器为: ${lastRMCycle}`);
+
+        // ★ 验证同步：确保两个HUD指向相同位置
+        setTimeout(() => {
+            const rmLoopTime = rm._t() % rm.totalDuration;
+            const sweepBarX = SweepMode.getBarX(RECT.sweep.x, RECT.sweep.w);
+            const expectedBarX = RECT.sweep.x + (rmLoopTime / rm.totalDuration) * RECT.sweep.w;
+
+            console.log(`同步验证:
+- RM循环时间: ${rmLoopTime.toFixed(1)}ms (目标: ${targetLoopPosition.toFixed(1)}ms)
+- 偏差: ${Math.abs(rmLoopTime - targetLoopPosition).toFixed(1)}ms
+- SweepMode bar位置: ${sweepBarX.toFixed(1)}px
+- 期望bar位置: ${expectedBarX.toFixed(1)}px
+- Bar位置偏差: ${Math.abs(sweepBarX - expectedBarX).toFixed(1)}px`);
+        }, 50);
+
+    } else {
+        console.log('=== 从头开始演奏 ===');
+
+        // ★ 全新开始：完全重置确保同步
+        rm.reset();
+        rm.startTime = millis();
+        rm.paused = false;
+        pausedAtLoopTime = 0;
+        pausedAtWallTime = 0;
+        resumePosition = 0;
+        lastRMCycle = 0;
+
+        // ★ 重置SweepMode到初始状态
+        SweepMode.clearHits();
+        SweepMode.setStartGap(0);          // 清除倒计时间隙
+        SweepMode._phaseBiasMs = 0;        // 重置相位偏移
+
+        // 重置游戏状态
+        rm.feedbackStates = rm._emptyFeedback();
+        rm._loopIdx = 0;
+        HitMarkers.clearAllMarkers();
+        StarEffects.clear();
+    }
+
+    // 启动节拍器（如果启用）
+    if (metronomeEnabled) {
+        metro.enable(true);
+        resetMetronomeSchedulerState();
+        armNextTickNow();
+    }
+
+    startScoreTickScheduler();
+    console.log('演奏已开始，两个HUD已同步！');
+
+    // ★ 立即验证同步状态
+    //setTimeout(() => verifySyncStatus(), 100);
+}
+
 /* ------------ Control Functions ------------- */
 async function handleStart() {
     if (running || counting) return;
@@ -616,38 +720,82 @@ async function handleStart() {
     try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
 
     if (isPaused) {
-        const pauseMs = (rm.pauseAt - rm.startTime) % rm.totalDuration;
+        // ★ 从暂停状态恢复：使用保存的精确位置
+        console.log(`准备从暂停点恢复:
+- 暂停的循环内时间: ${pausedAtLoopTime.toFixed(1)}ms
+- 暂停的wall时间: ${pausedAtWallTime}ms
+- 当前wall时间: ${millis()}ms`);
+
+        // 为节拍器准备
         const notes = rm.scoreNotes;
         for (let i = 0; i < notes.length; i++) {
-            if (notes[i].time >= pauseMs) { schedulerState.lastIdx = i - 1; break; }
+            if (notes[i].time >= pausedAtLoopTime) {
+                schedulerState.lastIdx = i - 1;
+                break;
+            }
         }
         startCountdown({ resume: true });
         return;
     }
-
+    pausedAtLoopTime = 0;
+    pausedAtWallTime = 0;
+    resumePosition = 0;
     startCountdown({ resume: false });
     metro.reset();
     metro.useInternalGrid = false;
     resetMetronomeSchedulerState();
-    startScoreTickScheduler();
 }
 
 function handlePause() {
     if (!running && !counting) return;
+
+    if (waitingForFirstHit) {
+        // 在等待状态下暂停回到倒计时前状态
+        waitingForFirstHit = false;
+        counting = false;
+        return;
+    }
+
+    console.log('===== 暂停演奏 =====');
+
     isPaused = true; running = false;
 
-    const currentMs = rm._t() % rm.totalDuration;
-    rm.pauseAt = rm.startTime + currentMs;
+    // ★ 关键修复：精确保存暂停时的循环内位置
+    const currentTotalTime = rm._t();  // 获取总时间
+    pausedAtLoopTime = currentTotalTime % rm.totalDuration;  // 循环内时间
+    pausedAtWallTime = millis();  // 当前wall clock时间
+
+    // ★ 为了兼容性保留原变量，但使用新的精确值
+    resumePosition = pausedAtLoopTime;
+    rm.pauseAt = rm.startTime + currentTotalTime;
 
     counting = false;
     rm.pause();
     stopScoreTickScheduler();
     if (metro?.isLoaded) metro.flushFuture();
+
+    console.log(`精确暂停信息:
+- 总时间: ${currentTotalTime.toFixed(1)}ms
+- 循环内时间: ${pausedAtLoopTime.toFixed(1)}ms  
+- Wall clock: ${pausedAtWallTime}ms
+- 速度因子: ${rm.speedFactor}`);
 }
 
 function handleReset() {
-    running = false; counting = false; isPaused = false;
-    rm.reset(); rm.pause(); rm.pauseAt = rm.startTime;
+    running = false;
+    counting = false;
+    isPaused = false;
+    waitingForFirstHit = false;
+
+    // ★ 重置所有时间记录
+    pausedAtLoopTime = 0;
+    pausedAtWallTime = 0;
+    resumePosition = 0;
+    lastRMCycle = 0;
+
+    rm.reset();
+    rm.pause();
+    rm.pauseAt = rm.startTime;
 
     stopScoreTickScheduler();
     resetMetronomeSchedulerState();
@@ -655,13 +803,17 @@ function handleReset() {
 
     try { if (mic && mic.start) mic.start(); } catch (e) { console.warn(e); }
 
+    // 重置SweepMode到初始同步状态
     SweepMode.clearHits();
     SweepMode.setStartGap(COUNTDOWN_MS || 0);
+    SweepMode._phaseBiasMs = 0;
     SweepMode.snapToLeft();
 
     StarEffects.clear();
     HitMarkers.clearAllMarkers();
     resetStatusTracker();
+
+    console.log('系统已重置，所有时间记录清除');
 }
 
 function handleExport() {
@@ -698,6 +850,7 @@ function startCountdown(opts = {}) {
 
     if (!resume) {
         SweepMode.setStartGap(COUNTDOWN_MS);
+        SweepMode._phaseBiasMs = 0;  // 重置相位偏移
         SweepMode.snapToLeft();
     }
 }
@@ -706,7 +859,7 @@ function startCountdown(opts = {}) {
 let frameTimeBuffer = [];
 let lastOptimizeCheck = 0;
 let performanceMode = 'normal';
-
+let resumeMonitorStartTime = 0;
 function draw() {
     if (window.SweepMode?.getCurrentCycle) {
         const cur = SweepMode.getCurrentCycle();
@@ -723,12 +876,28 @@ function draw() {
 
     const frameStart = performance.now();
     background('#3a3a3a');
-    judgeLineGlow *= 0.9; if (judgeLineGlow < 0.01) judgeLineGlow = 0;
+    judgeLineGlow *= 0.9;
+    if (judgeLineGlow < 0.01) judgeLineGlow = 0;
 
     if (performanceMode === 'performance') {
         if (frameCount % 2 === 0) drawGrid();
     } else {
         drawGrid();
+    }
+
+    // ★ 在适当位置添加恢复监控
+    if (running && countdownForResume && !waitingForFirstHit) {
+        if (resumeMonitorStartTime === 0) {
+            resumeMonitorStartTime = millis();
+        } else if (millis() - resumeMonitorStartTime < 5000) {
+            // 前5秒进行监控
+            if (frameCount % 120 === 0) { // 每2秒检查一次
+                monitorSyncAfterResume();
+            }
+        } else {
+            // 监控期结束，重置标志
+            resumeMonitorStartTime = 0;
+        }
     }
 
     let glowLevel = lerp(2, 18, judgeLineGlow);
@@ -745,22 +914,47 @@ function draw() {
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
         if (remain <= 0) {
-            counting = false; running = true; isPaused = false;
-            rm.resume();
-            if (metronomeEnabled) {
-                metro.enable(true);
-                if (!countdownForResume) resetMetronomeSchedulerState();
-                armNextTickNow();
+            counting = false;
+
+            // ★ 进入等待状态时的处理：区分新开始和恢复
+            if (countdownForResume) {
+                // 从暂停恢复：不需特别处理时间，保持暂停状态
+                console.log('倒计时结束，等待第一次打击以从暂停点恢复...');
+            } else {
+                // 全新开始：暂停时间管理器
+                rm.pause();
+                console.log('倒计时结束，时间已暂停，等待第一次打击从头开始...');
             }
-            startScoreTickScheduler();
+
+            waitingForFirstHit = true;
         } else {
             drawCountdown(remain);
         }
     }
 
-    if (running) {
+    // ★ 等待第一击状态
+    if (waitingForFirstHit) {
+        drawWaitingForFirstHit();
+    }
+
+    // ★ 只有在真正运行且不在等待状态时才更新游戏逻辑
+    if (running && !waitingForFirstHit) {
         rm.checkAutoMiss();
+
+        // ★ 关键修复：检查循环切换并清除命中线
+        const currentRMCycle = Math.floor(rm._t() / rm.totalDuration);
+        if (currentRMCycle > lastRMCycle) {
+            console.log(`RM进入新循环 ${currentRMCycle}，清除SweepMode命中线`);
+            SweepMode.clearHits();  // 清除所有命中线
+            lastRMCycle = currentRMCycle;
+        }
+
         rm.checkLoopAndRestart();
+
+        // ★ 定期同步检查（每60帧检查一次）
+        if (frameCount % 60 === 0) {
+            verifySyncStatus();
+        }
     }
 
     if (drumTrigger && drumTrigger._isEnabled) {
@@ -839,6 +1033,105 @@ function draw() {
         }
 
         lastOptimizeCheck = millis();
+    }
+}
+
+function verifySyncStatus() {
+    if (!SweepMode || !rm || !running) return;
+
+    const rmTime = rm._t();
+    const rmLoopTime = rmTime % rm.totalDuration;
+    const rmPhase = rmLoopTime / rm.totalDuration;
+
+    // SweepMode的虚拟时间计算
+    const sweepVirtual = (rmTime * SweepMode._speedMul + SweepMode._phaseBiasMs) % SweepMode._loopMs;
+    const sweepPhase = sweepVirtual / SweepMode._loopMs;
+
+    // 计算期望的虚拟时间
+    const expectedVirtual = (rmLoopTime / rm.totalDuration) * SweepMode._loopMs;
+    const expectedPhase = expectedVirtual / SweepMode._loopMs;
+
+    // 计算相位差
+    let phaseDiff = Math.abs(sweepPhase - expectedPhase);
+    if (phaseDiff > 0.5) phaseDiff = 1 - phaseDiff; // 处理循环边界
+
+    // 如果相位差异超过3%就重新同步
+    if (phaseDiff > 0.03) {
+        console.log(`检测到HUD相位漂移: ${(phaseDiff * 100).toFixed(1)}%, 重新同步`);
+
+        // 强制同步
+        const targetBias = (expectedVirtual - (rmTime * SweepMode._speedMul % SweepMode._loopMs) + SweepMode._loopMs) % SweepMode._loopMs;
+        SweepMode._phaseBiasMs = targetBias;
+
+        console.log(`相位修正完成，偏移设置为: ${targetBias.toFixed(1)}ms`);
+    }
+}
+
+function drawWaitingForFirstHit() {
+    push();
+
+    // 半透明背景遮罩
+    fill(0, 0, 0, 120);
+    rect(0, 0, width, RECT.top.h);
+
+    // 根据是否从暂停恢复显示不同文字
+    const mainText = countdownForResume ? 'Hit to Resume' : 'Hit to Start Performance';
+    let subText = '';
+
+    if (countdownForResume) {
+        // ★ 显示更精确的恢复信息
+        const pausedSec = pausedAtLoopTime / 1000;
+        subText = `Resume from ${pausedSec.toFixed(1)}s in loop`;
+    } else {
+        subText = 'Start from Beginning';
+    }
+
+    // 主要提示文字
+    textSize(48);
+    fill(255, 215, 0);
+    textAlign(CENTER, CENTER);
+    const cy = RECT.top.y + RECT.top.h / 2;
+    text(mainText, width / 2, cy - 20);
+
+    // 副提示文字
+    textSize(20);
+    fill(200, 200, 200);
+    text(subText, width / 2, cy + 25);
+
+    // ★ 调试信息（仅在debug模式下显示）
+    if (debugMode && countdownForResume) {
+        textSize(12);
+        fill(150, 150, 150);
+        text(`Debug: Wall time ${pausedAtWallTime}, Loop time ${pausedAtLoopTime.toFixed(1)}ms`,
+            width / 2, cy + 50);
+    }
+
+    // 鼓的图标 - 闪烁效果
+    const alpha = map(sin(millis() * 0.006), -1, 1, 0.4, 1.0);
+    fill(255, 255, 255, alpha * 255);
+    textSize(28);
+    text('🥁', width / 2, cy + 65);
+
+    pop();
+}
+
+/* ------------ 新增：同步状态监控函数 ------------ */
+function monitorSyncAfterResume() {
+    // 仅在从暂停恢复后的前几秒进行密集监控
+    if (!countdownForResume || !running) return;
+
+    const rmLoopTime = rm._t() % rm.totalDuration;
+    const targetTime = pausedAtLoopTime;
+    const timeDiff = Math.abs(rmLoopTime - targetTime);
+
+    // 如果偏差超过50ms，报告问题
+    if (timeDiff > 50) {
+        console.warn(`恢复后同步偏差过大:
+- 当前循环时间: ${rmLoopTime.toFixed(1)}ms
+- 目标循环时间: ${targetTime.toFixed(1)}ms  
+- 偏差: ${timeDiff.toFixed(1)}ms`);
+    } else {
+        console.log(`恢复同步状态良好，偏差: ${timeDiff.toFixed(1)}ms`);
     }
 }
 
@@ -1043,6 +1336,12 @@ function updateMetroBtnUI() {
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
+    if (waitingForFirstHit && debugMode) {
+        console.log('手动触发第一击（调试模式）');
+        startPerformanceAfterFirstHit();
+        return;
+    }
+
     if (running && debugMode) {
         const hitTime = rm._t();
         rm.registerHit();
@@ -1054,6 +1353,13 @@ function mousePressed() {
 }
 
 function touchStarted() {
+    // ★ 检查是否在等待第一击状态
+    if (waitingForFirstHit && (debugMode || isMobile())) {
+        console.log('触摸触发第一击（移动端）');
+        startPerformanceAfterFirstHit();
+        return false;
+    }
+
     if (running && (debugMode || isMobile())) {
         const hitTime = rm._t();
         rm.registerHit();
@@ -1063,4 +1369,25 @@ function touchStarted() {
         console.log('触摸测试命中已注册 (移动端)');
         return false;
     }
+}
+
+/* ------------ 调试工具函数 ------------ */
+function debugPauseResumeState() {
+    console.log(`=== 暂停恢复状态调试 ===
+当前状态:
+- running: ${running}
+- isPaused: ${isPaused}  
+- waitingForFirstHit: ${waitingForFirstHit}
+- countdownForResume: ${countdownForResume}
+
+时间记录:
+- pausedAtLoopTime: ${pausedAtLoopTime.toFixed(1)}ms
+- pausedAtWallTime: ${pausedAtWallTime}ms
+- resumePosition: ${resumePosition.toFixed(1)}ms
+- rm.speedFactor: ${rm?.speedFactor}
+
+当前时间 (如果running):
+- rm._t(): ${running ? rm._t().toFixed(1) : 'N/A'}ms
+- 循环内时间: ${running ? (rm._t() % rm.totalDuration).toFixed(1) : 'N/A'}ms
+- Wall时间: ${millis()}ms`);
 }
