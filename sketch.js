@@ -28,6 +28,7 @@ let isPaused = false;
 let countdownForResume = false;
 let micReady = false;
 let debugMode = false;
+let waitingForFirstHit = false;  //等待第一次打击
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -151,22 +152,17 @@ function scheduleTicksOnce() {
     // 遍历所有音符，找出需要调度的
     for (let i = 0; i < notes.length; i++) {
         const n = notes[i];
-
         // 计算到下次播放该音符的时间差
         let dt = n.time - nowMs;
-
         // 如果音符时间已过，计算到下个循环的时间
         if (dt < 0) {
             dt += rm.totalDuration;
         }
-
         // 如果超出预调度范围，跳过
         if (dt > aheadMs) {
             continue;
         }
-
         checkedCount++;
-
         // 检查是否应该播放
         let shouldPlay = true;
         if (currentMode === 'clave23') {
@@ -252,6 +248,36 @@ function armNextTickNow() {
     if (DEBUG) console.log(`启动调度: 下个音符在 ${dtNext.toFixed(0)}ms 后, 窗口=${schedulerState.forceWindowMs}ms`);
 }
 
+function startPerformanceAfterFirstHit() {
+    console.log('检测到第一击，开始演奏！');
+    waitingForFirstHit = false;
+    running = true;
+    isPaused = false;
+    // 重置开始时间，让演奏从头开始
+    rm.reset();
+    //rm.resume();
+    rm.startTime = millis();
+    rm.paused = false;
+    SweepMode.clearHits();
+    SweepMode.snapToLeft();  // 扫条回到最左边
+    SweepMode.setStartGap(0); // 清除启动间隙
+    // 4. 重置反馈系统
+    rm.feedbackStates = rm._emptyFeedback();
+    rm._loopIdx = 0;
+    // 5. 清除打击标记和特效
+    HitMarkers.clearAllMarkers();
+    StarEffects.clear();
+    // 启动节拍器（如果启用）
+    if (metronomeEnabled) {
+        metro.enable(true);
+        resetMetronomeSchedulerState();
+        armNextTickNow();
+    }
+    // 启动调度器
+    startScoreTickScheduler();
+    console.log('演奏已开始！');
+}
+
 /* ------------ p5 preload ------------- */
 function preload() {
     chartJSON = loadJSON('assets/bolero.json');
@@ -320,6 +346,11 @@ function initDrumTriggerForMobile() {
             debug: true,
             onTrigger: (reason) => {
                 console.log('移动端鼓击检测:', reason);
+                // 检查是否在等待第一击状态
+                if (waitingForFirstHit) {
+                    startPerformanceAfterFirstHit();
+                    return; // 第一击不计入游戏判定
+                }
                 if (running) {
                     const hitTime = rm._t();
                     rm.registerHit();
@@ -371,6 +402,11 @@ function initDrumTriggerForDesktop() {
         mic,
         debug: debugMode,
         onTrigger: (reason) => {
+            // 检查是否在等待第一击状态
+            if (waitingForFirstHit) {
+                startPerformanceAfterFirstHit();
+                return; // 第一击不计入游戏判定
+            }
             if (running) {
                 const hitTime = rm._t();
                 rm.registerHit();
@@ -629,13 +665,18 @@ async function handleStart() {
     metro.reset();
     metro.useInternalGrid = false;
     resetMetronomeSchedulerState();
-    startScoreTickScheduler();
+    //startScoreTickScheduler();
 }
 
 function handlePause() {
-    if (!running && !counting) return;
+    if (!running && !counting && !waitingForFirstHit) return;
+    if (waitingForFirstHit) {
+        // 在等待状态下暂停回到倒计时前状态
+        waitingForFirstHit = false;
+        counting = false;
+        return;
+    }
     isPaused = true; running = false;
-
     const currentMs = rm._t() % rm.totalDuration;
     rm.pauseAt = rm.startTime + currentMs;
 
@@ -647,6 +688,7 @@ function handlePause() {
 
 function handleReset() {
     running = false; counting = false; isPaused = false;
+    waitingForFirstHit = false;
     rm.reset(); rm.pause(); rm.pauseAt = rm.startTime;
 
     stopScoreTickScheduler();
@@ -662,6 +704,8 @@ function handleReset() {
     StarEffects.clear();
     HitMarkers.clearAllMarkers();
     resetStatusTracker();
+
+    console.log('系统已重置');
 }
 
 function handleExport() {
@@ -700,6 +744,30 @@ function startCountdown(opts = {}) {
         SweepMode.setStartGap(COUNTDOWN_MS);
         SweepMode.snapToLeft();
     }
+}
+
+/* ------------ 新增：等待第一击的视觉提示 ------------ */
+function drawWaitingForFirstHit() {
+    push();
+
+    // 半透明背景遮罩
+    fill(0, 0, 0, 120);
+    rect(0, 0, width, RECT.top.h);
+
+    // 主要提示文字
+    textSize(48);
+    fill(255, 215, 0); // 金黄色
+    textAlign(CENTER, CENTER);
+    const cy = RECT.top.y + RECT.top.h / 2;
+    text('Hit to Start Performance', width / 2, cy - 20);
+
+    // 鼓的图标 - 闪烁效果
+    const alpha = map(sin(millis() * 0.006), -1, 1, 0.4, 1.0);
+    fill(255, 255, 255, alpha * 255);
+    textSize(28);
+    text('🥁', width / 2, cy + 65);
+
+    pop();
 }
 
 /* ------------ Draw Loop ----------- */
@@ -742,23 +810,41 @@ function draw() {
     line(rm.judgeLineX, 0, rm.judgeLineX, splitY - 1);
     drawingContext.restore();
 
+    // if (counting) {
+    //     const remain = COUNTDOWN_MS - (millis() - ctStart);
+    //     if (remain <= 0) {
+    //         counting = false; running = true; isPaused = false;
+    //         rm.resume();
+    //         if (metronomeEnabled) {
+    //             metro.enable(true);
+    //             if (!countdownForResume) resetMetronomeSchedulerState();
+    //             armNextTickNow();
+    //         }
+    //         startScoreTickScheduler();
+    //     } else {
+    //         drawCountdown(remain);
+    //     }
+    // }
     if (counting) {
         const remain = COUNTDOWN_MS - (millis() - ctStart);
         if (remain <= 0) {
-            counting = false; running = true; isPaused = false;
-            rm.resume();
-            if (metronomeEnabled) {
-                metro.enable(true);
-                if (!countdownForResume) resetMetronomeSchedulerState();
-                armNextTickNow();
-            }
-            startScoreTickScheduler();
+            counting = false;
+            // 不立即开始，而是进入等待第一击状态
+            rm.pause();
+            waitingForFirstHit = true;
+            console.log('倒计时结束，等待第一次打击...');
         } else {
             drawCountdown(remain);
         }
     }
 
-    if (running) {
+    // 等待第一击状态
+    if (waitingForFirstHit) {
+        drawWaitingForFirstHit();
+    }
+
+    // 只有在真正运行且不在等待状态时才更新游戏逻辑
+    if (running && !waitingForFirstHit) {
         rm.checkAutoMiss();
         rm.checkLoopAndRestart();
     }
@@ -974,11 +1060,13 @@ function keyPressed() {
         drumTrigger?.setDebug?.(debugMode);
         console.log(`Debug mode: ${debugMode ? 'ON' : 'OFF'}`);
     }
+
     if (key === 't' && drumTrigger) {
         const isEnabled = !drumTrigger._isEnabled;
         drumTrigger.enable(isEnabled);
         console.log(`Drum trigger: ${isEnabled ? 'ON' : 'OFF'}`);
     }
+
     if (key >= '1' && key <= '5' && drumTrigger) {
         const level = parseInt(key);
         const sensitivity = Math.pow(level / 5.0, 0.5);
@@ -1043,6 +1131,13 @@ function updateMetroBtnUI() {
 
 /* ------------ Interaction ----------- */
 function mousePressed() {
+    // 检查是否在等待第一击状态
+    if (waitingForFirstHit && debugMode) {
+        console.log('手动触发第一击（调试模式）');
+        startPerformanceAfterFirstHit();
+        return;
+    }
+
     if (running && debugMode) {
         const hitTime = rm._t();
         rm.registerHit();
@@ -1054,6 +1149,13 @@ function mousePressed() {
 }
 
 function touchStarted() {
+    // 检查是否在等待第一击状态
+    if (waitingForFirstHit && (debugMode || isMobile())) {
+        console.log('触摸触发第一击（移动端）');
+        startPerformanceAfterFirstHit();
+        return false;
+    }
+
     if (running && (debugMode || isMobile())) {
         const hitTime = rm._t();
         rm.registerHit();
