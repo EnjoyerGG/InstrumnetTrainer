@@ -108,12 +108,115 @@
             'assets/songs/song4.mp3'
         ]; // :contentReference[oaicite:2]{index=2}
 
+        // —— Tree Brush 配置 ——
+        // 产生式（简化自 CodePen）
+        const TREE_LIFE_TOTAL_MIN = 4.2;   // 总寿命下限（秒）
+        const TREE_LIFE_TOTAL_MAX = 5.0;   // 总寿命上限（秒）
+        const TREE_GROW_MIN = 1.2;   // 生长期（长枝）下限（秒）
+        const TREE_GROW_MAX = 2.0;   // 生长期上限（秒）
+        const TREE_RULES = {
+            axiom: [{ symbol: 'X', terminalAge: 0 }],
+            productions: {
+                X: { // 分叉
+                    terminalAge: [0.35, 0.55],
+                    successors: [{
+                        p: 1,
+                        items: [
+                            { symbol: 'F', params: () => ({ l: randLen(18, 32), lInit: 0 }) },
+                            { symbol: '[', },
+                            { symbol: '+', params: () => ({ a: randAng(12, 28) }) },
+                            { symbol: 'X' },
+                            { symbol: ']', },
+                            { symbol: '[', },
+                            { symbol: '-', params: () => ({ a: randAng(12, 28) }) },
+                            { symbol: 'X' },
+                            { symbol: ']' }
+                        ]
+                    }]
+                },
+                F: { // 延长枝干
+                    terminalAge: [0.22, 0.40],
+                    successors: [
+                        { p: 0.60, items: [{ symbol: 'F', params: ({ l }) => ({ l, lInit: 1 }) }] },
+                        { p: 0.40, items: [{ symbol: 'F', params: () => ({ l: randLen(10, 26), lInit: 0 }) }] }
+                    ]
+                }
+            }
+        };
+        function rand(min, max) { return min + Math.random() * (max - min); }
+        function randLen(a, b) { return rand(a, b); }   // 像素
+        function randAng(a, b) { return rand(a, b); }   // 度
+
+        // L-system 扩展：按“时间”推进，节点到达 terminalAge 就替换
+        function lExpand(lSys, str, t) {
+            for (let i = str.length - 1; i >= 0; i--) {
+                const node = str[i];
+                node.age = t - (node.birthTime || 0);
+                const prod = lSys.productions[node.symbol];
+                if (!prod) continue;
+                const term = Array.isArray(prod.terminalAge) ? rand(prod.terminalAge[0], prod.terminalAge[1]) : prod.terminalAge;
+                if (node.age >= term) {
+                    // 选择一个后继
+                    const pick = prod.successors.length === 1 ? prod.successors[0]
+                        : prod.successors.find((s, idx, arr) => {
+                            const r = Math.random(); let acc = 0; for (const w of arr) { acc += w.p; if (r <= acc) return w; }
+                        }) || prod.successors[0];
+                    const childBirth = (node.birthTime || 0) + term;
+                    const items = pick.items.map(it => ({
+                        symbol: it.symbol,
+                        birthTime: childBirth,
+                        terminalAge: 0, // 由下一轮决定
+                        params: it.params ? it.params(node.params || {}, node.age) : undefined
+                    }));
+                    str.splice(i, 1, ...items);
+                }
+            }
+        }
+
+        // Turtle 解释器：把 F/+/−/[ ] 转成线段集合，支持分叉栈
+        function turtle(str, origin, baseAngleDeg, onF) {
+            let state = { x: origin.x, y: origin.y, a: baseAngleDeg };
+            const stack = [];
+            for (const n of str) {
+                switch (n.symbol) {
+                    case 'F': {
+                        const len = (n.params && n.params.l) || 12;
+                        const rad = state.a * Math.PI / 180;
+                        const nx = state.x + len * Math.cos(rad);
+                        const ny = state.y + len * Math.sin(rad);
+                        onF(n, { x: state.x, y: state.y }, { x: nx, y: ny });
+                        state.x = nx; state.y = ny;
+                        break;
+                    }
+                    case '+': state.a += (n.params && n.params.a) || 15; break;
+                    case '-': state.a -= (n.params && n.params.a) || 15; break;
+                    case '[': stack.push({ ...state }); break;
+                    case ']': Object.assign(state, stack.pop() || state); break;
+                }
+            }
+        }
+
+
         // 粒子喷泉（替代原来的线段 segments）
-        const EMIT_INTERVAL_MS = 12;
+        const EMIT_INTERVAL_MS = 45;
+        const NOTE_SPAWN_PROB = 0.5;  // 每次触发有 50% 概率才发射
+        const PARTICLE_LIMIT = 160;  // 粒子上限，超过就丢掉最早的
         const NOTE_LIFE = 1600; // 1.6s，整体 1.6~2.4s 后消失
         const NOTE_COLORS = ['#ff4d4f', '#2d8cff', '#22c55e', '#ffd84d', '#ff7ae0'];
         let particles = [];
         let lastEmit = 0;
+        let sprouts = [];                    // 正在生长的“芽点”
+        let distanceFromLastSprout = 0;
+        const SPROUT_LIMIT = 35
+        let nextSprout = 18;                 // 每隔多少像素种一颗芽
+        const SPROUT_DIST_MIN = 42;        // ★ 至少隔 42px 再种
+        const SPROUT_DIST_RAND = 24;       //   再 +[0..24) 随机像素
+        const SPROUT_EMIT_MS = 90;         // ★ 时间节流：两次种植至少间隔 90ms
+        let lastSproutAt = 0;
+
+        //树的颜色控制
+        const COLOR_SPIN_PER_SEC = 120;    // 每秒旋转多少度色相
+        const ENERGY_HUE_RANGE = 100;    // 能量对色相的调制范围
 
         /* ============ WebAudio：同一套音频用于播放 + 频谱 ============ */
         let actx, analyser, gainNode, source = null, songBuffer = null;
@@ -358,8 +461,8 @@
         const draw = document.getElementById('draw');
         const ctx = draw.getContext('2d');
         const dpr2 = Math.min(2, window.devicePixelRatio || 1);
-        const STROKE_LIFE_MIN = 1.2;
-        const STROKE_LIFE_MAX = 2.8;
+        const STROKE_LIFE_MIN = 5.0;
+        const STROKE_LIFE_MAX = 8.0;
         let drawing = false, lastX = 0, lastY = 0, idleTimer = null;
         const segments = [];
 
@@ -374,8 +477,11 @@
         function startStroke(x, y) {
             document.getElementById('hint').classList.add('gone');
             drawing = true; lastX = x; lastY = y;
+            distanceFromLastSprout = 0;
+            nextSprout = 18 + Math.random() * 8;
             ensurePlaying();
         }
+
         function moveStroke(x, y) {
             if (!drawing) return;
 
@@ -386,18 +492,47 @@
             const speed = 0.25 + volume * 2.8;         // 音乐越强，喷射越快
 
             if (now - lastEmit > EMIT_INTERVAL_MS) {
-                particles.push({
-                    x, y,
-                    vx: (dx / dist) * speed * 3 + (Math.random() - 0.5) * speed,
-                    vy: (dy / dist) * speed * 3 + (Math.random() - 0.5) * speed,
-                    t0: now,
-                    life: NOTE_LIFE * (0.8 + Math.random() * 0.5), // 1.28~2.4s
-                    size: 18 + volume * 45,
-                    char: Math.random() < 0.15 ? '♫' : '♪',
-                    color: NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)]
-                });
                 lastEmit = now;
+                if (Math.random() < NOTE_SPAWN_PROB) {              // ★ 概率控制
+                    particles.push({
+                        x, y,
+                        vx: (dx / dist) * speed * 3 + (Math.random() - 0.5) * speed,
+                        vy: (dy / dist) * speed * 3 + (Math.random() - 0.5) * speed,
+                        t0: now,
+                        life: NOTE_LIFE * (0.8 + Math.random() * 0.5),
+                        size: 18 + volume * 36,
+                        char: Math.random() < 0.15 ? '♫' : '♪',
+                        color: NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)]
+                    });
+                    // ★ 粒子总量上限
+                    if (particles.length > PARTICLE_LIMIT) {
+                        particles.splice(0, particles.length - PARTICLE_LIMIT);
+                    }
+                }
             }
+
+            // —— 种“芽点”，用于长树 —— 
+            distanceFromLastSprout += dist;
+            if (distanceFromLastSprout >= nextSprout && sprouts.length < SPROUT_LIMIT) {
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;  // 海龟朝向
+                const totalLife = rand(TREE_LIFE_TOTAL_MIN, TREE_LIFE_TOTAL_MAX);
+                const growTime = Math.min(rand(TREE_GROW_MIN, TREE_GROW_MAX), totalLife * 0.6);
+                sprouts.push({
+                    str: TREE_RULES.axiom.map(a => ({ ...a, birthTime: 0 })),
+                    t: 0,                         // 已生长时间（秒）
+                    point: { x, y },
+                    angle,
+                    growTime,
+                    life: totalLife,       // ★ 4.2–5.0 s（总寿命）
+                    alpha: 1,
+                    linesByWidth: {},             // 本帧绘制缓存
+                    baseHue: Math.floor(Math.random() * 360)
+                });
+                lastSproutAt = now;                                  // ← 配合时间节流（见②）
+                distanceFromLastSprout = 0;
+                nextSprout = SPROUT_DIST_MIN + Math.random() * SPROUT_DIST_RAND;
+            }
+
 
             lastX = x; lastY = y;
             ensurePlaying(); // 只淡入
@@ -408,9 +543,12 @@
             schedulePause();
         }
 
+        let lastStamp = performance.now();
         function drawFront() {
             ctx.clearRect(0, 0, draw.width, draw.height);
             const now = performance.now();
+            const dt = (now - lastStamp) / 1000;   // s
+            lastStamp = now;
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
@@ -434,6 +572,50 @@
                 ctx.shadowColor = p.color;
                 ctx.fillText(p.char, p.x, p.y);
                 ctx.restore();
+            }
+
+            //绘制tree
+            for (let i = sprouts.length - 1; i >= 0; i--) {
+                const s = sprouts[i];
+                s.t += dt;
+
+                // 生长阶段：把 L-system 用“时间”推进
+                s.linesByWidth = {};
+                const growT = Math.min(s.t, s.growTime);
+                lExpand(TREE_RULES, s.str, growT);
+
+                turtle(s.str, s.point, s.angle, (node, from, to) => {
+                    // 宽度与年龄/音乐能量相关
+                    const energy = avg / 255;                         // 0..1
+                    const ageAcc = Math.min(1, (node.age || 0) / 0.9);
+                    const width = Math.ceil((1 + ageAcc * 8) * (0.6 + energy * 0.8));
+                    (s.linesByWidth[width] || (s.linesByWidth[width] = [])).push({ from, to });
+                });
+
+                // 淡出：到寿命后移除
+                const passed = s.t - s.growTime;
+                s.alpha = (passed <= 0) ? 1 : Math.max(0, 1 - passed / Math.max(0.001, (s.life - s.growTime)));
+
+                // 画线：冷蓝色，随能量提亮
+                const energy = avg / 255; // 0..1
+                const hue = (s.baseHue + s.t * COLOR_SPIN_PER_SEC + energy * ENERGY_HUE_RANGE) % 360;
+                const sat = 80;                               // 饱和度
+                const light = 45 + energy * 30;               // 能量越大越亮
+                for (const wStr of Object.keys(s.linesByWidth)) {
+                    const w = +wStr;
+                    ctx.beginPath();
+                    ctx.lineWidth = w / 5;
+                    ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${s.alpha})`;
+                    ctx.shadowBlur = 6 + energy * 10;
+                    ctx.shadowColor = `hsla(${hue}, ${sat}%, ${Math.min(70, light + 15)}%, ${s.alpha})`;
+                    for (const seg of s.linesByWidth[w]) {
+                        ctx.moveTo(seg.from.x, seg.from.y);
+                        ctx.lineTo(seg.to.x, seg.to.y);
+                    }
+                    ctx.stroke();
+                }
+
+                if (s.t >= s.life) sprouts.splice(i, 1);
             }
 
             requestAnimationFrame(drawFront);
