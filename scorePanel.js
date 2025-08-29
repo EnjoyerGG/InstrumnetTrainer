@@ -151,7 +151,11 @@ const ScorePanel = (() => {
                 if (_streakForStar >= need) {
                     _stars++;
                     _streakForStar = 0;
-                    addFloatingText(`★ +1`, '#ffd700', 16); // 小提示
+                    // ⭐ 在该星星的位置触发粒子特效（与顶部 HUD 相同）
+                    const pos = getStarCenterForIndex(_stars - 1); // 0/1/2 对应第1/2/3颗
+                    if (pos) {
+                        StarEffects.triggerPerfect(pos.x, pos.y);    // 直接复用现有 StarEffects
+                    }
                 }
             }
         } else { // miss（或将来接入“错误击打”时也走这里）
@@ -433,43 +437,41 @@ const ScorePanel = (() => {
         ctx.restore();
     }
 
+    function getStarCenterForIndex(i) {
+        if (!_rect) return null; // 尚未渲染过
+        const { x, y, w, h } = _rect; // _rect 是这个得分面板的区域
+
+        const padX = Math.max(10, Math.min(18, w * 0.04));
+        const gap = Math.max(10, Math.min(18, w * 0.06));
+        // 自适应半径：不超过面板高度的 22%，也不超过可用宽度能放下3颗星的上限
+        const R = Math.min(h * 0.22, (w - 2 * padX - 2 * gap) / 6);
+        const totalW = 2 * R * 3 + 2 * gap;
+        const startX = x + (w - totalW) / 2 + R;
+        const cy = y + h / 2 + 2; // 轻微下移让视觉更自然
+
+        return {
+            x: startX + i * (2 * R + gap),
+            y: cy,
+            r: R
+        };
+    }
+
+
     function renderStarsBlock(ctx, x, y, w, h) {
         // 面板背景和边框（保持与你原来一致）
-        // —— 已在 renderScoreBlock 里画过，这里只画内容 ——
-
-        // 标题
-        ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText('连击奖励', x + 10, y + 16);
-
-        // 三颗星水平居中排列
-        const gap = 14;
-        const R = Math.min(16, (w - 2 * 20 - 2 * gap) / 6 * 2); // 自适应半径
-        const totalW = R * 2 * 3 + gap * 2;
-        const startX = x + (w - totalW) / 2 + R;
-        const cy = y + h / 2 + 6;
+        // —— 计算排版（自适应大小）——
+        const padX = Math.max(10, Math.min(18, w * 0.04));
+        const gap = Math.max(10, Math.min(18, w * 0.06));
+        const R = Math.min(h * 0.22, (w - 2 * padX - 2 * gap) / 6); // ⭐合适的星星半径
+        const totalW = 2 * R * 3 + 2 * gap;
+        const startX = x + (w - totalW) / 2 + R;  // 水平居中
+        const cy = y + h / 2 + 2;                 // 垂直居中，略微下移
 
         for (let i = 0; i < 3; i++) {
             const filled = i < _stars;
             const glow = filled ? 1 : 0;
             const cx = startX + i * (2 * R + gap);
             drawStarIcon(ctx, cx, cy, R, filled, glow);
-        }
-
-        // 进度提示：下一颗需要的连击
-        if (_starEnabled && _stars < 3) {
-            const need = _starSteps[_stars];
-            const left = Math.max(0, need - _streakForStar);
-            ctx.fillStyle = 'rgba(255,255,255,0.85)';
-            ctx.font = 'bold 11px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`还需连击 ${left}/${need}`, x + w / 2, y + h - 10);
-        } else if (!_starEnabled) {
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.font = 'bold 11px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('打出一次 Perfect 开始点亮', x + w / 2, y + h - 10);
         }
     }
 
