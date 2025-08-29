@@ -192,7 +192,7 @@ const ScorePanel = (() => {
             if (_unlockedSongs < _rhythmOptions.length) {
                 _rhythmOptions[_unlockedSongs].unlocked = true;
                 _unlockedSongs++;
-                addFloatingText(`解锁${_rhythmOptions[_unlockedSongs - 1].name}!`, '#ffd700', 16);
+                addFloatingText(`Unlock${_rhythmOptions[_unlockedSongs - 1].name}!`, '#ffd700', 16);
             }
         }
     }
@@ -214,10 +214,10 @@ const ScorePanel = (() => {
             }
         } else if (_isEntertainmentMode && !_rhythmOptions[index].unlocked) {
             // 显示未解锁提示
-            addFloatingText('需要解锁!', '#ff6666', 14);
+            addFloatingText('Lock!', '#ff6666', 14);
         } else if (!_isEntertainmentMode) {
             // 显示模式错误提示
-            addFloatingText('请切换到Fun模式', '#ffaa00', 14);
+            addFloatingText('Please switch Fun mode!', '#ffaa00', 14);
         }
     }
 
