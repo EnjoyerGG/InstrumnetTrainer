@@ -772,7 +772,7 @@ const ScorePanel = (() => {
             ctx.fillStyle = isUnlocked ? '#ffffff' : '#6b6f7a';
             ctx.font = `${Math.floor(r * 0.8)}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText(option.icon, pos.x, pos.y + 3);
+            ctx.fillText(option.icon, pos.x, pos.y);
 
             // —— 锁：仅未解锁时覆盖显示
             if (!isUnlocked) {
