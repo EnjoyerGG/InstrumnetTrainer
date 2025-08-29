@@ -682,7 +682,7 @@ const ScorePanel = (() => {
             ctx.fillStyle = '#cbcbcbff';
             ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('Waiting...', x + w / 2, y + h / 2 + 5);
+            ctx.fillText('Waiting...', x + w / 2, y + h / 2);
 
             // ctx.font = '9px Arial';
             // ctx.fillText('Waiting', x + w / 2, y + h - 15);
@@ -691,17 +691,17 @@ const ScorePanel = (() => {
 
     function renderRhythmSelector(ctx, x, y, w, h) {
         // 2×2 布局
-        const r = Math.min(w / 6, h / 6);
+        const r = Math.min(w / 5, h / 5);
         const gapX = w * 0.15, gapY = h * 0.15;
         const totalW = r * 4 + gapX, totalH = r * 4 + gapY;
         const startX = x + (w - totalW) / 2 + r;
         const startY = y + (h - totalH) / 2 + r;
 
         const positions = [
-            { x: startX, y: startY, index: 0 },
-            { x: startX + r * 2 + gapX, y: startY, index: 1 },
-            { x: startX, y: startY + r * 2 + gapY, index: 2 },
-            { x: startX + r * 2 + gapX, y: startY + r * 2 + gapY, index: 3 }
+            { x: startX - 5, y: startY, index: 0 },
+            { x: startX + r * 2 + gapX + 5, y: startY, index: 1 },
+            { x: startX - 5, y: startY + r * 2 + gapY, index: 2 },
+            { x: startX + r * 2 + gapX + 5, y: startY + r * 2 + gapY, index: 3 }
         ];
 
         // 记录按钮几何用于 hover/点击
@@ -762,7 +762,7 @@ const ScorePanel = (() => {
             } else {
                 ctx.shadowBlur = 0;
                 ctx.strokeStyle = isUnlocked ? 'rgba(86,140,255,0.9)' : '#555';
-                ctx.lineWidth = isUnlocked ? 2 : 1;
+                ctx.lineWidth = 3;
             }
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
@@ -779,7 +779,7 @@ const ScorePanel = (() => {
                 ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.beginPath(); ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = '#666'; ctx.font = '14px Arial';
-                ctx.fillText('🔒', pos.x, pos.y + 5);
+                ctx.fillText('🔒', pos.x, pos.y);
             }
             ctx.restore();
         });
