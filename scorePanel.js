@@ -45,10 +45,10 @@ const ScorePanel = (() => {
     // 节拍选择（AI互动模式）
     let _selectedRhythm = 0;
     let _rhythmOptions = [
-        { name: '节拍1', icon: '♪', unlocked: false },
-        { name: '节拍2', icon: '♫', unlocked: false },
-        { name: '节拍3', icon: '♬', unlocked: false },
-        { name: '节拍4', icon: '♭', unlocked: false }
+        { name: 'song1', icon: '♪', unlocked: false },
+        { name: 'song2', icon: '♫', unlocked: false },
+        { name: 'song3', icon: '♬', unlocked: false },
+        { name: 'song4', icon: '♭', unlocked: false }
     ];
 
     // 视觉效果状态
