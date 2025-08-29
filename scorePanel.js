@@ -183,18 +183,13 @@ const ScorePanel = (() => {
     }
 
     function checkBatteryCharge() {
-        const prevCharge = _batteryCharge;
-        _batteryCharge = Math.min(_batteryCharge, 100);
-
-        // 检查是否充满
-        if (prevCharge < 100 && _batteryCharge >= 100) {
-            _batteryCharge = 0;
-            _totalCharges++;
+        // 支持一次性冲过 100 多点，也支持连环解锁
+        while (_batteryCharge >= 100) {
+            _batteryCharge -= 100;
             _batteryPulse = 1.0;
             triggerBubbleEffect();
 
-            // 解锁节拍选项
-            if (_unlockedSongs < 4) {
+            if (_unlockedSongs < _rhythmOptions.length) {
                 _rhythmOptions[_unlockedSongs].unlocked = true;
                 _unlockedSongs++;
                 addFloatingText(`解锁${_rhythmOptions[_unlockedSongs - 1].name}!`, '#ffd700', 16);
@@ -616,65 +611,79 @@ const ScorePanel = (() => {
     }
 
     function renderRhythmSelector(ctx, x, y, w, h) {
-        // 标题
-        // ctx.fillStyle = '#4a9eff';
-        // ctx.font = 'bold 10px Arial';
-        // ctx.textAlign = 'center';
-        // ctx.fillText('韵律拍', x + w / 2, y + 12);
+        // 4个圆圈布局 (2x2) - 增加间距
+        const circleRadius = Math.min(w / 6, h / 6);  // 减小圆圈大小
+        const gapX = w * 0.15;  // 水平间距
+        const gapY = h * 0.15;  // 垂直间距
 
-        // 4个圆圈布局 (2x2)
-        const circleRadius = Math.min(w / 5, h / 5);
-        const centerX1 = x + w * 0.3;
-        const centerX2 = x + w * 0.7;
-        const centerY1 = y + h * 0.45;
-        const centerY2 = y + h * 0.75;
+        // 计算中心位置，让4个圆圈整体居中
+        const totalWidth = circleRadius * 4 + gapX;
+        const totalHeight = circleRadius * 4 + gapY;
+        const startX = x + (w - totalWidth) / 2 + circleRadius;
+        const startY = y + (h - totalHeight) / 2 + circleRadius;
 
         const positions = [
-            { x: centerX1, y: centerY1, index: 0 },
-            { x: centerX2, y: centerY1, index: 1 },
-            { x: centerX1, y: centerY2, index: 2 },
-            { x: centerX2, y: centerY2, index: 3 }
+            { x: startX, y: startY, index: 0 },
+            { x: startX + circleRadius * 2 + gapX, y: startY, index: 1 },
+            { x: startX, y: startY + circleRadius * 2 + gapY, index: 2 },
+            { x: startX + circleRadius * 2 + gapX, y: startY + circleRadius * 2 + gapY, index: 3 }
         ];
 
         positions.forEach(pos => {
             const option = _rhythmOptions[pos.index];
-
-            // 圆圈背景
             const isSelected = _selectedRhythm === pos.index;
             const isUnlocked = option.unlocked;
             const canUse = _isEntertainmentMode && isUnlocked;
 
-            ctx.fillStyle = canUse ?
-                (isSelected ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.08)') :
-                'rgba(100, 100, 100, 0.05)';
+            // 像星星一样的点亮效果
+            if (isUnlocked) {
+                // 已解锁 - 亮色显示
+                if (isSelected) {
+                    // 选中状态 - 金色发光
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = 'rgba(255,215,0,0.8)';
+                    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+                } else {
+                    // 未选中但已解锁 - 淡蓝色
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = 'rgba(74, 158, 255, 0.15)';
+                }
+            } else {
+                // 未解锁 - 灰暗显示
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(50, 50, 50, 0.3)';
+            }
 
+            // 圆圈背景
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, circleRadius, 0, Math.PI * 2);
             ctx.fill();
 
             // 圆圈边框
-            ctx.strokeStyle = canUse ?
-                (isSelected ? '#ffd700' : '#4a9eff') : '#555';
-            ctx.lineWidth = isSelected ? 2 : 1;
-            ctx.stroke();
-
-            // 图标
-            ctx.fillStyle = canUse ? '#fff' : '#555';
-            ctx.font = `${Math.floor(circleRadius * 0.7)}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.fillText(option.icon, pos.x, pos.y + 2);
-
-            // 解锁状态指示
-            if (!isUnlocked) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                ctx.beginPath();
-                ctx.arc(pos.x, pos.y, circleRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = '#666';
-                ctx.font = '10px Arial';
-                ctx.fillText('🔒', pos.x, pos.y + 2);
+            if (isUnlocked) {
+                ctx.strokeStyle = isSelected ? '#ffd700' : '#4a9eff';
+                ctx.lineWidth = isSelected ? 2.5 : 1.5;
+            } else {
+                // 未解锁 - 暗淡边框
+                ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
+                ctx.lineWidth = 1;
             }
+            ctx.stroke();
+            ctx.shadowBlur = 0;  // 重置阴影
+
+            // 音符图标 - 根据解锁状态调整颜色
+            if (isUnlocked) {
+                ctx.fillStyle = isSelected ? '#ffd700' : '#ffffff';
+            } else {
+                // 未解锁 - 暗灰色图标
+                ctx.fillStyle = 'rgba(120, 120, 120, 0.8)';
+            }
+            ctx.font = `${Math.floor(circleRadius * 0.8)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(option.icon, pos.x, pos.y);
+
+            // 不再显示锁图标，用颜色区分状态
         });
     }
 
