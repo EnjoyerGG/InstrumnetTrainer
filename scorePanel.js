@@ -801,7 +801,7 @@ const ScorePanel = (() => {
         _bubbles = [];
         _isBubbleActive = false;
 
-        addFloatingText('系统已重置', '#4a9eff', 12);
+        addFloatingText('System ResetReset', '#4a9eff', 12);
     }
 
     return { init };
