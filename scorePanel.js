@@ -60,6 +60,47 @@ const ScorePanel = (() => {
     let _bubbleTime = 0;
     let _isBubbleActive = false;
 
+    // —— Rhythm selector UI runtime state —— 
+    let _rhythmButtons = [];           // [{x,y,r,index}]
+    let _hoverRhythmIndex = -1;        // 当前鼠标悬停的按钮索引（仅对已解锁生效）
+    let _unlockBurstQueue = [];        // 解锁的等待触发项（索引）
+    let _unlockBursts = [];            // 正在播放的解锁闪光特效 [{x,y,r,start,life}]
+
+    function queueUnlockBurst(index) {
+        // 渲染前先记录索引，等 renderRhythmSelector 算出坐标后再落位
+        _unlockBurstQueue.push(index);
+    }
+
+    function drawUnlockBursts(ctx) {
+        const now = millis();
+        _unlockBursts = _unlockBursts.filter(b => {
+            const t = (now - b.start) / b.life; // 0 → 1
+            if (t >= 1) return false;
+
+            // 扩散金色圆环
+            const grow = b.r * (0.6 + 1.2 * t);
+            ctx.save();
+            ctx.lineWidth = 2 + (1 - t) * 3;
+            ctx.shadowBlur = 18 * (1 - t);
+            ctx.shadowColor = 'rgba(255,215,0,0.9)';
+            ctx.strokeStyle = `rgba(255,215,0,${1 - t})`;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r + grow, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 中心星光（十字小闪）
+            ctx.globalAlpha = Math.max(0, 1 - t);
+            ctx.beginPath();
+            ctx.moveTo(b.x - b.r * 0.3, b.y);
+            ctx.lineTo(b.x + b.r * 0.3, b.y);
+            ctx.moveTo(b.x, b.y - b.r * 0.3);
+            ctx.lineTo(b.x, b.y + b.r * 0.3);
+            ctx.stroke();
+            ctx.restore();
+            return true;
+        });
+    }
+
     // 圆角矩形绘制辅助函数
     function drawRoundedRect(ctx, x, y, w, h, radius) {
         ctx.beginPath();
@@ -191,6 +232,7 @@ const ScorePanel = (() => {
 
             if (_unlockedSongs < _rhythmOptions.length) {
                 _rhythmOptions[_unlockedSongs].unlocked = true;
+                queueUnlockBurst(_unlockedSongs);
                 _unlockedSongs++;
                 addFloatingText(`Unlock${_rhythmOptions[_unlockedSongs - 1].name}!`, '#ffd700', 16);
             }
@@ -516,7 +558,6 @@ const ScorePanel = (() => {
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';             // 微调基线
         ctx.fillText(_isEntertainmentMode ? 'Fun' : 'Learn', sliderX + btnW / 2, sliderY + btnH / 2);
     }
@@ -611,81 +652,104 @@ const ScorePanel = (() => {
     }
 
     function renderRhythmSelector(ctx, x, y, w, h) {
-        // 4个圆圈布局 (2x2) - 增加间距
-        const circleRadius = Math.min(w / 6, h / 6);  // 减小圆圈大小
-        const gapX = w * 0.15;  // 水平间距
-        const gapY = h * 0.15;  // 垂直间距
-
-        // 计算中心位置，让4个圆圈整体居中
-        const totalWidth = circleRadius * 4 + gapX;
-        const totalHeight = circleRadius * 4 + gapY;
-        const startX = x + (w - totalWidth) / 2 + circleRadius;
-        const startY = y + (h - totalHeight) / 2 + circleRadius;
+        // 2×2 布局
+        const r = Math.min(w / 6, h / 6);
+        const gapX = w * 0.15, gapY = h * 0.15;
+        const totalW = r * 4 + gapX, totalH = r * 4 + gapY;
+        const startX = x + (w - totalW) / 2 + r;
+        const startY = y + (h - totalH) / 2 + r;
 
         const positions = [
             { x: startX, y: startY, index: 0 },
-            { x: startX + circleRadius * 2 + gapX, y: startY, index: 1 },
-            { x: startX, y: startY + circleRadius * 2 + gapY, index: 2 },
-            { x: startX + circleRadius * 2 + gapX, y: startY + circleRadius * 2 + gapY, index: 3 }
+            { x: startX + r * 2 + gapX, y: startY, index: 1 },
+            { x: startX, y: startY + r * 2 + gapY, index: 2 },
+            { x: startX + r * 2 + gapX, y: startY + r * 2 + gapY, index: 3 }
         ];
 
+        // 记录按钮几何用于 hover/点击
+        _rhythmButtons = positions.map(p => ({ x: p.x, y: p.y, r: r, index: p.index }));
+
+        // 计算鼠标悬停索引（仅对已解锁按钮）
+        _hoverRhythmIndex = -1;
+        if (typeof mouseX !== 'undefined') {
+            for (const b of _rhythmButtons) {
+                const opt = _rhythmOptions[b.index];
+                if (!opt.unlocked) continue;
+                const dx = mouseX - b.x, dy = mouseY - b.y;
+                if (dx * dx + dy * dy <= b.r * b.r) { _hoverRhythmIndex = b.index; break; }
+            }
+        }
+
+        // 把待播放的解锁索引转成“已落位”的动画实例
+        if (_unlockBurstQueue.length) {
+            const now = millis();
+            _unlockBurstQueue.forEach(idx => {
+                const btn = _rhythmButtons.find(b => b.index === idx);
+                if (btn) _unlockBursts.push({ x: btn.x, y: btn.y, r: btn.r, start: now, life: 550 });
+            });
+            _unlockBurstQueue.length = 0;
+        }
+
+        // 背景+边框（保持你原来的卡片风格）
+        // ctx.save();
+        // ctx.fillStyle = 'rgba(0,0,0,0)'; // 背景已由父容器绘制，这里不再重复画底
+        // ctx.restore();
+
+        // 实际绘制四个圆
         positions.forEach(pos => {
             const option = _rhythmOptions[pos.index];
-            const isSelected = _selectedRhythm === pos.index;
             const isUnlocked = option.unlocked;
-            const canUse = _isEntertainmentMode && isUnlocked;
+            const isSelected = _selectedRhythm === pos.index;
+            const isHover = _hoverRhythmIndex === pos.index;
 
-            // 像星星一样的点亮效果
+            // —— 背景：解锁后更“明亮”，未解锁更“灰暗”
+            ctx.save();
             if (isUnlocked) {
-                // 已解锁 - 亮色显示
-                if (isSelected) {
-                    // 选中状态 - 金色发光
-                    ctx.shadowBlur = 8;
-                    ctx.shadowColor = 'rgba(255,215,0,0.8)';
-                    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
-                } else {
-                    // 未选中但已解锁 - 淡蓝色
-                    ctx.shadowBlur = 0;
-                    ctx.fillStyle = 'rgba(74, 158, 255, 0.15)';
-                }
+                ctx.fillStyle = isSelected
+                    ? 'rgba(255, 215, 0, 0.25)'    // 选中：偏金色
+                    : 'rgba(255, 255, 255, 0.10)'; // 未选中：明亮淡白
             } else {
-                // 未解锁 - 灰暗显示
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(50, 50, 50, 0.3)';
+                ctx.fillStyle = 'rgba(80, 85, 100, 0.10)';
             }
-
-            // 圆圈背景
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, circleRadius, 0, Math.PI * 2);
+            ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
             ctx.fill();
 
-            // 圆圈边框
-            if (isUnlocked) {
-                ctx.strokeStyle = isSelected ? '#ffd700' : '#4a9eff';
-                ctx.lineWidth = isSelected ? 2.5 : 1.5;
+            // —— 边框与发光：只对“已解锁 & (悬停或选中)”显示金色
+            if (isUnlocked && (isHover || isSelected)) {
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = 'rgba(255,215,0,0.85)';
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 3;
             } else {
-                // 未解锁 - 暗淡边框
-                ctx.strokeStyle = 'rgba(100, 100, 100, 0.4)';
-                ctx.lineWidth = 1;
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = isUnlocked ? 'rgba(86,140,255,0.9)' : '#555';
+                ctx.lineWidth = isUnlocked ? 2 : 1;
             }
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.shadowBlur = 0;  // 重置阴影
 
-            // 音符图标 - 根据解锁状态调整颜色
-            if (isUnlocked) {
-                ctx.fillStyle = isSelected ? '#ffd700' : '#ffffff';
-            } else {
-                // 未解锁 - 暗灰色图标
-                ctx.fillStyle = 'rgba(120, 120, 120, 0.8)';
-            }
-            ctx.font = `${Math.floor(circleRadius * 0.8)}px Arial`;
+            // —— 图标：已解锁用亮色，未解锁变暗
+            ctx.fillStyle = isUnlocked ? '#ffffff' : '#6b6f7a';
+            ctx.font = `${Math.floor(r * 0.8)}px Arial`;
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(option.icon, pos.x, pos.y);
+            ctx.fillText(option.icon, pos.x, pos.y + 3);
 
-            // 不再显示锁图标，用颜色区分状态
+            // —— 锁：仅未解锁时覆盖显示
+            if (!isUnlocked) {
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#666'; ctx.font = '14px Arial';
+                ctx.fillText('🔒', pos.x, pos.y + 5);
+            }
+            ctx.restore();
         });
+
+        // 播放“解锁金色闪光”特效（在按钮之上）
+        drawUnlockBursts(ctx);
     }
+
 
     function renderBubbles(ctx, x, y, w, h) {
         ctx.save();
