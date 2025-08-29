@@ -577,12 +577,6 @@ const ScorePanel = (() => {
     }
 
     function renderCurrentHitDisplay(ctx, x, y, w, h) {
-        // 标题
-        ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('击打识别', x + w / 2, y + 12);
-
         // 显示当前击打类型
         if (_currentHitType && millis() - _currentHitTime < 1500) {
             const type = _hitTypes[_currentHitType];
@@ -600,13 +594,13 @@ const ScorePanel = (() => {
 
         } else {
             // 待机状态
-            ctx.fillStyle = '#666';
-            ctx.font = '20px Arial';
+            ctx.fillStyle = '#cbcbcbff';
+            ctx.font = 'bold 20px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('？', x + w / 2, y + h / 2 + 5);
+            ctx.fillText('Waiting...', x + w / 2, y + h / 2 + 5);
 
-            ctx.font = '9px Arial';
-            ctx.fillText('等待击打', x + w / 2, y + h - 15);
+            // ctx.font = '9px Arial';
+            // ctx.fillText('Waiting', x + w / 2, y + h - 15);
         }
     }
 
