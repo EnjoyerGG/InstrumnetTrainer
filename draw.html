@@ -94,11 +94,13 @@
 
     <script>
         /* ============ 基础工具 ============ */
-        const REACT_GAIN = 220;
+        const REACT_GAIN = 360;
+        const REACT_POW = 0.65;
         const params = new URLSearchParams(location.search);
         const mode = Math.max(0, Math.min(3, parseInt(params.get('mode') || '0', 10)));
-        const STAR_SPEED_SCALE = 0.55; // 小于 1 → 整体变慢
+        const STAR_SPEED_SCALE = 1.35; // 小于 1 → 整体变慢
         const STAR_RADIUS_GAIN = 0.04; // 由 0.10 降到 0.04 → 变小
+        const STAR_ACCEL = 0.0018;
         const SONGS = [ // 与 drawingMode.js 保持一致的内部资源路径
             'assets/songs/song1.mp3',
             'assets/songs/song2.mp3',
@@ -120,7 +122,7 @@
             analyser.fftSize = 1024;
             analyser.minDecibels = -110;
             analyser.maxDecibels = -10;
-            analyser.smoothingTimeConstant = 0.18;
+            analyser.smoothingTimeConstant = 0.08;
 
             gainNode = actx.createGain();
             gainNode.gain.value = 0.0; // 初始静音，绘画时淡入
@@ -207,7 +209,10 @@
             const bigger = Math.abs(this.x) > Math.abs(this.y);
             this.dx = (bigger ? 1 : Math.abs(this.x / this.y)) * (this.x > 0 ? 1 : -1);
             this.dy = (bigger ? Math.abs(this.y / this.x) : 1) * (this.y > 0 ? 1 : -1);
-            this.dz = -0.1; this.ddx = .001 * this.dx; this.ddy = .001 * this.dy; this.radius = 0.2;
+            this.dz = -0.1;
+            this.ddx = STAR_ACCEL * this.dx;
+            this.ddy = STAR_ACCEL * this.dy;
+            this.radius = 0.2;
             this.color = "#465677";
         }
         function initStars() {
@@ -318,8 +323,8 @@
         const draw = document.getElementById('draw');
         const ctx = draw.getContext('2d');
         const dpr2 = Math.min(2, window.devicePixelRatio || 1);
-        const STROKE_LIFE_MIN = 3;
-        const STROKE_LIFE_MAX = 5;
+        const STROKE_LIFE_MIN = 1.2;
+        const STROKE_LIFE_MAX = 2.8;
         let drawing = false, lastX = 0, lastY = 0, idleTimer = null;
         const segments = [];
 
