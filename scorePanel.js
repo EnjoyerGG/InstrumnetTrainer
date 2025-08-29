@@ -8,6 +8,13 @@ const ScorePanel = (() => {
     let _rect = null;
     let _rectProvider = null;
 
+    // —— 星星激励（连击）——
+    let _stars = 0;                        // 已点亮的星星数量 0..3
+    let _starEnabled = false;              // 是否已解锁（出现过一次 perfect 才开始计数）
+    let _streakForStar = 0;                // 当前用于点亮下一颗星的连击计数
+    let _failStrikes = 0;                  // miss（或错误击打）累计次数，用于熄灭
+    const _starSteps = [3, 4, 5];          // 依次需要连击 3 / 4 / 5 次点亮第1/2/3颗
+
     // 核心状态
     let _score = 0;
     let _perfectHits = 0;
@@ -127,6 +134,36 @@ const ScorePanel = (() => {
         // 更新最高连击
         if (_combo > _maxCombo) {
             _maxCombo = _combo;
+        }
+
+        if (timing === 'perfect') {
+            _starEnabled = true;                 // 首次 perfect 才开始计星
+        }
+
+        // 成功击打（perfect/good）计入连击
+        if (timing === 'perfect' || timing === 'good') {
+            if (_starEnabled && _stars < 3) {
+                _streakForStar++;
+                _failStrikes = 0;                  // 成功重置失败计数
+
+                // 达到当前目标阈值则点亮一颗星
+                const need = _starSteps[_stars];   // 先点亮第 _stars+1 颗所需连击
+                if (_streakForStar >= need) {
+                    _stars++;
+                    _streakForStar = 0;
+                    addFloatingText(`★ +1`, '#ffd700', 16); // 小提示
+                }
+            }
+        } else { // miss（或将来接入“错误击打”时也走这里）
+            if (_starEnabled && _stars > 0) {
+                _failStrikes++;
+                _streakForStar = 0;                // 失败打断连击
+                if (_failStrikes >= 3) {           // 连续 3 次 miss/错误 → 熄灭 1 颗
+                    _stars--;
+                    _failStrikes = 0;
+                    addFloatingText(`★ -1`, '#ff6666', 16);
+                }
+            }
         }
 
         // 更新当前击打类型显示
@@ -295,8 +332,8 @@ const ScorePanel = (() => {
         drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
         ctx.stroke();
 
-        // 居中显示总分
-        renderScoreInCenter(ctx, x, y, w, h);
+        // 渲染星星
+        renderStarsBlock(ctx, x, y, w, h);
     }
 
     function renderBatteryBlock(ctx, x, y, w, h, radius) {
@@ -344,27 +381,96 @@ const ScorePanel = (() => {
         renderRhythmSelector(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
     }
 
-    function renderScoreInCenter(ctx, x, y, w, h) {
+    // function renderScoreInCenter(ctx, x, y, w, h) {
+    //     // 标题
+    //     ctx.fillStyle = '#4a9eff';
+    //     ctx.font = 'bold 10px Arial';
+    //     ctx.textAlign = 'center';
+    //     ctx.fillText('总分', x + w / 2, y + 15);
+
+    //     // 主分数 - 带发光效果
+    //     const glowAlpha = _scoreGlow * 0.5;
+    //     if (_scoreGlow > 0) {
+    //         ctx.shadowBlur = 6 + _scoreGlow * 3;
+    //         ctx.shadowColor = `rgba(74, 158, 255, ${glowAlpha})`;
+    //     }
+
+    //     ctx.fillStyle = `rgba(74, 158, 255, ${1.0 - glowAlpha * 0.3})`;
+    //     ctx.font = 'bold 24px Arial';
+    //     ctx.textAlign = 'center';
+    //     ctx.fillText(_score.toString(), x + w / 2, y + h / 2 + 8);
+
+    //     // 重置阴影
+    //     ctx.shadowBlur = 0;
+    // }
+
+    function drawStarIcon(ctx, cx, cy, r, filled, glow = 0) {
+        ctx.save();
+        if (glow > 0 && filled) {
+            ctx.shadowBlur = 8 + glow * 6;
+            ctx.shadowColor = 'rgba(255,215,0,0.9)';
+        }
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            const a = -Math.PI / 2 + i * 2 * Math.PI / 5;
+            const x1 = cx + Math.cos(a) * r;
+            const y1 = cy + Math.sin(a) * r;
+            const a2 = a + Math.PI / 5;
+            const x2 = cx + Math.cos(a2) * r * 0.45;
+            const y2 = cy + Math.sin(a2) * r * 0.45;
+            if (i === 0) ctx.moveTo(x1, y1); else ctx.lineTo(x1, y1);
+            ctx.lineTo(x2, y2);
+        }
+        ctx.closePath();
+        if (filled) {
+            ctx.fillStyle = '#ffd700';
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    function renderStarsBlock(ctx, x, y, w, h) {
+        // 面板背景和边框（保持与你原来一致）
+        // —— 已在 renderScoreBlock 里画过，这里只画内容 ——
+
         // 标题
         ctx.fillStyle = '#4a9eff';
         ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('总分', x + w / 2, y + 15);
+        ctx.textAlign = 'left';
+        ctx.fillText('连击奖励', x + 10, y + 16);
 
-        // 主分数 - 带发光效果
-        const glowAlpha = _scoreGlow * 0.5;
-        if (_scoreGlow > 0) {
-            ctx.shadowBlur = 6 + _scoreGlow * 3;
-            ctx.shadowColor = `rgba(74, 158, 255, ${glowAlpha})`;
+        // 三颗星水平居中排列
+        const gap = 14;
+        const R = Math.min(16, (w - 2 * 20 - 2 * gap) / 6 * 2); // 自适应半径
+        const totalW = R * 2 * 3 + gap * 2;
+        const startX = x + (w - totalW) / 2 + R;
+        const cy = y + h / 2 + 6;
+
+        for (let i = 0; i < 3; i++) {
+            const filled = i < _stars;
+            const glow = filled ? 1 : 0;
+            const cx = startX + i * (2 * R + gap);
+            drawStarIcon(ctx, cx, cy, R, filled, glow);
         }
 
-        ctx.fillStyle = `rgba(74, 158, 255, ${1.0 - glowAlpha * 0.3})`;
-        ctx.font = 'bold 24px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(_score.toString(), x + w / 2, y + h / 2 + 8);
-
-        // 重置阴影
-        ctx.shadowBlur = 0;
+        // 进度提示：下一颗需要的连击
+        if (_starEnabled && _stars < 3) {
+            const need = _starSteps[_stars];
+            const left = Math.max(0, need - _streakForStar);
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`还需连击 ${left}/${need}`, x + w / 2, y + h - 10);
+        } else if (!_starEnabled) {
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('打出一次 Perfect 开始点亮', x + w / 2, y + h - 10);
+        }
     }
 
     function renderModeSlider(ctx, x, y, w, h) {
@@ -406,10 +512,10 @@ const ScorePanel = (() => {
 
     function renderHorizontalBattery(ctx, x, y, w, h) {
         // 标题和百分比
-        ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 10px Arial';
+        ctx.fillStyle = '#d8d8d8ff';
+        ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('能量槽', x, y + 12);
+        ctx.fillText('Energy', x, y + 12);
 
         ctx.textAlign = 'right';
         ctx.fillText(Math.floor(_batteryCharge) + '%', x + w, y + 12);
@@ -670,6 +776,11 @@ const ScorePanel = (() => {
 
     function reset() {
         console.log('重置ScorePanel');
+
+        _stars = 0;
+        _starEnabled = false;
+        _streakForStar = 0;
+        _failStrikes = 0;
 
         _score = 0;
         _perfectHits = 0;
