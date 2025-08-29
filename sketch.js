@@ -542,6 +542,12 @@ function setup() {
 
     StarEffects.init();
 
+    // 初始化绘画模式系统
+    if (window.DrawingMode) {
+        window.DrawingMode = window.DrawingMode.init();
+        console.log('DrawingMode initialized');
+    }
+
     SweepMode = SweepMode.init({
         nowMs: () => rm._t(),
         rectProvider: () => RECT.sweep,
@@ -1202,6 +1208,11 @@ let lastOptimizeCheck = 0;
 let performanceMode = 'normal';
 let resumeMonitorStartTime = 0;
 function draw() {
+    // 如果绘画模式激活，暂停主游戏渲染
+    if (window.DrawingMode && window.DrawingMode.isActive()) {
+        return; // 完全跳过主游戏的渲染
+    }
+
     if (window.SweepMode?.getCurrentCycle) {
         const cur = SweepMode.getCurrentCycle();
         if (_lastCycleForSnap == null) {
@@ -1539,11 +1550,11 @@ function getCurrentSyncQuality() {
 }
 
 function handleScorePanelClick(x, y, w, h) {
-    const gap = 4;
+    const gap = 3;
 
     // 计算各方块的位置
     const topH = Math.floor(h * 0.25);
-    const midH = Math.floor(h * 0.35);
+    const midH = Math.floor(h * 0.38);
     const bottomH = h - topH - midH - gap * 2;
     const bottomHalfW = Math.floor((w - gap) / 2);
 
@@ -1650,6 +1661,17 @@ function keyPressed() {
             ampHUD.preferAmplitude(false);
         } else {
             ampHUD.preferAmplitude(true);
+        }
+    }
+
+    // 在调试模式下，按 P 键可以测试绘画模式
+    if (key === 'p' && debugMode) {
+        if (window.DrawingMode) {
+            if (window.DrawingMode.isActive()) {
+                window.DrawingMode.deactivate();
+            } else {
+                window.DrawingMode.activate(0); // 激活第一首歌
+            }
         }
     }
 

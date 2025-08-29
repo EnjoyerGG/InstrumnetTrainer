@@ -211,7 +211,18 @@ const ScorePanel = (() => {
         if (_isEntertainmentMode && _rhythmOptions[index] && _rhythmOptions[index].unlocked) {
             _selectedRhythm = index;
             console.log(`选择节拍: ${_rhythmOptions[index].name}`);
-            // 这里可以触发AI互动模式
+
+            // ★ 激活绘画模式
+            if (window.DrawingMode) {
+                console.log(`激活绘画模式，歌曲索引: ${index}`);
+                window.DrawingMode.activate(index);
+            }
+        } else if (_isEntertainmentMode && !_rhythmOptions[index].unlocked) {
+            // 显示未解锁提示
+            addFloatingText('需要解锁!', '#ff6666', 14);
+        } else if (!_isEntertainmentMode) {
+            // 显示模式错误提示
+            addFloatingText('请切换到Fun模式', '#ffaa00', 14);
         }
     }
 
@@ -606,10 +617,10 @@ const ScorePanel = (() => {
 
     function renderRhythmSelector(ctx, x, y, w, h) {
         // 标题
-        ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('韵律拍', x + w / 2, y + 12);
+        // ctx.fillStyle = '#4a9eff';
+        // ctx.font = 'bold 10px Arial';
+        // ctx.textAlign = 'center';
+        // ctx.fillText('韵律拍', x + w / 2, y + 12);
 
         // 4个圆圈布局 (2x2)
         const circleRadius = Math.min(w / 5, h / 5);
