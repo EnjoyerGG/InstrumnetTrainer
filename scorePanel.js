@@ -53,10 +53,25 @@ const ScorePanel = (() => {
     let _bubbleTime = 0;
     let _isBubbleActive = false;
 
+    // 圆角矩形绘制辅助函数
+    function drawRoundedRect(ctx, x, y, w, h, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + w - radius, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+        ctx.lineTo(x + w, y + h - radius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+        ctx.lineTo(x + radius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
+
     function init(options = {}) {
         _rectProvider = options.rectProvider || (() => ({ x: 0, y: 0, w: 200, h: 300 }));
 
-        console.log('ScorePanel initialized - New Layout');
+        console.log('ScorePanel initialized - New Layout with Rounded Corners');
 
         // 注册全局接口
         window.scorePanelInterface = {
@@ -195,39 +210,39 @@ const ScorePanel = (() => {
 
         ctx.save();
 
-        // 清空背景
-        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
-        ctx.fillRect(x, y, w, h);
+        // 计算分区布局 - 修改为5个独立方块结构
+        const gap = 4;
+        const radius = 8; // 圆角半径
 
-        // 边框
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        // 分成5个独立区块
+        const topH = Math.floor(h * 0.25);      // 顶部25%：分为左右两块
+        const midH = Math.floor(h * 0.35);      // 中部35%：能量槽  
+        const bottomH = h - topH - midH - gap * 2; // 底部40%：左右分割
 
-        const padding = 6;
+        // 顶部左右分割
+        const topHalfW = Math.floor((w - gap) / 2);
+        // 底部左右分割
+        const bottomHalfW = Math.floor((w - gap) / 2);
 
-        // 顶部：模式滑块 - 15%高度
-        const sliderH = Math.floor(h * 0.15);
-        renderModeSlider(ctx, x + padding, y + padding, w - padding * 2, sliderH);
+        let currentY = y;
 
-        // 右上角：总分显示
-        renderScoreDisplay(ctx, x, y, w, h);
+        // 1. 顶部左方块：模式滑块
+        renderSliderBlock(ctx, x, currentY, topHalfW, topH, radius);
 
-        // 中间：能量槽 - 30%高度
-        const batteryY = y + padding + sliderH + padding;
-        const batteryH = Math.floor(h * 0.30);
-        renderHorizontalBattery(ctx, x + padding, batteryY, w - padding * 2, batteryH);
+        // 2. 顶部右方块：总分
+        renderScoreBlock(ctx, x + topHalfW + gap, currentY, topHalfW, topH, radius);
 
-        // 底部区域 - 剩余空间
-        const bottomY = batteryY + batteryH + padding;
-        const bottomH = h - (bottomY - y) - padding;
-        const halfW = Math.floor((w - padding * 3) / 2);
+        currentY += topH + gap;
 
-        // 左下角：击打识别
-        renderCurrentHitDisplay(ctx, x + padding, bottomY, halfW, bottomH);
+        // 3. 中部方块：能量槽
+        renderBatteryBlock(ctx, x, currentY, w, midH, radius);
+        currentY += midH + gap;
 
-        // 右下角：节拍选择（4个圆圈）
-        renderRhythmSelector(ctx, x + padding + halfW + padding, bottomY, halfW, bottomH);
+        // 4. 左下方块：击打识别
+        renderHitDisplayBlock(ctx, x, currentY, bottomHalfW, bottomH, radius);
+
+        // 5. 右下方块：节拍选择
+        renderRhythmBlock(ctx, x + bottomHalfW + gap, currentY, bottomHalfW, bottomH, radius);
 
         // 渲染浮动文字
         renderFloatingTexts(ctx);
@@ -238,131 +253,207 @@ const ScorePanel = (() => {
         ctx.restore();
     }
 
-    function renderModeSlider(ctx, x, y, w, h) {
-        // 背景
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-        ctx.fillRect(x, y, w, h);
+    function renderSliderBlock(ctx, x, y, w, h, radius) {
+        // 方块背景和边框 - 圆角
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
 
-        // 滑块轨道
-        const trackY = y + h / 2 - 8;
-        const trackH = 16;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
 
-        ctx.fillStyle = '#333';
-        ctx.fillRect(x + 10, trackY, w - 20, trackH);
+        const padding = 6;
 
-        // 滑块按钮
-        const sliderX = _isEntertainmentMode ?
-            x + w - 30 - 20 : x + 10 + 5;
+        // 标题
+        ctx.fillStyle = '#4a9eff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('模式', x + w / 2, y + 15);
 
-        ctx.fillStyle = _isEntertainmentMode ? '#ff6b6b' : '#4a9eff';
-        ctx.fillRect(sliderX, trackY + 2, 40, trackH - 4);
-
-        // 标签
-        ctx.fillStyle = '#aaa';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText('练习', x + 15, y + h - 8);
-
-        ctx.textAlign = 'right';
-        ctx.fillText('娱乐', x + w - 15, y + h - 8);
+        // 滑块 - 调整大小以适应较小的区域
+        renderModeSlider(ctx, x + padding, y + padding + 10, w - padding * 2, h - padding * 2 - 10);
     }
 
-    function renderScoreDisplay(ctx, x, y, w, h) {
-        // 在右上角显示总分
-        const scoreX = x + w - 60;
-        const scoreY = y + 15;
+    function renderScoreBlock(ctx, x, y, w, h, radius) {
+        // 方块背景和边框 - 圆角
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
+
+        // 居中显示总分
+        renderScoreInCenter(ctx, x, y, w, h);
+    }
+
+    function renderBatteryBlock(ctx, x, y, w, h, radius) {
+        // 方块背景和边框 - 圆角
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
+
+        const padding = 6;
+        renderHorizontalBattery(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
+    }
+
+    function renderHitDisplayBlock(ctx, x, y, w, h, radius) {
+        // 方块背景和边框 - 圆角
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
+
+        const padding = 6;
+        renderCurrentHitDisplay(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
+    }
+
+    function renderRhythmBlock(ctx, x, y, w, h, radius) {
+        // 方块背景和边框 - 圆角
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
+
+        const padding = 6;
+        renderRhythmSelector(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
+    }
+
+    function renderScoreInCenter(ctx, x, y, w, h) {
+        // 标题
+        ctx.fillStyle = '#4a9eff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('总分', x + w / 2, y + 15);
 
         // 主分数 - 带发光效果
         const glowAlpha = _scoreGlow * 0.5;
         if (_scoreGlow > 0) {
-            ctx.shadowBlur = 8 + _scoreGlow * 4;
+            ctx.shadowBlur = 6 + _scoreGlow * 3;
             ctx.shadowColor = `rgba(74, 158, 255, ${glowAlpha})`;
         }
 
         ctx.fillStyle = `rgba(74, 158, 255, ${1.0 - glowAlpha * 0.3})`;
-        ctx.font = 'bold 20px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(_score.toString(), scoreX + 50, scoreY + 15);
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(_score.toString(), x + w / 2, y + h / 2 + 8);
 
         // 重置阴影
         ctx.shadowBlur = 0;
+    }
 
-        // 标签
-        ctx.fillStyle = '#888';
+    function renderModeSlider(ctx, x, y, w, h) {
+        // 滑块轨道
+        const trackY = y + h / 2 - 4;
+        const trackH = 8;
+
+        ctx.fillStyle = '#333';
+        drawRoundedRect(ctx, x + 5, trackY, w - 10, trackH, 4);
+        ctx.fill();
+
+        // 滑块按钮
+        const buttonW = 20;
+        const sliderX = _isEntertainmentMode ?
+            x + w - 5 - buttonW : x + 5;
+
+        ctx.fillStyle = _isEntertainmentMode ? '#ff6b6b' : '#4a9eff';
+        drawRoundedRect(ctx, sliderX, trackY + 1, buttonW, trackH - 2, 3);
+        ctx.fill();
+
+        // 标签 - 调整字体大小
+        ctx.fillStyle = '#aaa';
         ctx.font = '8px Arial';
-        ctx.fillText('总分', scoreX + 50, scoreY + 30);
+        ctx.textAlign = 'left';
+        ctx.fillText('练习', x + 2, y + h - 2);
+
+        ctx.textAlign = 'right';
+        ctx.fillText('娱乐', x + w - 2, y + h - 2);
     }
 
     function renderHorizontalBattery(ctx, x, y, w, h) {
-        // 背景
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(x, y, w, h);
-
-        // 标题
+        // 标题和百分比
         ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 11px Arial';
+        ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('能量槽', x + 5, y + 15);
+        ctx.fillText('能量槽', x, y + 12);
 
-        // 百分比
         ctx.textAlign = 'right';
-        ctx.fillText(Math.floor(_batteryCharge) + '%', x + w - 5, y + 15);
+        ctx.fillText(Math.floor(_batteryCharge) + '%', x + w, y + 12);
 
-        // 水平电池主体
-        const batteryX = x + 10;
-        const batteryY = y + 20;
-        const batteryW = w - 30;
-        const batteryH = h - 30;
+        // 电池主体
+        const batteryY = y + 18;
+        const batteryH = h - 24;
 
         // 电池边框 - 带脉冲效果
         if (_batteryPulse > 0) {
-            ctx.shadowBlur = 6 + _batteryPulse * 6;
+            ctx.shadowBlur = 5 + _batteryPulse * 5;
             ctx.shadowColor = `rgba(74, 158, 255, ${_batteryPulse})`;
         }
 
         ctx.strokeStyle = '#4a9eff';
         ctx.lineWidth = 2;
-        ctx.strokeRect(batteryX, batteryY, batteryW, batteryH);
+        drawRoundedRect(ctx, x + 5, batteryY, w - 15, batteryH, 4);
+        ctx.stroke();
 
         // 电池正极
-        const capW = 6;
-        const capH = batteryH * 0.6;
+        const capW = 4;
+        const capH = batteryH * 0.5;
         ctx.fillStyle = '#4a9eff';
-        ctx.fillRect(batteryX + batteryW, batteryY + (batteryH - capH) / 2, capW, capH);
+        drawRoundedRect(ctx, x + w - 10, batteryY + (batteryH - capH) / 2, capW, capH, 2);
+        ctx.fill();
 
         // 重置阴影
         ctx.shadowBlur = 0;
 
         // 从左到右的电池填充
-        const fillW = (batteryW - 4) * (_batteryCharge / 100);
+        const fillW = (w - 20) * (_batteryCharge / 100);
         if (fillW > 0) {
             // 水平渐变填充
-            const gradient = ctx.createLinearGradient(batteryX, 0, batteryX + batteryW, 0);
+            const gradient = ctx.createLinearGradient(x + 5, 0, x + w - 15, 0);
             gradient.addColorStop(0, '#ff4757');
             gradient.addColorStop(0.3, '#ffa502');
             gradient.addColorStop(0.6, '#2ed573');
             gradient.addColorStop(1, '#4a9eff');
 
             ctx.fillStyle = gradient;
-            ctx.fillRect(batteryX + 2, batteryY + 2, fillW, batteryH - 4);
+
+            // 使用圆角矩形进行裁剪
+            ctx.save();
+            drawRoundedRect(ctx, x + 7, batteryY + 2, fillW, batteryH - 4, 3);
+            ctx.clip();
+            ctx.fillRect(x + 7, batteryY + 2, fillW, batteryH - 4);
+            ctx.restore();
         }
 
         // 渲染泡泡效果
         if (_isBubbleActive) {
-            renderBubbles(ctx, batteryX, batteryY, batteryW, batteryH);
+            renderBubbles(ctx, x + 5, batteryY, w - 15, batteryH);
         }
     }
 
     function renderCurrentHitDisplay(ctx, x, y, w, h) {
-        // 背景
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(x, y, w, h);
-
         // 标题
         ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 11px Arial';
+        ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('击打识别', x + w / 2, y + 15);
+        ctx.fillText('击打识别', x + w / 2, y + 12);
 
         // 显示当前击打类型
         if (_currentHitType && millis() - _currentHitTime < 1500) {
@@ -370,44 +461,39 @@ const ScorePanel = (() => {
 
             // 大图标
             ctx.fillStyle = type.color;
-            ctx.font = '36px Arial';
+            ctx.font = '28px Arial';
             ctx.textAlign = 'center';
             ctx.fillText(type.icon, x + w / 2, y + h / 2 + 5);
 
             // 名称
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px Arial';
+            ctx.font = 'bold 11px Arial';
             ctx.fillText(type.name, x + w / 2, y + h - 15);
 
         } else {
             // 待机状态
             ctx.fillStyle = '#666';
-            ctx.font = '24px Arial';
+            ctx.font = '20px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('？', x + w / 2, y + h / 2 + 5);
 
-            ctx.font = '10px Arial';
+            ctx.font = '9px Arial';
             ctx.fillText('等待击打', x + w / 2, y + h - 15);
         }
     }
 
     function renderRhythmSelector(ctx, x, y, w, h) {
-        // 背景
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(x, y, w, h);
-
         // 标题
         ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 11px Arial';
+        ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('运势拍', x + w / 2, y + 15);
+        ctx.fillText('韵律拍', x + w / 2, y + 12);
 
         // 4个圆圈布局 (2x2)
-        const circleSize = Math.min(w / 3, h / 4);
-        const circleRadius = circleSize / 2 - 3;
+        const circleRadius = Math.min(w / 5, h / 5);
         const centerX1 = x + w * 0.3;
         const centerX2 = x + w * 0.7;
-        const centerY1 = y + h * 0.4;
+        const centerY1 = y + h * 0.45;
         const centerY2 = y + h * 0.75;
 
         const positions = [
@@ -426,8 +512,8 @@ const ScorePanel = (() => {
             const canUse = _isEntertainmentMode && isUnlocked;
 
             ctx.fillStyle = canUse ?
-                (isSelected ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.1)') :
-                'rgba(100, 100, 100, 0.1)';
+                (isSelected ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.08)') :
+                'rgba(100, 100, 100, 0.05)';
 
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, circleRadius, 0, Math.PI * 2);
@@ -435,25 +521,25 @@ const ScorePanel = (() => {
 
             // 圆圈边框
             ctx.strokeStyle = canUse ?
-                (isSelected ? '#ffd700' : '#4a9eff') : '#666';
-            ctx.lineWidth = isSelected ? 3 : 2;
+                (isSelected ? '#ffd700' : '#4a9eff') : '#555';
+            ctx.lineWidth = isSelected ? 2 : 1;
             ctx.stroke();
 
             // 图标
-            ctx.fillStyle = canUse ? '#fff' : '#666';
-            ctx.font = `${Math.floor(circleRadius * 0.8)}px Arial`;
+            ctx.fillStyle = canUse ? '#fff' : '#555';
+            ctx.font = `${Math.floor(circleRadius * 0.7)}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText(option.icon, pos.x, pos.y + 3);
+            ctx.fillText(option.icon, pos.x, pos.y + 2);
 
             // 解锁状态指示
             if (!isUnlocked) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, circleRadius, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.fillStyle = '#888';
-                ctx.font = '12px Arial';
+                ctx.fillStyle = '#666';
+                ctx.font = '10px Arial';
                 ctx.fillText('🔒', pos.x, pos.y + 2);
             }
         });

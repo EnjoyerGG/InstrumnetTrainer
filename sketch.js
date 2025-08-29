@@ -1529,35 +1529,35 @@ function getCurrentSyncQuality() {
 }
 
 function handleScorePanelClick(x, y, w, h) {
-    const padding = 6;
+    const gap = 4;
 
-    // 检查模式滑块点击
-    const sliderH = Math.floor(h * 0.15);
-    if (y >= padding && y <= padding + sliderH) {
-        // 切换模式
+    // 计算各方块的位置
+    const topH = Math.floor(h * 0.25);
+    const midH = Math.floor(h * 0.35);
+    const bottomH = h - topH - midH - gap * 2;
+    const bottomHalfW = Math.floor((w - gap) / 2);
+
+    // 检查顶部方块（模式滑块）
+    if (y >= 0 && y <= topH) {
         const newMode = !scoreHUD.getScoreData().isEntertainmentMode;
-        scoreHUD.setMode?.(newMode);
+        window.scorePanelInterface?.setMode?.(newMode);
         console.log(`模式切换: ${newMode ? '娱乐模式' : '练习模式'}`);
         return;
     }
 
-    // 检查右下角节拍选择器点击
-    const batteryY = padding + sliderH + padding;
-    const batteryH = Math.floor(h * 0.30);
-    const bottomY = batteryY + batteryH + padding;
-    const bottomH = h - bottomY - padding;
-    const halfW = Math.floor((w - padding * 3) / 2);
+    // 检查右下方块（节拍选择器）
+    const bottomY = topH + gap + midH + gap;
+    const rightBlockX = bottomHalfW + gap;
 
-    // 右下角区域
-    if (x >= padding + halfW + padding && y >= bottomY) {
-        const relX = x - (padding + halfW + padding);
+    if (y >= bottomY && x >= rightBlockX) {
+        const relX = x - rightBlockX;
         const relY = y - bottomY;
 
-        // 计算点击的圆圈
-        const circleSize = Math.min(halfW / 3, bottomH / 4);
-        const centerX1 = halfW * 0.3;
-        const centerX2 = halfW * 0.7;
-        const centerY1 = bottomH * 0.4;
+        // 计算圆圈位置
+        const circleRadius = Math.min(bottomHalfW / 5, bottomH / 5);
+        const centerX1 = bottomHalfW * 0.3;
+        const centerX2 = bottomHalfW * 0.7;
+        const centerY1 = bottomH * 0.45;
         const centerY2 = bottomH * 0.75;
 
         const circles = [
@@ -1569,8 +1569,8 @@ function handleScorePanelClick(x, y, w, h) {
 
         circles.forEach(circle => {
             const dist = Math.sqrt((relX - circle.x) ** 2 + (relY - circle.y) ** 2);
-            if (dist <= circleSize / 2) {
-                scoreHUD.selectRhythm?.(circle.index);
+            if (dist <= circleRadius) {
+                window.scorePanelInterface?.selectRhythm?.(circle.index);
                 console.log(`选择节拍 ${circle.index + 1}`);
             }
         });
