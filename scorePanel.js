@@ -7,6 +7,7 @@
 const ScorePanel = (() => {
     let _rect = null;
     let _rectProvider = null;
+    let _drawWin = null;
 
     // —— 星星激励（连击）——
     let _stars = 0;                        // 已点亮的星星数量 0..3
@@ -245,21 +246,41 @@ const ScorePanel = (() => {
     }
 
     function selectRhythm(index) {
+        // if (_isEntertainmentMode && _rhythmOptions[index] && _rhythmOptions[index].unlocked) {
+        //     _selectedRhythm = index;
+        //     console.log(`选择节拍: ${_rhythmOptions[index].name}`);
+
+        //     // ★ 激活绘画模式
+        //     if (window.DrawingMode) {
+        //         console.log(`激活绘画模式，歌曲索引: ${index}`);
+        //         window.DrawingMode.activate(index);
+        //     }
+        // } else if (_isEntertainmentMode && !_rhythmOptions[index].unlocked) {
+        //     // 显示未解锁提示
+        //     addFloatingText('Lock!', '#ff6666', 14);
+        // } else if (!_isEntertainmentMode) {
+        //     // 显示模式错误提示
+        //     addFloatingText('Please switch Fun mode!', '#ffaa00', 14);
+        // }
         if (_isEntertainmentMode && _rhythmOptions[index] && _rhythmOptions[index].unlocked) {
             _selectedRhythm = index;
-            console.log(`选择节拍: ${_rhythmOptions[index].name}`);
 
-            // ★ 激活绘画模式
-            if (window.DrawingMode) {
-                console.log(`激活绘画模式，歌曲索引: ${index}`);
-                window.DrawingMode.activate(index);
+            // 打开新页面（只开一次，已开则聚焦；顺便把选择的节拍带过去）
+            const url = `draw.html?mode=${index}`;
+            if (!_drawWin || _drawWin.closed) {
+                _drawWin = window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+                _drawWin.focus();
+                // 如果你在 draw.html 里用 postMessage 接收，也可以把状态发过去：
+                _drawWin.postMessage({ type: 'changeMode', index }, '*');
             }
-        } else if (_isEntertainmentMode && !_rhythmOptions[index].unlocked) {
-            // 显示未解锁提示
+            return;
+        }
+
+        if (_isEntertainmentMode && !_rhythmOptions[index].unlocked) {
             addFloatingText('Lock!', '#ff6666', 14);
         } else if (!_isEntertainmentMode) {
-            // 显示模式错误提示
-            addFloatingText('Please switch Fun mode!', '#ffaa00', 14);
+            addFloatingText('Please switch to Fun mode!', '#ffaa00', 14);
         }
     }
 

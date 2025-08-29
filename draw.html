@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Conga — Draw Mode</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+            font: 14px/1.6 system-ui, Segoe UI, Arial
+        }
+
+        /* 两层画布：背景在下，绘画在上 */
+        #bg,
+        #cnvs {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block
+        }
+
+        #bg {
+            z-index: 0
+        }
+
+        #cnvs {
+            z-index: 1
+        }
+
+        /* 提示与启动 */
+        #startOverlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            background: rgba(0, 0, 0, .6)
+        }
+
+        #startBtn {
+            appearance: none;
+            border: 0;
+            border-radius: 999px;
+            padding: .9rem 1.4rem;
+            background: #1e90ff;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: .5px;
+            cursor: pointer
+        }
+
+        #hint {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 1;
+            pointer-events: none;
+            mix-blend-mode: screen;
+            opacity: .85;
+            transition: opacity .5s
+        }
+
+        #hint.gone {
+            opacity: 0
+        }
+
+        /* 隐藏模式按钮（你原交互代码会创建 .modes，这里直接隐藏掉） */
+        .modes {
+            display: none !important
+        }
+
+        /* 背景加载/无音频提示（精简） */
+        #loading,
+        #no-audio {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="bg"></canvas>
+    <canvas id="cnvs" resize></canvas>
+
+    <div id="hint">Draw on me</div>
+
+    <div id="startOverlay">
+        <button id="startBtn" autofocus>Tap to start</button>
+    </div>
+
+    <div id="loading" hidden>
+        <p class="msg">Loading…</p>
+    </div>
+    <div id="no-audio" hidden>
+        <p>No Web Audio API</p>
+    </div>
+
+    <!-- 依赖：Paper.js + Tone.js + StartAudioContext（都走 CDN） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.39/Tone.min.js"></script>
+    <script src="https://unpkg.com/startaudiocontext@1.2.1/StartAudioContext.min.js"></script>
+
+    <script>
+        /* ========= 1) 背景：星空 + 波形（Noel Delgado 版本，封装为 IIFE，使用 #bg 画布） ========= */
+        (() => {
+            const media = ["https://s3-us-west-2.amazonaws.com/s.cdpn.io/9473/new_year_dubstep_minimix.mp3"]; // 可换你的音频
+            const fftSize = 1024;
+            const BG_COL1 = "#000011", BG_COL2 = "#060D1F", BG_COL3 = "#02243F";
+            const TOTAL_STARS = 1200, STARS_BREAK_POINT = 140, AVG_BREAK_POINT = 100;
+
+            let w = 0, h = 0, cx = 0, cy = 0, playing = false, rotation = 0;
+            const bg = document.getElementById('bg');
+            const ctx = bg.getContext('2d', { alpha: false });
+            const dpr = Math.min(2, window.devicePixelRatio || 1);
+            let actx, analyser, gainNode, audioBuf, asource, frequencyData, timeData, avg = 0;
+            const stars = [], points = [];
+            const TOTAL_POINTS = fftSize / 2;
+            let avgCircle = { radius: 60 };
+
+            function resize() {
+                w = bg.width = Math.floor(innerWidth * dpr);
+                h = bg.height = Math.floor(innerHeight * dpr);
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+                cx = innerWidth / 2; cy = innerHeight / 2;
+                avgCircle.radius = Math.max(innerWidth, innerHeight) / 12;
+                points.length = 0;
+                for (let i = 0; i < TOTAL_POINTS; i++) {
+                    const angle = (i * 360) / TOTAL_POINTS;
+                    points.push({
+                        angle,
+                        x: cx + (Math.max(innerWidth, innerHeight) / 10) * Math.sin(Math.PI / 180 * angle),
+                        y: cy + (Math.max(innerWidth, innerHeight) / 10) * Math.cos(Math.PI / 180 * angle),
+                        dx: 0, dy: 0
+                    });
+                }
+            }
+            addEventListener('resize', resize);
+
+            function Star() {
+                this.x = Math.random() * innerWidth - cx;
+                this.y = Math.random() * innerHeight - cy;
+                this.z = this.max_depth = Math.max(innerWidth / innerHeight);
+                this.radius = 0.2;
+                const bigger = Math.abs(this.x) > Math.abs(this.y);
+                this.dx = (bigger ? 1 : Math.abs(this.x / this.y)) * (this.x > 0 ? 1 : -1);
+                this.dy = (bigger ? Math.abs(this.y / this.x) : 1) * (this.y > 0 ? 1 : -1);
+                this.dz = -0.1; this.ddx = .001 * this.dx; this.ddy = .001 * this.dy;
+                this.color = "#465677";
+            }
+
+            function createStarField() {
+                stars.length = 0;
+                for (let i = 0; i < TOTAL_STARS; i++) stars.push(new Star());
+            }
+
+            function clear() {
+                const g = ctx.createLinearGradient(0, 0, 0, innerHeight);
+                g.addColorStop(0, BG_COL1); g.addColorStop(0.96, BG_COL2); g.addColorStop(1, BG_COL3);
+                ctx.globalCompositeOperation = "source-over";
+                ctx.fillStyle = g; ctx.fillRect(0, 0, innerWidth, innerHeight);
+            }
+
+            function getAvg(arr) { let s = 0; for (let i = 0; i < arr.length; i++) s += arr[i]; return s / arr.length; }
+
+            function drawStars() {
+                const hit = avg > AVG_BREAK_POINT;
+                for (let i = 0; i < stars.length; i++) {
+                    const p = stars[i];
+                    const tick = hit ? (avg / 20) : (avg / 50);
+                    p.x += p.dx * tick; p.y += p.dy * tick; p.z += p.dz;
+                    p.dx += p.ddx; p.dy += p.ddy;
+                    p.radius = 0.2 + ((p.max_depth - p.z) * .1);
+
+                    if (p.x < -cx || p.x > cx || p.y < -cy || p.y > cy) { stars[i] = new Star(); continue; }
+
+                    ctx.beginPath();
+                    ctx.globalCompositeOperation = "lighter";
+                    ctx.fillStyle = p.color;
+                    ctx.arc(p.x + cx, p.y + cy, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            function drawAvgCircle() {
+                const hit = avg > AVG_BREAK_POINT;
+                ctx.strokeStyle = hit ? "rgba(77,218,248,1)" : "rgba(77,218,248,1)";
+                ctx.fillStyle = hit ? "rgba(29,36,57,0.05)" : "rgba(29,36,57,0.1)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(cx, cy, (avg + avgCircle.radius) / dpr, 0, Math.PI * 2);
+                ctx.stroke(); ctx.fill();
+            }
+
+            function drawWave() {
+                const hit = avg > AVG_BREAK_POINT;
+                rotation += hit ? 0.05 : -0.05;
+                ctx.strokeStyle = hit ? "rgba(157,242,157,0.8)" : "rgba(157,242,157,0.11)";
+                ctx.fillStyle = hit ? "rgba(0,0,0,0)" : "rgba(29,36,57,0.05)";
+                ctx.lineWidth = 1; ctx.lineCap = "round";
+                ctx.save();
+                ctx.translate(cx, cy); ctx.rotate(rotation); ctx.translate(-cx, -cy);
+                ctx.beginPath();
+                const P0 = points[0]; ctx.moveTo(P0.dx || P0.x, P0.dy || P0.y);
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i], v = timeData[i];
+                    p.dx = p.x + v * Math.sin(Math.PI / 180 * p.angle);
+                    p.dy = p.y + v * Math.cos(Math.PI / 180 * p.angle);
+                    const n = points[(i + 1) % points.length];
+                    const xc = (p.dx + (n.dx || n.x)) / 2, yc = (p.dy + (n.dy || n.y)) / 2;
+                    ctx.quadraticCurveTo(p.dx, p.dy, xc, yc);
+                }
+                ctx.stroke(); ctx.restore();
+            }
+
+            function animate() {
+                if (!playing) return;
+                requestAnimationFrame(animate);
+                analyser.getByteFrequencyData(frequencyData);
+                analyser.getByteTimeDomainData(timeData);
+                avg = getAvg(frequencyData);
+                clear(); drawStars(); drawAvgCircle(); drawWave();
+            }
+
+            async function start() {
+                // 独立的 WebAudio 解析与播放
+                actx = new (window.AudioContext || window.webkitAudioContext)();
+                const res = await fetch(media[0]);
+                const buf = await res.arrayBuffer();
+                audioBuf = await actx.decodeAudioData(buf);
+                analyser = actx.createAnalyser(); analyser.fftSize = fftSize;
+                analyser.minDecibels = -100; analyser.maxDecibels = -30; analyser.smoothingTimeConstant = 0.8;
+                gainNode = actx.createGain(); gainNode.gain.value = 1;
+                frequencyData = new Uint8Array(analyser.frequencyBinCount);
+                timeData = new Uint8Array(analyser.frequencyBinCount);
+                gainNode.connect(analyser); analyser.connect(actx.destination);
+
+                asource = actx.createBufferSource(); asource.buffer = audioBuf; asource.loop = true;
+                asource.connect(gainNode); asource.start();
+                playing = true; animate();
+            }
+
+            // 初始化
+            resize(); createStarField();
+            // 暴露一个启动函数给外层点击时调用
+            window.__bgStart = () => start().catch(e => console.warn(e));
+        })();
+    </script>
+
+    <script>
+        /* ========= 2) 前景：鼠标绘画（基于你给的 Tone.js + Paper.js 代码，去掉顶部按钮） ========= */
+        (() => {
+            const SPAWN_RATE = [10, 30], MAX_GROWTH_TIME = 10;
+            const SCALE = ["B3", "Db4", "Eb4", "F4", "G4", "A4", "B4", "Db5", "Eb5", "F5", "G5", "A5", "B5", "Db6"];
+            const INTERVALS = [1, 2, 3, 6];
+
+            // 三种模式（与你给的一致）
+            const MODES = [/* ——此处可粘你的 MODES 完整定义—— */];
+
+            // 简化：默认选第 1 种模式，不渲染 .modes 按钮
+            let currentMode = MODES[0];
+
+            // Tone 音频链（等点击 start 后再真正 start）
+            let compressor, src;
+            function initTone() {
+                compressor = new Tone.Compressor().toDestination();
+                src = new Tone.Noise("white");
+                src.start();
+            }
+
+            // Paper.js 画布
+            const canvas = document.getElementById('cnvs');
+            const hint = document.getElementById('hint');
+            paper.setup(canvas);
+            const drawTool = new paper.Tool();
+
+            let paths = [], currentNoteIndex = Math.floor(Math.random() * SCALE.length);
+            function nextNoteIndex(cur) {
+                const s = INTERVALS[Math.floor(Math.random() * INTERVALS.length)] * (Math.random() < .5 ? -1 : 1);
+                return (cur + s >= 0 && cur + s < SCALE.length) ? cur + s : cur - s;
+            }
+
+            // 下面这段基本保持你原逻辑（删去顶部模式按钮的相关代码）
+            const MAX_LINE_LEN = 10000;
+            function getColorStr({ hue, saturation }, noteIndex, alpha = 1) {
+                const l = 30 + (70 - 30) * (noteIndex / SCALE.length);
+                return `hsla(${hue}, ${saturation}%, ${l}%, ${alpha})`;
+            }
+            function easeOutQuart(t) { return 1 - (--t) * t * t * t; }
+
+            drawTool.onMouseDown = evt => {
+                hint.classList.add('gone');
+                const path = {
+                    mode: currentMode,
+                    path: [{ lastPoint: evt.point, point: evt.point, addedAt: Date.now() }],
+                    offshoots: [],
+                    noteIndex: currentNoteIndex,
+                    lastActivityAt: Date.now(),
+                    player: null
+                };
+                paths.push(path);
+                currentNoteIndex = nextNoteIndex(currentNoteIndex);
+            };
+
+            drawTool.onMouseDrag = evt => {
+                const path = paths[paths.length - 1];
+                path.path.push({ lastPoint: evt.lastPoint, point: evt.point, addedAt: Date.now() });
+                // 生成 offshoot（同你代码）
+            };
+
+            paper.view.onFrame = evt => {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // 按你的代码绘制 path 与 offshoot（此处略；直接粘你的 onFrame 内部即可）
+            };
+
+            // Audio：与 path 长度关联的音量/声像（你的 setInterval 逻辑可继续复用）
+            setInterval(() => {
+                // 同你代码，计算总长度→gain、pan
+            }, 200);
+
+            // 暴露一个启动函数给外层：解锁 Tone，并初始化音源
+            window.__fgStart = async () => {
+                await Tone.start();
+                initTone();
+            };
+        })();
+    </script>
+
+    <script>
+        /* ========= 3) 统一启动：点击一次按钮，启动前景 + 背景 ========= */
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            document.getElementById('startOverlay').style.display = 'none';
+            // 启动 Tone / Paper 前景
+            await (window.__fgStart && window.__fgStart());
+            // 启动背景音频与可视化
+            await (window.__bgStart && window.__bgStart());
+        });
+    </script>
+
+</body>
+
+</html>
