@@ -128,6 +128,7 @@ const ScorePanel = (() => {
         } else { // miss
             _missHits++;
             _combo = 0;
+            _batteryCharge = Math.max(0, _batteryCharge - 1);
             addFloatingText('Miss', '#ff4444', 14);
         }
 
@@ -144,7 +145,7 @@ const ScorePanel = (() => {
         if (timing === 'perfect' || timing === 'good') {
             if (_starEnabled && _stars < 3) {
                 _streakForStar++;
-                _failStrikes = 0;                  // 成功重置失败计数
+                //_failStrikes = 0;                  // 成功重置失败计数
 
                 // 达到当前目标阈值则点亮一颗星
                 const need = _starSteps[_stars];   // 先点亮第 _stars+1 颗所需连击
@@ -166,6 +167,8 @@ const ScorePanel = (() => {
                     _stars--;
                     _failStrikes = 0;
                     addFloatingText(`★ -1`, '#ff6666', 16);
+                    const pos = getStarCenterForIndex(_stars);
+                    if (pos) StarEffects.triggerPerfect(pos.x, pos.y);
                 }
             }
         }

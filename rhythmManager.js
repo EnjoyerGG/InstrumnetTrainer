@@ -206,6 +206,7 @@ class RhythmManager {
                 state.judged = true;
                 state.result = "Miss";
                 state.fadeTimer = 3000;
+                if (typeof updateStatusTracker === 'function') updateStatusTracker('Miss');
             }
         }
     }

@@ -450,9 +450,12 @@ function initDrumTriggerForDesktop() {
                 judgeLineGlow = 1;
 
                 // ★ 添加ScorePanel集成
-                const timing = calculateHitTiming();
+                // const timing = calculateHitTiming();
+                // const hitType = detectHitType();
+                // scoreHUD?.registerHit?.(timing, hitType);
                 const hitType = detectHitType();
-                scoreHUD?.registerHit?.(timing, hitType);
+                window._lastHitType = hitType;   // 让后面能带上击打类型
+                rm.registerHit(hitType);         // 只交给 RhythmManager 判定
 
                 if (debugMode) {
                     console.log(`桌面端鼓击检测: ${reason}`);
@@ -1490,6 +1493,13 @@ function updateStatusTracker(result) {
     }
 
     window.statusTracker.lastUpdateTime = millis();
+
+    if (scoreHUD && typeof scoreHUD.registerHit === 'function') {
+        const map = { Perfect: 'perfect', Good: 'good', Miss: 'miss' };
+        const timing = map[result] || 'miss';
+        const hitType = window._lastHitType || 'unknown';
+        scoreHUD.registerHit(timing, hitType);
+    }
 }
 
 function resetStatusTracker() {
