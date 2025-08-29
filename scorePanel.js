@@ -117,6 +117,19 @@ const ScorePanel = (() => {
         ctx.closePath();
     }
 
+    function drawPanel(ctx, x, y, w, h, radius, strokeAlpha = 0.65) {
+        // 背景
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)';
+        drawRoundedRect(ctx, x, y, w, h, radius);
+        ctx.fill();
+
+        // 与 Learn/Fun 滑块一致的描边
+        ctx.strokeStyle = `rgba(199, 199, 199, ${strokeAlpha})`; // = 0.65
+        ctx.lineWidth = 1; // 想更醒目可改 1.2–1.4
+        drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
+        ctx.stroke();
+    }
+
     function init(options = {}) {
         _rectProvider = options.rectProvider || (() => ({ x: 0, y: 0, w: 200, h: 300 }));
 
@@ -409,6 +422,7 @@ const ScorePanel = (() => {
         ctx.stroke();
 
         // 渲染星星
+        drawPanel(ctx, x, y, w, h, radius);
         renderStarsBlock(ctx, x, y, w, h);
     }
 
@@ -423,6 +437,7 @@ const ScorePanel = (() => {
         drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
         ctx.stroke();
 
+        drawPanel(ctx, x, y, w, h, radius);
         const padding = 6;
         renderHorizontalBattery(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
     }
@@ -438,6 +453,7 @@ const ScorePanel = (() => {
         drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
         ctx.stroke();
 
+        drawPanel(ctx, x, y, w, h, radius);
         const padding = 6;
         renderCurrentHitDisplay(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
     }
@@ -453,6 +469,7 @@ const ScorePanel = (() => {
         drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
         ctx.stroke();
 
+        drawPanel(ctx, x, y, w, h, radius);
         const padding = 6;
         renderRhythmSelector(ctx, x + padding, y + padding, w - padding * 2, h - padding * 2);
     }
