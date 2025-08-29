@@ -520,10 +520,10 @@ const ScorePanel = (() => {
         ctx.fillStyle = '#d8d8d8ff';
         ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('Energy', x, y + 12);
+        ctx.fillText('Combo', x, y + 10);
 
         ctx.textAlign = 'right';
-        ctx.fillText(Math.floor(_batteryCharge) + '%', x + w, y + 12);
+        ctx.fillText(Math.floor(_batteryCharge) + '%', x + w, y + 10);
 
         // 电池主体
         const batteryY = y + 18;
@@ -535,7 +535,7 @@ const ScorePanel = (() => {
             ctx.shadowColor = `rgba(74, 158, 255, ${_batteryPulse})`;
         }
 
-        ctx.strokeStyle = '#4a9eff';
+        ctx.strokeStyle = '#acc3efff';
         ctx.lineWidth = 2;
         drawRoundedRect(ctx, x + 5, batteryY, w - 15, batteryH, 4);
         ctx.stroke();
@@ -543,7 +543,7 @@ const ScorePanel = (() => {
         // 电池正极
         const capW = 4;
         const capH = batteryH * 0.5;
-        ctx.fillStyle = '#4a9eff';
+        ctx.fillStyle = '#acc3efff';
         drawRoundedRect(ctx, x + w - 10, batteryY + (batteryH - capH) / 2, capW, capH, 2);
         ctx.fill();
 
