@@ -267,7 +267,7 @@ const ScorePanel = (() => {
         drawRoundedRect(ctx, x, y, w, h, radius);
         ctx.fill();
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.strokeStyle = 'rgba(199, 199, 199, 0.65)';
         ctx.lineWidth = 1;
         drawRoundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, radius);
         ctx.stroke();
@@ -275,13 +275,13 @@ const ScorePanel = (() => {
         const padding = 6;
 
         // 标题
-        ctx.fillStyle = '#4a9eff';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('模式', x + w / 2, y + 15);
+        // ctx.fillStyle = '#4a9eff';
+        // ctx.font = 'bold 10px Arial';
+        // ctx.textAlign = 'center';
+        // ctx.fillText('模式', x + w / 2, y + 15);
 
         // 滑块 - 调整大小以适应较小的区域
-        renderModeSlider(ctx, x + padding, y + padding + 10, w - padding * 2, h - padding * 2 - 10);
+        renderModeSlider(ctx, x + padding, y + padding + 2, w - padding * 2, h - padding * 2 - 2);
     }
 
     function renderScoreBlock(ctx, x, y, w, h, radius) {
@@ -368,31 +368,40 @@ const ScorePanel = (() => {
     }
 
     function renderModeSlider(ctx, x, y, w, h) {
-        // 滑块轨道
-        const trackY = y + h / 2 - 4;
-        const trackH = 8;
+        // 1) 计算一块在容器内居中的“胶囊轨道”
+        const trackH = Math.min(34, h - 8);             // 轨道高度
+        const trackW = Math.min(w - 10, 260);           // 轨道宽度（留点边距，并限制上限）
+        const trackX = x + (w - trackW) / 2;            // 水平居中
+        const trackY = y + (h - trackH) / 2;            // 垂直居中（想再上移可减几像素，如 - 4）
+        const trackR = trackH / 2;                      // 胶囊：半径=高度一半
 
+        // 背景轨道：胶囊形
         ctx.fillStyle = '#333';
-        drawRoundedRect(ctx, x + 5, trackY, w - 10, trackH, 4);
+        drawRoundedRect(ctx, trackX, trackY, trackW, trackH, trackR);
         ctx.fill();
 
-        // 滑块按钮
-        const buttonW = 20;
-        const sliderX = _isEntertainmentMode ?
-            x + w - 5 - buttonW : x + 5;
+        // 2) 胶囊按钮（同样用圆角=高度/2）
+        const pad = 3;
+        const btnH = trackH - pad * 2;
+        const btnW = (trackW - pad * 2) / 2;  // 按钮宽度：接近一半
+        const btnR = btnH / 2;
 
-        ctx.fillStyle = _isEntertainmentMode ? '#ff6b6b' : '#4a9eff';
-        drawRoundedRect(ctx, sliderX, trackY + 1, buttonW, trackH - 2, 3);
+        const sliderX = _isEntertainmentMode
+            ? (trackX + trackW - pad - btnW)              // 右侧（Leisure）
+            : (trackX + pad);                              // 左侧（Practice）
+        const sliderY = trackY + pad;
+
+        ctx.fillStyle = _isEntertainmentMode ? '#317ecc' : '#d91c1c';
+        drawRoundedRect(ctx, sliderX, sliderY, btnW, btnH, btnR);
         ctx.fill();
 
-        // 标签 - 调整字体大小
-        ctx.fillStyle = '#aaa';
-        ctx.font = '8px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText('练习', x + 2, y + h - 2);
-
-        ctx.textAlign = 'right';
-        ctx.fillText('娱乐', x + w - 2, y + h - 2);
+        // 3) 文字居中
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';             // 微调基线
+        ctx.fillText(_isEntertainmentMode ? 'Fun' : 'Learn', sliderX + btnW / 2, sliderY + btnH / 2);
     }
 
     function renderHorizontalBattery(ctx, x, y, w, h) {
