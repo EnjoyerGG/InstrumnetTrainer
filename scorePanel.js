@@ -595,7 +595,7 @@ const ScorePanel = (() => {
         } else {
             // 待机状态
             ctx.fillStyle = '#cbcbcbff';
-            ctx.font = 'bold 20px Arial';
+            ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('Waiting...', x + w / 2, y + h / 2 + 5);
 
@@ -801,7 +801,7 @@ const ScorePanel = (() => {
         _bubbles = [];
         _isBubbleActive = false;
 
-        addFloatingText('System ResetReset', '#4a9eff', 12);
+        addFloatingText('System Reset', '#4a9eff', 12);
     }
 
     return { init };
