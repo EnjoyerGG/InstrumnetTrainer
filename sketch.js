@@ -351,13 +351,13 @@ function layoutRects() {
     RECT.amp = {
         x: RECT.rightHalf.x + pad,
         y: RECT.rightHalf.y + pad,
-        w: halfW,
+        w: halfW - 2,
         h: RECT.rightHalf.h - pad + 2
     };
     RECT.score = {
         x: RECT.rightHalf.x + pad + halfW + gap + 5,
         y: RECT.rightHalf.y + pad,
-        w: RECT.rightHalf.w - pad - halfW - gap,
+        w: RECT.rightHalf.w - pad - halfW - gap - 2,
         h: RECT.rightHalf.h - pad + 2
     };
 }
