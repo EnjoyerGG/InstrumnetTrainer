@@ -136,7 +136,7 @@ const ScorePanel = (() => {
             _maxCombo = _combo;
         }
 
-        if (timing === 'perfect') {
+        if (!_starEnabled && (timing === 'perfect' || timing === 'good')) {
             _starEnabled = true;                 // 首次 perfect 才开始计星
         }
 
