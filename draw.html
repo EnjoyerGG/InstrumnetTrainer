@@ -94,8 +94,8 @@
 
     <script>
         /* ============ 基础工具 ============ */
-        const REACT_GAIN = 360;
-        const REACT_POW = 0.65;
+        const REACT_GAIN = 380;
+        const REACT_POW = 0.60;
         const params = new URLSearchParams(location.search);
         const mode = Math.max(0, Math.min(3, parseInt(params.get('mode') || '0', 10)));
         const STAR_SPEED_SCALE = 1.35; // 小于 1 → 整体变慢
@@ -108,82 +108,117 @@
             'assets/songs/song4.mp3'
         ]; // :contentReference[oaicite:2]{index=2}
 
-
+        // 粒子喷泉（替代原来的线段 segments）
+        const EMIT_INTERVAL_MS = 12;
+        const NOTE_LIFE = 1600; // 1.6s，整体 1.6~2.4s 后消失
+        const NOTE_COLORS = ['#ff4d4f', '#2d8cff', '#22c55e', '#ffd84d', '#ff7ae0'];
+        let particles = [];
+        let lastEmit = 0;
 
         /* ============ WebAudio：同一套音频用于播放 + 频谱 ============ */
         let actx, analyser, gainNode, source = null, songBuffer = null;
-        let playing = false, // 是否正在发声
-            startedAt = 0,   // 当前这次start的绝对时间(ms)
-            offset = 0;      // 已播放位置(秒)，暂停时保留
+        // let playing = false, // 是否正在发声
+        //     startedAt = 0,   // 当前这次start的绝对时间(ms)
+        //     offset = 0;      // 已播放位置(秒)，暂停时保留
+        let audioReady = false;
 
         async function initAudio() {
             actx = new (window.AudioContext || window.webkitAudioContext)();
+
             analyser = actx.createAnalyser();
             analyser.fftSize = 1024;
             analyser.minDecibels = -110;
             analyser.maxDecibels = -10;
-            analyser.smoothingTimeConstant = 0.08;
+            analyser.smoothingTimeConstant = 0.08; // 更敏感
 
             gainNode = actx.createGain();
-            gainNode.gain.value = 0.0; // 初始静音，绘画时淡入
+            gainNode.gain.value = 0.0; // 初始静音
             gainNode.connect(analyser);
             analyser.connect(actx.destination);
 
-            // 载入所选歌曲
+            // 载入内部歌曲（仍用你 ?mode 的 SONGS）
             const url = SONGS[mode] || SONGS[0];
             const res = await fetch(url);
             const buf = await res.arrayBuffer();
             songBuffer = await actx.decodeAudioData(buf);
-        }
 
-        function createAndStartSource(startAtSeconds) {
-            // 每次恢复播放都要新建一个 BufferSource
-            stopSource();
+            // ★只创建一次的 BufferSource：循环播放，不再停止
             source = actx.createBufferSource();
             source.buffer = songBuffer;
+            source.loop = true;
             source.connect(gainNode);
-            source.start(0, startAtSeconds);
-            startedAt = actx.currentTime * 1000; // 记录开始时间(ms)
-            playing = true;
-        }
+            source.start(); // 一直走，只靠 gain 静音/发声
 
-        function stopSource() {
-            if (source) {
-                try { source.stop(); } catch (e) { }
-                source.disconnect();
-                source = null;
-            }
-            playing = false;
+            audioReady = true;
         }
 
         function fadeTo(value, ms) {
+            if (!actx) return;
             const now = actx.currentTime;
-            const target = Math.max(0, Math.min(1, value));
+            const v = Math.max(0, Math.min(1, value));
             gainNode.gain.cancelScheduledValues(now);
             gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-            gainNode.gain.linearRampToValueAtTime(target, now + ms / 1000);
+            gainNode.gain.linearRampToValueAtTime(v, now + ms / 1000);
         }
 
         function resumePlayback() {
-            // 从 offset 位置继续播放并淡入
-            createAndStartSource(offset);
-            fadeTo(1.0, 350);
+            if (!audioReady) return;
+            fadeTo(1.0, 220); // 淡入
         }
 
         function pausePlayback() {
-            // 先淡出，再停止并累加 offset
-            const before = actx.currentTime;
-            fadeTo(0.0, 350);
-            setTimeout(() => {
-                if (playing) {
-                    const now = actx.currentTime;
-                    // 累加已播放时长
-                    const elapsed = now - before;
-                    offset += elapsed; // 单位秒
-                    stopSource();
-                }
-            }, 360);
+            if (!audioReady) return;
+            fadeTo(0.0, 260); // 淡出（但不停止 Source）
         }
+
+        // function createAndStartSource(startAtSeconds) {
+        //     // 每次恢复播放都要新建一个 BufferSource
+        //     stopSource();
+        //     source = actx.createBufferSource();
+        //     source.buffer = songBuffer;
+        //     source.connect(gainNode);
+        //     source.start(0, startAtSeconds);
+        //     startedAt = actx.currentTime * 1000; // 记录开始时间(ms)
+        //     playing = true;
+        // }
+
+        // function stopSource() {
+        //     if (source) {
+        //         try { source.stop(); } catch (e) { }
+        //         source.disconnect();
+        //         source = null;
+        //     }
+        //     playing = false;
+        // }
+
+        // function fadeTo(value, ms) {
+        //     const now = actx.currentTime;
+        //     const target = Math.max(0, Math.min(1, value));
+        //     gainNode.gain.cancelScheduledValues(now);
+        //     gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        //     gainNode.gain.linearRampToValueAtTime(target, now + ms / 1000);
+        // }
+
+        // function resumePlayback() {
+        //     // 从 offset 位置继续播放并淡入
+        //     createAndStartSource(offset);
+        //     fadeTo(1.0, 350);
+        // }
+
+        // function pausePlayback() {
+        //     // 先淡出，再停止并累加 offset
+        //     const before = actx.currentTime;
+        //     fadeTo(0.0, 350);
+        //     setTimeout(() => {
+        //         if (playing) {
+        //             const now = actx.currentTime;
+        //             // 累加已播放时长
+        //             const elapsed = now - before;
+        //             offset += elapsed; // 单位秒
+        //             stopSource();
+        //         }
+        //     }, 360);
+        // }
 
         /* ============ 背景：星空 + 中央波形，使用同一个 analyser ============ */
         const bg = document.getElementById('bg');
@@ -343,29 +378,77 @@
         }
         function moveStroke(x, y) {
             if (!drawing) return;
-            // 压入线段，寿命 3~5s
-            segments.push({
-                x1: lastX, y1: lastY, x2: x, y2: y,
-                t0: performance.now(),
-                life: (STROKE_LIFE_MIN + Math.random() * (STROKE_LIFE_MAX - STROKE_LIFE_MIN)) * 1000
-            });
+
+            const now = performance.now();
+            const dx = x - lastX, dy = y - lastY;
+            const dist = Math.hypot(dx, dy) || 1;
+            const volume = avg / 255;                   // 来自频谱平均值
+            const speed = 0.25 + volume * 2.8;         // 音乐越强，喷射越快
+
+            if (now - lastEmit > EMIT_INTERVAL_MS) {
+                particles.push({
+                    x, y,
+                    vx: (dx / dist) * speed * 3 + (Math.random() - 0.5) * speed,
+                    vy: (dy / dist) * speed * 3 + (Math.random() - 0.5) * speed,
+                    t0: now,
+                    life: NOTE_LIFE * (0.8 + Math.random() * 0.5), // 1.28~2.4s
+                    size: 10 + volume * 28,
+                    char: Math.random() < 0.15 ? '♫' : '♪',
+                    color: NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)]
+                });
+                lastEmit = now;
+            }
+
             lastX = x; lastY = y;
-            ensurePlaying();
+            ensurePlaying(); // 只淡入
         }
+
         function endStroke() {
             drawing = false;
             schedulePause();
         }
-        function ensurePlaying() {
-            // 持续绘画时：取消暂停定时器 + 淡入 + 确保真正resume（只在第一次或暂停后）
-            if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-            if (!playing && songBuffer) resumePlayback();
-            else fadeTo(1.0, 200);
+
+        function drawFront() {
+            ctx.clearRect(0, 0, draw.width, draw.height);
+            const now = performance.now();
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                const age = now - p.t0;
+                if (age >= p.life) { particles.splice(i, 1); continue; }
+
+                // 更新位置（向外扩散更快）
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // 淡出
+                const alpha = 1 - age / p.life;
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, alpha);
+                ctx.font = `${p.size}px "Segoe UI Symbol","Arial Unicode MS", Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 8 + (avg / 255) * 14;
+                ctx.shadowColor = p.color;
+                ctx.fillText(p.char, p.x, p.y);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(drawFront);
         }
+
+        function ensurePlaying() {
+            if (!audioReady) return;
+            if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+            fadeTo(1.0, 200);     // 只淡入，不重建 source
+        }
+
         function schedulePause() {
-            // 停止绘画 600ms 后淡出并暂停
+            if (!audioReady) return;
             if (idleTimer) clearTimeout(idleTimer);
-            idleTimer = setTimeout(() => { pausePlayback(); }, 600);
+            idleTimer = setTimeout(() => { fadeTo(0.0, 260); }, 600);  // 只淡出，不 stop
         }
 
         // 鼠标
@@ -384,7 +467,7 @@
             resize(); initStars(); resizeDraw();
             await initAudio();       // 载入内部歌曲（按 ?mode）
             animateBG();             // 开始可视化动画（使用同一个 analyser）
-            drawSegments();
+            drawFront();
             // 注意：不自动播放，需按住开始画才会淡入恢复播放
         });
     </script>
