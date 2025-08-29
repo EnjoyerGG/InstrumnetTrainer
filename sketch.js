@@ -352,13 +352,13 @@ function layoutRects() {
         x: RECT.rightHalf.x + pad,
         y: RECT.rightHalf.y + pad,
         w: halfW,
-        h: RECT.rightHalf.h - pad * 2
+        h: RECT.rightHalf.h - pad + 2
     };
     RECT.score = {
         x: RECT.rightHalf.x + pad + halfW + gap + 5,
         y: RECT.rightHalf.y + pad,
         w: RECT.rightHalf.w - pad - halfW - gap,
-        h: RECT.rightHalf.h - pad + 6
+        h: RECT.rightHalf.h - pad + 2
     };
 }
 
