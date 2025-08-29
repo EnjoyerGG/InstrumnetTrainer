@@ -333,9 +333,9 @@ function layoutRects() {
     const sweepH = SWEEP_H;
     const hudY = sweepY + sweepH + GRID.pad;
     const hudH = Math.max(160, height - hudY - GRID.pad);
-    const insetTop = 8;
-    const insetRight = 10;
-    const insetBottom = 6;
+    const insetTop = 4;
+    const insetRight = 4;
+    const insetBottom = 2;
 
     const availW = width - GRID.pad * 2;
     const leftW = Math.round(availW / 2);
@@ -355,10 +355,10 @@ function layoutRects() {
         h: RECT.rightHalf.h - pad * 2
     };
     RECT.score = {
-        x: RECT.rightHalf.x + pad + halfW + gap,
+        x: RECT.rightHalf.x + pad + halfW + gap + 5,
         y: RECT.rightHalf.y + pad,
-        w: RECT.rightHalf.w - pad * 2 - halfW - gap,
-        h: RECT.rightHalf.h - pad * 2
+        w: RECT.rightHalf.w - pad - halfW - gap,
+        h: RECT.rightHalf.h - pad + 6
     };
 }
 

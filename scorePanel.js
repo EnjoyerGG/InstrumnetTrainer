@@ -210,39 +210,47 @@ const ScorePanel = (() => {
 
         ctx.save();
 
-        // 计算分区布局 - 修改为5个独立方块结构
-        const gap = 4;
-        const radius = 8; // 圆角半径
+        // ========== 布局尺寸控制参数 ==========
+        const gap = 3;                          // 方块间距 (进一步减小间距)
+        const radius = 12;                      // 圆角半径
 
-        // 分成5个独立区块
-        const topH = Math.floor(h * 0.25);      // 顶部25%：分为左右两块
-        const midH = Math.floor(h * 0.35);      // 中部35%：能量槽  
-        const bottomH = h - topH - midH - gap * 2; // 底部40%：左右分割
+        // ========== 垂直分布比例 (最大化使用垂直空间) ==========
+        const topH = Math.floor(h * 0.24);     // 顶部高度比例 (24%)
+        const midH = Math.floor(h * 0.38);     // 中部高度比例 (38%) 
+        const bottomH = h - topH - midH - gap * 2; // 底部自动计算 (约38%)
 
-        // 顶部左右分割
-        const topHalfW = Math.floor((w - gap) / 2);
-        // 底部左右分割
-        const bottomHalfW = Math.floor((w - gap) / 2);
+        // ========== 水平分布比例 (最大化使用水平空间) ==========  
+        const topLeftRatio = 0.50;             // 顶部左侧宽度比例 (50%)
+        const topRightRatio = 1 - topLeftRatio; // 顶部右侧宽度比例 (50%)
+
+        const bottomLeftRatio = 0.54;          // 底部左侧宽度比例 (54%)
+        const bottomRightRatio = 1 - bottomLeftRatio; // 底部右侧宽度比例 (46%)
+
+        // ========== 计算实际尺寸 ==========
+        const topLeftW = Math.floor((w - gap) * topLeftRatio);
+        const topRightW = Math.floor((w - gap) * topRightRatio);
+        const bottomLeftW = Math.floor((w - gap) * bottomLeftRatio);
+        const bottomRightW = Math.floor((w - gap) * bottomRightRatio);
 
         let currentY = y;
 
-        // 1. 顶部左方块：模式滑块
-        renderSliderBlock(ctx, x, currentY, topHalfW, topH, radius);
+        // 1. 顶部左方块：模式滑块 (使用新的尺寸变量)
+        renderSliderBlock(ctx, x, currentY, topLeftW, topH, radius);
 
-        // 2. 顶部右方块：总分
-        renderScoreBlock(ctx, x + topHalfW + gap, currentY, topHalfW, topH, radius);
+        // 2. 顶部右方块：总分 (使用新的尺寸变量)
+        renderScoreBlock(ctx, x + topLeftW + gap, currentY, topRightW, topH, radius);
 
         currentY += topH + gap;
 
-        // 3. 中部方块：能量槽
+        // 3. 中部方块：能量槽 (保持全宽)
         renderBatteryBlock(ctx, x, currentY, w, midH, radius);
         currentY += midH + gap;
 
-        // 4. 左下方块：击打识别
-        renderHitDisplayBlock(ctx, x, currentY, bottomHalfW, bottomH, radius);
+        // 4. 左下方块：击打识别 (使用新的尺寸变量)
+        renderHitDisplayBlock(ctx, x, currentY, bottomLeftW, bottomH, radius);
 
-        // 5. 右下方块：节拍选择
-        renderRhythmBlock(ctx, x + bottomHalfW + gap, currentY, bottomHalfW, bottomH, radius);
+        // 5. 右下方块：节拍选择 (使用新的尺寸变量)
+        renderRhythmBlock(ctx, x + bottomLeftW + gap, currentY, bottomRightW, bottomH, radius);
 
         // 渲染浮动文字
         renderFloatingTexts(ctx);
