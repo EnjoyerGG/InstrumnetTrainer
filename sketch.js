@@ -475,6 +475,7 @@ function setup() {
         frameRate(30);
         debugMode = true;
         console.log('移动端模式启用，调试模式开启');
+        setupMobileLandscape();
     } else {
         frameRate(45);
     }
@@ -683,6 +684,35 @@ function setup() {
             integrateScoring();
         }
     }, 2000);
+}
+
+//移动端设置横屏
+function setupMobileLandscape() {
+    // 监听横屏变化事件
+    window.onOrientationChange = function (isLandscape, width, height) {
+        console.log(`屏幕方向变化: ${isLandscape ? '横屏' : '竖屏'} ${width}x${height}`);
+
+        if (isLandscape) {
+            // 横屏时重新调整画布尺寸
+            const optimalWidth = Math.min(width, 1200);  // 限制最大宽度
+            const optimalHeight = height - 60;  // 留出控制按钮空间
+
+            resizeCanvas(optimalWidth, optimalHeight);
+            layoutRects();
+
+            console.log(`画布已调整为: ${optimalWidth}x${optimalHeight}`);
+        }
+    };
+
+    // 初始检查方向
+    setTimeout(() => {
+        if (window.landscapeManager) {
+            const isLandscape = window.landscapeManager.isLandscape();
+            if (isLandscape) {
+                window.onOrientationChange(true, window.innerWidth, window.innerHeight);
+            }
+        }
+    }, 1000);
 }
 
 function integrateScoring() {
