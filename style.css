@@ -250,4 +250,40 @@ canvas {
     height: var(--meterH);
 }
 
-/* 移除了所有隐藏滑块的CSS规则 - 现在滑块应该能正常显示和工作了 */
+/* 顶部工具条整块背景（覆盖粒子） */
+#ui {
+    position: sticky;
+    /* 或 fixed；fixed 就会固定在页面顶部 */
+    top: 0;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #16181c;
+    /* 纯不透明 */
+    border: 1px solid #2b2f36;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+
+/* 右侧速度条的小盒子——改成不透明 */
+#ui .speed-control {
+    background: #23262e !important;
+    /* 不透明 */
+    border-color: #3a3f47 !important;
+}
+
+/* 所有按钮一律不透明（含 Metronome） */
+#ui button,
+#metro-toggle {
+    background: #2b2f36 !important;
+    /* 不透明 */
+    color: #eaeef6 !important;
+    border: 1px solid #3a3f47 !important;
+}
+
+/* 滑块轨道也改为实心灰，避免透底 */
+#ui input[type="range"] {
+    background: #cfcfcf !important;
+}
