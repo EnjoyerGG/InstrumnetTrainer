@@ -36,34 +36,36 @@
 <body>
     <h2>🥁 Conga Trainer – Stage 4 Demo</h2>
 
-    <div id="ui">
-        <!-- 控制按钮组 -->
-        <button id="start-btn">Start</button>
-        <button id="pause-btn">Pause</button>
-        <button id="reset-btn">Reset</button>
-        <button id="export-btn">Export</button>
-        <!-- 节拍器按钮 -->
-        <button id="metro-toggle">Metronome</button>
 
-        <!-- 速度控制区域 - 紧跟在节拍器右侧 -->
-        <div class="speed-control"
-            style="display: inline-flex; align-items: center; margin-left: 12px; background: #333; padding: 6px 12px; border-radius: 6px; border: 1px solid #555; font-weight: bold;">
-            <label style="color: #ccc; font-size: 13px; margin-right: 8px;">Speed:</label>
-            <input id="speed-slider" type="range" min="0.1" max="0.4" step="0.01" value="0.3" style="margin: 0 8px; width: 120px; height: 6px; background: linear-gradient(90deg, #555 0%, #ffd400 50%, #555 100%); 
-                          border-radius: 3px; outline: none; cursor: pointer; transition: all 0.2s ease;" />
-            <span id="speed-val"
-                style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 35px; text-align: center;">0.30</span>
-            <span style="color: #666; margin: 0 4px;">|</span>
-            <span style="color: #88ff00; font-weight: bold; font-size: 14px;">
-                <span id="bpm-val">120</span><span style="color: #666; font-size: 12px; margin-left: 2px;">BPM</span>
-            </span>
-        </div>
-
-        <!-- 设置按钮占位 - 会被 JavaScript 替换 -->
-        <div id="settings-placeholder"></div>
-    </div>
 
     <div class="app">
+        <div id="ui">
+            <!-- 控制按钮组 -->
+            <button id="start-btn">Start</button>
+            <button id="pause-btn">Pause</button>
+            <button id="reset-btn">Reset</button>
+            <button id="export-btn">Export</button>
+            <!-- 节拍器按钮 -->
+            <button id="metro-toggle">Metronome</button>
+
+            <!-- 速度控制区域 - 紧跟在节拍器右侧 -->
+            <div class="speed-control"
+                style="display: inline-flex; align-items: center; margin-left: 12px; background: #333; padding: 6px 12px; border-radius: 6px; border: 1px solid #555; font-weight: bold;">
+                <label style="color: #ccc; font-size: 13px; margin-right: 8px;">Speed:</label>
+                <input id="speed-slider" type="range" min="0.1" max="0.4" step="0.01" value="0.3" style="margin: 0 8px; width: 120px; height: 6px; background: linear-gradient(90deg, #555 0%, #ffd400 50%, #555 100%); 
+                          border-radius: 3px; outline: none; cursor: pointer; transition: all 0.2s ease;" />
+                <span id="speed-val"
+                    style="color: #ffd400; font-weight: bold; font-size: 13px; min-width: 35px; text-align: center;">0.30</span>
+                <span style="color: #666; margin: 0 4px;">|</span>
+                <span style="color: #88ff00; font-weight: bold; font-size: 14px;">
+                    <span id="bpm-val">120</span><span
+                        style="color: #666; font-size: 12px; margin-left: 2px;">BPM</span>
+                </span>
+            </div>
+
+            <!-- 设置按钮占位 - 会被 JavaScript 替换 -->
+            <div id="settings-placeholder"></div>
+        </div>
         <div id="score-wrap"></div>
         <div id="drum-wrap"></div>
     </div>

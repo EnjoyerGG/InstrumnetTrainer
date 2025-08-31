@@ -287,3 +287,54 @@ canvas {
 #ui input[type="range"] {
     background: #cfcfcf !important;
 }
+
+/* === 让标题上方留更多空间 & 整体下移 === */
+:root {
+    --title-gap: 48px;
+    /* 标题与工具条之间预留空间 */
+    --bar-score-gap: 12px;
+    /* 工具条与画布之间的间距 */
+}
+
+/* 顶部工具条：整体下移 */
+#ui {
+    margin-top: var(--title-gap);
+    /* 如果希望滚动时也保持与浏览器顶端有间隙，把 top 从 0 调成下面这样 */
+    top: 16px;
+    /* 可选：让 sticky 状态下也离顶部 16px */
+}
+
+/* 主画布容器：再往下留点距 */
+#score-wrap {
+    margin-top: var(--bar-score-gap);
+}
+
+/* 让工具条紧贴画布上沿 */
+#ui {
+    margin-bottom: 0 !important;
+}
+
+#score-wrap {
+    margin-top: 0 !important;
+}
+
+/* 让工具条随内容滚动，而不是吸顶 */
+#ui {
+    position: relative !important;
+    /* 仍随内容滚动 */
+    z-index: 100 !important;
+    /* 确保覆盖背景画布 */
+    background: #16181c !important;
+    /* 纯不透明背景 */
+    border: 1px solid #2b2f36 !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+
+/* 保持条与画布紧贴（之前如果加过间距，这里顺便清零） */
+#ui {
+    margin-bottom: 15px !important;
+}
+
+#score-wrap {
+    margin-top: 15px !important;
+}
