@@ -290,7 +290,7 @@ canvas {
 
 /* === 让标题上方留更多空间 & 整体下移 === */
 :root {
-    --title-gap: 48px;
+    --title-gap: -20px;
     /* 标题与工具条之间预留空间 */
     --bar-score-gap: 12px;
     /* 工具条与画布之间的间距 */
@@ -307,15 +307,6 @@ canvas {
 /* 主画布容器：再往下留点距 */
 #score-wrap {
     margin-top: var(--bar-score-gap);
-}
-
-/* 让工具条紧贴画布上沿 */
-#ui {
-    margin-bottom: 0 !important;
-}
-
-#score-wrap {
-    margin-top: 0 !important;
 }
 
 /* 让工具条随内容滚动，而不是吸顶 */
