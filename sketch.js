@@ -484,7 +484,6 @@ function setup() {
         frameRate(30);
         debugMode = true;
         console.log('移动端模式启用，调试模式开启');
-        setupMobileLandscape();
     } else {
         pixelDensity(1);
         frameRate(60);
@@ -668,74 +667,11 @@ function setup() {
             integrateScoring();
         }
     }, 2000);
-
-    // 在setup最后添加旋转状态检查
-    setTimeout(() => {
-        if (window.forceRotationManager) {
-            const status = window.forceRotationManager.getStatus();
-            console.log('当前旋转状态:', status);
-
-            if (status.effectiveLandscape) {
-                handleLandscapeMode(status.width, status.height);
-            }
-        }
-    }, 1000);
-
-    setTimeout(() => {
-        initializeDeviceSpecificFeatures();
-    }, 1000);
-}
-
-// 设备特定功能初始化
-function initializeDeviceSpecificFeatures() {
-    if (isMobile() && window.forceRotationManager) {
-        const status = window.forceRotationManager.getStatus();
-        console.log('移动端旋转状态:', status);
-
-        if (status.effectiveLandscape) {
-            handleMobileLandscapeMode(status.width, status.height);
-        }
-    } else {
-        console.log('桌面端：使用默认布局');
-        // 桌面端可以在这里进行特定的初始化
-        handleDesktopResize(window.innerWidth, window.innerHeight);
-    }
-}
-
-//移动端设置横屏
-function setupMobileLandscape() {
-    if (!isMobile()) {
-        console.log('桌面端：无需横屏设置');
-        return;
-    }
-
-    console.log('移动端：横屏强制旋转初始化');
 }
 
 function isMobile() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
-
-// 更新现有的 window.onOrientationChange 函数
-window.onRotationChange = function (detail) {
-    const { isLandscape, width, height, isRotated, isMobile } = detail;
-
-    if (!isMobile) {
-        // 桌面端的普通窗口大小变化，使用原有逻辑
-        console.log(`桌面端窗口大小变化: ${width}×${height}`);
-        handleDesktopResize(width, height);
-        return;
-    }
-
-    // 移动端的旋转变化处理
-    console.log(`移动端旋转变化: 横屏=${isLandscape}, 强制旋转=${isRotated}, 尺寸=${width}×${height}`);
-
-    if (isLandscape) {
-        handleMobileLandscapeMode(width, height);
-    } else {
-        handleMobilePortraitMode(width, height);
-    }
-};
 
 function handleDesktopResize(width, height) {
     // 桌面端正常的窗口大小调整逻辑
@@ -746,52 +682,6 @@ function handleDesktopResize(width, height) {
     // resizeCanvas(width, height);
     // layoutRects();
 }
-
-// 新增处理方向变化的函数
-function handleMobileLandscapeMode(width, height) {
-    console.log(`移动端横屏模式: ${width}×${height}`);
-
-    // 为移动端控制面板留出空间
-    const controlHeight = 60; // 移动端控制面板高度
-    const optimalWidth = Math.min(width, 1024);  // 移动端限制宽度
-    const optimalHeight = height - controlHeight;
-
-    // 调整p5.js画布
-    resizeCanvas(optimalWidth, optimalHeight);
-
-    // 重新计算布局
-    layoutRects();
-
-    // 重新设置移动端优化的组件
-    resetMobileComponents();
-
-    console.log(`移动端画布已调整为: ${optimalWidth}×${optimalHeight}`);
-}
-
-// 移动端竖屏模式处理（通常不会触发，因为会自动强制横屏）
-function handleMobilePortraitMode(width, height) {
-    console.log(`移动端竖屏模式: ${width}×${height} (将自动强制横屏)`);
-    // 竖屏模式下通常会自动触发强制旋转，所以这里可能不需要特殊处理
-}
-
-function resetMobileComponents() {
-    if (rm && rm.scoreNotes) {
-        // 调整RhythmManager
-        rm.noteY = 40; // 移动端音符Y位置稍微靠上
-
-        // 重新设置SweepMode
-        if (SweepMode) {
-            SweepMode.setNotes(rm.scoreNotes, rm.totalDuration);
-            SweepMode.setBeatMs(rm.noteInterval);
-        }
-    }
-
-    // 通知其他组件尺寸变化
-    if (fftHUD && fftHUD.resize) fftHUD.resize();
-    if (ampHUD && ampHUD.resize) ampHUD.resize();
-    if (scoreHUD && scoreHUD.resize) scoreHUD.resize();
-}
-
 
 function integrateScoring() {
     // 集成击打检测
@@ -1496,8 +1386,6 @@ function draw() {
         lastOptimizeCheck = millis();
     }
     LatencyProbe?.markFrame();
-
-    drawMobileDebugInfo();
 }
 
 function verifySyncStatus() {
@@ -1842,40 +1730,6 @@ function keyPressed() {
             drumTrigger._onTrigger('MANUAL_MOBILE_TEST');
         }
     }
-
-    // 旋转控制（只在移动端调试模式下有效）
-    if (key === 'r' && debugMode && isMobile()) {
-        if (window.forceRotationManager) {
-            window.forceRotationManager.toggle();
-            console.log('移动端：手动切换屏幕旋转');
-        }
-    }
-
-    if (key === 'f' && debugMode && isMobile()) {
-        if (window.forceRotationManager) {
-            window.forceRotationManager.requestFullscreenAndRotate();
-            console.log('移动端：请求全屏并旋转');
-        }
-    }
-
-    // 桌面端全屏（不强制旋转）
-    if (key === 'f' && debugMode && !isMobile()) {
-        toggleFullscreen();
-        console.log('桌面端：切换全屏模式');
-    }
-
-    if (key === 'g' && debugMode) {
-        if (isMobile() && window.forceRotationManager) {
-            const status = window.forceRotationManager.getStatus();
-            console.log('移动端旋转状态:', status);
-        } else {
-            console.log('桌面端窗口信息:', {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                devicePixelRatio: window.devicePixelRatio
-            });
-        }
-    }
 }
 
 function toggleFullscreen() {
@@ -1886,44 +1740,6 @@ function toggleFullscreen() {
     } else {
         document.exitFullscreen();
     }
-}
-
-// 窗口大小变化监听（桌面端和移动端通用）
-window.addEventListener('resize', () => {
-    // 延迟处理以避免频繁触发
-    setTimeout(() => {
-        if (isMobile()) {
-            // 移动端由forceRotationManager处理
-            console.log('移动端：窗口大小变化由旋转管理器处理');
-        } else {
-            // 桌面端直接处理
-            handleDesktopResize(window.innerWidth, window.innerHeight);
-        }
-    }, 100);
-});
-
-// 移动端专用调试信息显示
-function drawMobileDebugInfo() {
-    if (!isMobile() || !debugMode) return;
-
-    push();
-    fill(255, 255, 255, 200);
-    textSize(12);
-    textAlign(LEFT, TOP);
-
-    let y = 10;
-    const lineHeight = 15;
-
-    if (window.forceRotationManager) {
-        const status = window.forceRotationManager.getStatus();
-        text(`移动端状态: ${status.isRotated ? '强制旋转' : '正常'}`, 10, y);
-        y += lineHeight;
-        text(`屏幕方向: ${status.effectiveLandscape ? '横屏' : '竖屏'}`, 10, y);
-        y += lineHeight;
-        text(`尺寸: ${status.width}×${status.height}`, 10, y);
-    }
-
-    pop();
 }
 
 function updateMetroBtnUI() {
