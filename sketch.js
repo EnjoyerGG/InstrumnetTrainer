@@ -494,7 +494,7 @@ function setup() {
     const METER_H = 200;
     const totalHeight = NOTES_H + SWEEP_H + METER_H + GRID.pad * 3;
 
-    const cnv = createCanvas(1000, totalHeight);
+    const cnv = createCanvas(1100, totalHeight);
     cnv.parent('score-wrap');
     GRID.topHpx = NOTES_H;
 
