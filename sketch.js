@@ -373,6 +373,12 @@ function initDrumTriggerForMobile() {
             mic,
             debug: true,
             onTrigger: (reason) => {
+                LatencyProbe?.markNote({
+                    reason,
+                    mode: window.RhythmSelector?.getCurrentMode?.(),
+                    chart: window.ChartSelector?.currentChart?.name || 'unknown',
+                    bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
+                });
                 console.log('移动端鼓击检测:', reason);
 
                 // ★ 检查是否在等待第一击状态
@@ -436,6 +442,13 @@ function initDrumTriggerForDesktop() {
         mic,
         debug: debugMode,
         onTrigger: (reason) => {
+            LatencyProbe?.markNote({
+                reason,
+                mode: window.RhythmSelector?.getCurrentMode?.(),
+                chart: window.ChartSelector?.currentChart?.name || 'unknown',
+                bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
+            });
+
             // ★ 检查是否在等待第一击状态
             if (waitingForFirstHit) {
                 startPerformanceAfterFirstHit();
@@ -1417,6 +1430,7 @@ function draw() {
 
         lastOptimizeCheck = millis();
     }
+    LatencyProbe?.markFrame();
 }
 
 function verifySyncStatus() {
