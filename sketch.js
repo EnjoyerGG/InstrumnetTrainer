@@ -1744,23 +1744,28 @@ function toggleFullscreen() {
 
 function updateMetroBtnUI() {
     const btn = select('#metro-toggle');
-    const arrowBtn = select('#rhythm-arrow');
     if (!btn) return;
 
-    const bgColor = metronomeEnabled ? '#22c55e' : '#444';
-    const textColor = metronomeEnabled ? '#0b1a0b' : '#eee';
-    const borderColor = metronomeEnabled ? '#16a34a' : '#555';
-
-    btn.style('background', bgColor);
-    btn.style('color', textColor);
-    btn.style('border', `1px solid ${borderColor}`);
-
-    if (arrowBtn) {
-        arrowBtn.style('background', bgColor);
-        arrowBtn.style('color', textColor);
-        arrowBtn.style('border', `1px solid ${borderColor}`);
-        arrowBtn.style('border-left', 'none');
+    // 使用CSS类而不是内联样式
+    if (metronomeEnabled) {
+        // 开启状态：添加 active 类
+        btn.addClass('active');
+    } else {
+        // 关闭状态：移除 active 类
+        btn.removeClass('active');
     }
+
+    // 也可以处理下拉箭头按钮（如果存在）
+    const arrowBtn = select('#rhythm-arrow');
+    if (arrowBtn) {
+        if (metronomeEnabled) {
+            arrowBtn.addClass('active');
+        } else {
+            arrowBtn.removeClass('active');
+        }
+    }
+
+    console.log(`节拍器状态: ${metronomeEnabled ? '开启' : '关闭'}`);
 }
 
 /* ------------ Interaction ----------- */
