@@ -1,0 +1,63 @@
+/* jello-title.css */
+/* Variable font (optional). Replace with your own font if needed */
+@font-face {
+  font-family: 'GT-Flexa';
+  src: url('https://assets.codepen.io/61488/GT-Flexa-VF-Trial.woff2');
+  font-display: block;
+  font-style: normal italic;
+  font-weight: 100 800;
+  font-stretch: 10% 200%;
+}
+
+/* Scope styles only to the jello title */
+.jello-title {
+  --fw: 600;
+  /* initial font weight (100–800) */
+  --fs: 150;
+  /* initial font stretch (%) 10–200 */
+  --fontSizeVW: 3.6;
+  /* title size */
+  --letterSpaceVW: -0.5;
+  /* tighter tracking */
+  --charGapEm: 0.08;
+  /* 调大=更松，试试 0.06 ~ 0.14 */
+  letter-spacing: 0;
+  /* 因为 .char 是 inline-block，这里设 0 即可 */
+
+  margin: 0;
+  font-family: 'GT-Flexa', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: calc(var(--fontSizeVW) * 1vw);
+  line-height: 0.9;
+  letter-spacing: calc(var(--letterSpaceVW) * 1vw);
+  color: #ffd54a;
+  /* tweak to your theme color */
+  user-select: none;
+  position: relative;
+  display: inline-block;
+  text-shadow:
+    0 0.05em 0 #FFB0C0,
+    0 0.1em 0.1em rgba(70, 0, 35, 0.3),
+    0 0.4em 0.3em rgba(70, 0, 35, 0.1);
+
+  font-weight: var(--fw);
+  font-stretch: calc(var(--fs) * 1%);
+  font-variation-settings: "wght" var(--fw), "wdth" var(--fs);
+}
+
+.jello-title .char {
+  display: inline-block;
+  padding-top: 0.1em;
+  transform-origin: center bottom;
+  will-change: transform, font-weight, font-stretch;
+  cursor: default;
+  margin-right: calc(var(--charGapEm) * 1em);
+}
+
+.jello-title.grab,
+.jello-title.grab * {
+  cursor: grabbing;
+}
+
+.jello-title .char:last-child {
+  margin-right: 0;
+}
