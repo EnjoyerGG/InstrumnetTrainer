@@ -5,20 +5,24 @@
 
     window.LatencyProbe = {
         // 在“检测命中”那一刻打点（带上当前模式/谱子/速度等meta）
-        markNote(meta = {}) { S._last = { t: now(), meta }; },
+        markNote(meta = {}) {
+            S._last = { t: now(), meta };
+            S._urgent = true;
+        },
 
         // 在“本帧渲染完成”那一刻打点（p5.js 的 draw() 末尾调用）
         markFrame() {
-            if (!S._last) return;
+            if (!S._last) { S._urgent = false; return; }
             const tUI = now();
             const { t: tDetect, meta } = S._last;
             S.rows.push({ tDetect, tUI, dt: tUI - tDetect, meta });
             S._last = null;
-
+            S._urgent = false;
             if (S.rows.length % S.autoLogEvery === 0) {
                 console.log("[Latency]", window.LatencyProbe.summary());
             }
         },
+        isUrgent() { return !!S._urgent; },
 
         // 汇总统计：min / avg / p50 / p90 / p95 / max
         summary() {

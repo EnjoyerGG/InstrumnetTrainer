@@ -388,15 +388,11 @@ function initDrumTriggerForMobile() {
                         chart: window.ChartSelector?.currentChart?.name || 'unknown',
                         bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
                     });
-                }
-
-                if (running) {
                     const hitTime = rm._t();
                     rm.registerHit();
                     SweepMode?.addHitNow?.();
                     HitMarkers.addHitMarker(hitTime);
                     judgeLineGlow = 1;
-
                     const timing = calculateHitTiming();
                     const hitType = detectHitType();
                     scoreHUD?.registerHit?.(timing, hitType);
@@ -457,9 +453,6 @@ function initDrumTriggerForDesktop() {
                     chart: window.ChartSelector?.currentChart?.name || 'unknown',
                     bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
                 });
-            }
-
-            if (running) {
                 const hitTime = rm._t();
                 rm.registerHit();
                 SweepMode?.addHitNow?.();
@@ -473,7 +466,6 @@ function initDrumTriggerForDesktop() {
                 const hitType = detectHitType();
                 window._lastHitType = hitType;   // 让后面能带上击打类型
                 rm.registerHit(hitType);         // 只交给 RhythmManager 判定
-
                 if (debugMode) {
                     console.log(`桌面端鼓击检测: ${reason}`);
                 }
@@ -494,7 +486,8 @@ function setup() {
         console.log('移动端模式启用，调试模式开启');
         setupMobileLandscape();
     } else {
-        frameRate(45);
+        pixelDensity(1);
+        frameRate(60);
         console.log('桌面端模式：使用标准布局');
     }
 
@@ -517,21 +510,6 @@ function setup() {
     //rm.initChart(chartJSON.conga);
     rm.noteY = 50;
 
-    // console.log('JSON数据诊断');
-    // console.log('原始JSON数据:', chartJSON);
-    // console.log('conga数组:', chartJSON.conga);
-    // console.log('第一个音符原始数据:', chartJSON.conga[0]);
-    // console.log('scoreNotes数据:', rm.scoreNotes);
-    // console.log('第一个scoreNote:', rm.scoreNotes[0]);
-
-    // const firstNote = rm.scoreNotes[0];
-    // console.log('字段检查:', {
-    //     hasTime: 'time' in firstNote,
-    //     hasType: 'type' in firstNote,
-    //     hasClave23: 'clave23' in firstNote,
-    //     clave23Value: firstNote.clave23
-    // });
-
     NoteIlluminateFeedback.init({
         rm,
         laneTopY: () => laneTopY(),
@@ -546,18 +524,6 @@ function setup() {
         laneBottomY: () => laneBottomY(),
         isBottomDrum: (n) => isBottomDrum(n)
     });
-
-    // if (rm.scoreNotes && rm.scoreNotes.length > 0 && !('clave23' in rm.scoreNotes[0])) {
-    //     console.warn('检测到clave字段丢失，正在修复...');
-
-    //     for (let i = 0; i < rm.scoreNotes.length && i < chartJSON.conga.length; i++) {
-    //         const originalNote = chartJSON.conga[i];
-    //         const scoreNote = rm.scoreNotes[i];
-    //         scoreNote.clave23 = originalNote.clave23;
-    //     }
-
-    //     console.log('修复后的第一个音符:', rm.scoreNotes[0]);
-    // }
 
     StarEffects.init();
 
@@ -1349,6 +1315,7 @@ let frameTimeBuffer = [];
 let lastOptimizeCheck = 0;
 let performanceMode = 'normal';
 let resumeMonitorStartTime = 0;
+const urgent = window.LatencyProbe?.isUrgent?.() === true;
 function draw() {
     // 如果绘画模式激活，暂停主游戏渲染
     if (window.DrawingMode && window.DrawingMode.isActive()) {
@@ -1471,18 +1438,17 @@ function draw() {
 
     SweepMode.render(drawingContext, RECT.sweep.x, RECT.sweep.y, RECT.sweep.w, RECT.sweep.h);
 
-    if (performanceMode === 'performance') {
-        if (frameCount % 2 === 0) {
+    if (!urgent) {
+        if (performanceMode === 'performance') {
+            if (frameCount % 2 === 0) {
+                fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
+                ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
+            }
+        } else {
             fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
             ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
         }
-    } else {
-        fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
-        ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     }
-
-    fftHUD?.render?.(drawingContext, RECT.fft.x, RECT.fft.y, RECT.fft.w, RECT.fft.h);
-    ampHUD?.render?.(drawingContext, RECT.amp.x, RECT.amp.y, RECT.amp.w, RECT.amp.h);
     scoreHUD?.render?.(drawingContext, RECT.score.x, RECT.score.y, RECT.score.w, RECT.score.h);
 
     if (debugMode && drumTrigger) {
