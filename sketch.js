@@ -363,6 +363,44 @@ function layoutRects() {
 }
 
 /* ------------ DrumTrigger 初始化函数 ------------ */
+// 触发稳健化参数
+const TRIG_REFRACTORY_MS = 140;   // 不可重复期（抑制一次击打被判两次）
+const TRIG_MIN_LEVEL = 0.015;     // 背景噪声下限
+let _lastTriggerWallMs = 0;
+
+function shouldAcceptTrigger(kindHint = null) {
+    const now = millis();
+
+    // 1) 硬性不可重复期
+    if (now - _lastTriggerWallMs < TRIG_REFRACTORY_MS) return false;
+
+    // 2) 电平门限
+    let lvl = 0;
+    try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
+    if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') return false;
+
+    // 3) 频谱特征（抑制同一击的低频余振二次触发）
+    try {
+        const fft = drumTrigger?._fft;
+        if (fft) {
+            const spec = fft.analyze();
+            const N = spec.length, nyq = sampleRate() / 2;
+            const idx = hz => Math.max(0, Math.min(N - 1, Math.round(hz / (nyq / N))));
+            const low = avg(spec, idx(40), idx(180));
+            const mid = avg(spec, idx(180), idx(800));
+            const high = avg(spec, idx(1000), idx(4000));
+            const total = low + mid + high;
+            if (total < 50 && kindHint !== 'tip') return false;
+            const midHighFrac = (mid + high) / Math.max(1, total);
+            if (kindHint !== 'tip' && midHighFrac < 0.25) return false;
+        }
+    } catch (_) { }
+
+    _lastTriggerWallMs = now;
+    return true;
+
+    function avg(arr, a, b) { let s = 0, c = 0; for (let i = a; i <= b; i++) { s += arr[i] || 0; c++; } return c ? s / c : 0; }
+}
 function initDrumTriggerForMobile() {
     console.log('移动端 DrumTrigger 初始化');
     console.log('Audio context state:', getAudioContext()?.state);
@@ -380,6 +418,8 @@ function initDrumTriggerForMobile() {
                     startPerformanceAfterFirstHit();
                     return; // 第一击不计入游戏判定
                 }
+                const hint = (reason === 'tip') ? 'tip' : null;
+                if (!shouldAcceptTrigger(hint)) return;
 
                 if (running) {
                     LatencyProbe?.markNote({
@@ -446,6 +486,9 @@ function initDrumTriggerForDesktop() {
                 startPerformanceAfterFirstHit();
                 return; // 第一击不计入游戏判定
             }
+            const hint = (reason === 'tip') ? 'tip' : null;
+            if (!shouldAcceptTrigger(hint)) return;
+
             if (running) {
                 LatencyProbe?.markNote({
                     reason,
@@ -564,9 +607,13 @@ function setup() {
         rectProvider: () => RECT.fft,
         bins: 1024,
         smoothing: 0.85,
-        vscale: 2,
+        vscale: 5,
         lift: 5
-    });
+    })
+    fftHUD.setAxis({ mode: 'hybrid', focusBelowHz: 5000, compressFraction: 0.20, logBase: 10 })
+        .showPowerLine50Hz(true)
+        .enablePeakMarkers(true);
+    console.log('fftHUD axis mode after init:', fftHUD._axisMode);
 
     ampHUD = AmpPanel.init({
         mic,
@@ -1730,6 +1777,16 @@ function keyPressed() {
             drumTrigger._onTrigger('MANUAL_MOBILE_TEST');
         }
     }
+
+    // 切换 FFT 频率轴：linear ↔ hybrid
+
+    if (key.toLowerCase() === 'l' && fftHUD?.setAxis) {
+        const m = (fftHUD._axisMode === 'linear') ? 'hybrid' : 'linear';
+        fftHUD.setAxis({ mode: m });
+        console.log('FFT axis mode:', m);
+    }
+
+
 }
 
 function toggleFullscreen() {
