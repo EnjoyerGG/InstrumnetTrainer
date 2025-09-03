@@ -39,6 +39,11 @@
         _overloadThreshold: 0.8, // 降低过载阈值
         _targetFillRatio: 0.8, // 目标填充比例（波形最高点占面板高度的80%）
 
+        _compressionMode: 'logarithmic',  // 'logarithmic', 'tanh', 'soft_clip'
+        _compressionRatio: 0.3,           // 压缩比例 (0-1)
+        _kneeThreshold: 0.7,              // 软限幅开始的阈值
+        _headroom: 0.95,                  // 最大显示高度比例
+
         init({ mic, rectProvider, smoothing = 0.9, vscale = 3.0, historySec = 2.5, fastResponse = true } = {}) {
             this._rect = rectProvider || this._rect;
             this._smooth = clamp(smoothing, 0, 0.99);
@@ -151,18 +156,15 @@
                 level = this._amp.getLevel() || 0;
                 this._modeLabel = this._fastResponse ? 'AMP*' : 'AMP';
             } else if (this._fft) {
-                const wave = this._fft.waveform(512); // [-1,1]
+                const wave = this._fft.waveform(512);
                 let rms = 0;
                 for (let i = 0; i < wave.length; i++) rms += wave[i] * wave[i];
-                rms = Math.sqrt(rms / wave.length);   // 0..1 近似
+                rms = Math.sqrt(rms / wave.length);
 
-                // 指数平滑（与 p5.Amplitude.smooth 一致的效果）
                 if (this._fastResponse) {
-                    // 快速响应模式：使用轻微的平滑或不平滑
-                    const alpha = 0.8;  // 快速响应，但避免过于抖动
+                    const alpha = 0.8;
                     this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
                 } else {
-                    // 传统平滑模式
                     const alpha = 1 - this._smooth;
                     this._ema = this._ema ? (this._ema * (1 - alpha) + rms * alpha) : rms;
                 }
@@ -170,26 +172,25 @@
                 this._modeLabel = this._fastResponse ? 'RMS*' : 'RMS';
             }
 
-            level = Math.min(1, Math.max(0, level));
-            // 更新最大电平跟踪
+            // 应用压缩
+            level = this._applyCompression(Math.max(0, level));
+
+            // 更新最大电平跟踪（使用压缩后的值）
             if (level > this._maxLevel) {
                 this._maxLevel = level;
             } else {
-                // 根据设置决定衰减方式
                 if (this._instantAdapt) {
-                    // 瞬间适应模式：如果当前电平明显小于最大值，快速降低最大值
                     if (level < this._maxLevel * 0.5) {
                         this._maxLevel = Math.max(level, this._maxLevel * 0.8);
                     } else {
                         this._maxLevel *= this._maxLevelDecay;
                     }
                 } else {
-                    // 渐进模式：缓慢衰减
                     this._maxLevel *= this._maxLevelDecay;
                 }
             }
 
-            // 检测过载
+            // 检测过载（使用原始电平）
             this._overload = level > this._overloadThreshold;
 
             return level;
@@ -200,7 +201,9 @@
             if (r && r.w && r.h) { x = r.x; y = r.y; w = r.w; h = r.h; }
             if (!w || !h) return;
 
-            if (this._mic && this._fft) { try { this._fft.setInput(this._mic); } catch (e) { } }
+            if (this._mic && this._fft) {
+                try { this._fft.setInput(this._mic); } catch (e) { }
+            }
 
             this._drawBG(ctx, x, y, w, h);
 
@@ -209,47 +212,54 @@
             const innerH = h - padT - padB;
             this._ensureHistCapacity(innerW);
 
-            // 取当前音量（0..1），并转 dBFS（仅用于读数显示）
             const level = this._currentLevel();
-            const db = -20 * Math.log10(Math.max(1e-6, level)); // 负值，越接近 0 越响
+            const db = -20 * Math.log10(Math.max(1e-6, level));
 
-            // 维护历史：右进左出
             this._hist.push(level);
             if (this._hist.length > this._histMax) this._hist.shift();
 
-            // 获取有效缩放系数
-            const effectiveScale = this._getEffectiveScale();
+            // 改进的高度计算 - 确保绝不超出边界
+            const baseY = y + padT + innerH;
+            const maxSafeHeight = innerH * this._headroom;
 
-            // 把历史画成折线
+            // 绘制波形
             ctx.save();
             ctx.beginPath();
             ctx.lineWidth = 1.5;
             ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-            // 底部“零线”
-            const baseY = y + padT + innerH;
-            // 第一段
+
             if (this._hist.length > 0) {
-                const safeHeight = this._hist[0] * innerH * effectiveScale;
-                const y0 = baseY - Math.min(innerH * 0.98, safeHeight);
+                // 计算安全高度，确保不会超出边界
+                const safeHeight = Math.min(
+                    this._hist[0] * innerH * this._vscale,
+                    maxSafeHeight
+                );
+                const y0 = baseY - safeHeight;
                 ctx.moveTo(x + padL, y0);
             }
-            // 其余段
+
             for (let i = 1; i < this._hist.length; i++) {
                 const px = x + padL + i;
-                // 确保波形绝对不超出边界，留出安全边距
-                const safeHeight = this._hist[i] * innerH * effectiveScale;
-                const py = baseY - Math.min(innerH * 0.98, safeHeight);
+                // 严格限制高度
+                const safeHeight = Math.min(
+                    this._hist[i] * innerH * this._vscale,
+                    maxSafeHeight
+                );
+                const py = baseY - safeHeight;
                 ctx.lineTo(px, py);
             }
             ctx.stroke();
             ctx.restore();
 
-            // 红色扫描线（当前点）
+            // 红色扫描线
             ctx.save();
             ctx.strokeStyle = 'rgba(255,64,64,0.9)';
             ctx.lineWidth = 2;
             const cursorX = x + padL + this._hist.length;
-            ctx.beginPath(); ctx.moveTo(cursorX + 0.5, y + padT); ctx.lineTo(cursorX + 0.5, y + padT + innerH); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cursorX + 0.5, y + padT);
+            ctx.lineTo(cursorX + 0.5, y + padT + innerH);
+            ctx.stroke();
             ctx.restore();
 
             // 过载指示器
@@ -265,36 +275,104 @@
                 ctx.restore();
             }
 
-            // 标题 & dB 读数
+            // 标题和dB读数
             ctx.save();
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
             ctx.font = 'bold 14px ui-sans-serif, system-ui, -apple-system';
-            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-            const title = this._fastResponse ? 'Amplitude (Fast)' : 'Amplitude (Smooth)';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            // 显示当前压缩模式
+            const title = `Amplitude (${this._compressionMode.replace('_', ' ')})`;
             ctx.fillText(title, x + 12, y + 10);
 
-            //在右上角dB左边画模式徽标
+            // 模式标签
             ctx.textAlign = 'right';
-            ctx.font = '  bold 15px ui-sans-serif, system-ui, -apple-system';
+            ctx.font = 'bold 15px ui-sans-serif, system-ui, -apple-system';
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
             ctx.fillText(this._modeLabel, x + w - 180, y + 30);
 
-            // 动态缩放指示
-            if (this._dynamicScale && effectiveScale < this._vscale) {
-                ctx.fillStyle = 'rgba(0,255,0,0.6)';
+            // 压缩指示
+            if (this._compressionMode !== 'none') {
+                ctx.fillStyle = 'rgba(0,255,255,0.6)';
                 ctx.font = 'bold 12px ui-sans-serif, system-ui, -apple-system';
-                ctx.fillText('AUTO', x + w - 15, y + 30);
+                ctx.fillText('COMP', x + w - 60, y + 30);
             }
 
+            // dB值显示
             ctx.textAlign = 'right';
             ctx.font = 'bold 18px ui-sans-serif, system-ui, -apple-system';
-            // 过载时用红色显示dB值
             ctx.fillStyle = this._overload ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.85)';
-            // 典型范围 -60 ~ -10 dBFS；很安静时显示 “-inf”
             const label = (level <= 1e-6) ? '−∞ dB' : `${db.toFixed(1)} dB`;
             ctx.fillText(label, x + w - 12, y + 8);
             ctx.restore();
-        }
+        },
+
+
+        // 设置压缩模式
+        setCompressionMode(mode = 'logarithmic', ratio = 0.3) {
+            this._compressionMode = mode;
+            this._compressionRatio = Math.max(0.1, Math.min(1.0, ratio));
+            return this;
+        },
+
+        // 设置软限幅参数
+        setSoftClipParams(kneeThreshold = 0.7, headroom = 0.95) {
+            this._kneeThreshold = Math.max(0.1, Math.min(0.9, kneeThreshold));
+            this._headroom = Math.max(0.8, Math.min(0.99, headroom));
+            return this;
+        },
+
+        // 对数压缩函数
+        _logarithmicCompression(level) {
+            if (level <= 0) return 0;
+
+            // 对数压缩：log(1 + k*x) / log(1 + k)
+            const k = 9; // 压缩强度参数
+            return Math.log(1 + k * level) / Math.log(1 + k);
+        },
+
+        // tanh软限幅
+        _tanhCompression(level) {
+            if (level <= this._kneeThreshold) {
+                return level;
+            }
+
+            // 对超过阈值的部分使用tanh压缩
+            const excess = level - this._kneeThreshold;
+            const maxExcess = 1 - this._kneeThreshold;
+            const compressedExcess = Math.tanh(excess * 3) * maxExcess * this._compressionRatio;
+
+            return this._kneeThreshold + compressedExcess;
+        },
+
+        // 软限幅器
+        _softClipCompression(level) {
+            if (level <= this._kneeThreshold) {
+                return level;
+            }
+
+            // 使用三次多项式进行平滑过渡
+            const t = (level - this._kneeThreshold) / (1 - this._kneeThreshold);
+            const compressed = Math.pow(t, 3) * (1 - this._kneeThreshold) * this._compressionRatio;
+
+            return this._kneeThreshold + compressed;
+        },
+
+        // 应用压缩
+        _applyCompression(level) {
+            switch (this._compressionMode) {
+                case 'logarithmic':
+                    return this._logarithmicCompression(level);
+                case 'tanh':
+                    return this._tanhCompression(level);
+                case 'soft_clip':
+                    return this._softClipCompression(level);
+                default:
+                    return Math.min(level, 1.0); // 硬限幅
+            }
+        },
+
     };
 
     root.AmpPanel = Panel;

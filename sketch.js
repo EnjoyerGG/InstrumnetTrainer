@@ -19,6 +19,7 @@ window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: tr
 
 let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel, scoreHUD;
 let running = false, counting = false;
+let debugPanel = null;
 let ctStart = 0;
 let judgeLineGlow = 0;
 let metronomeEnabled = false;
@@ -615,6 +616,7 @@ function setup() {
         .enablePeakMarkers(true);
     console.log('fftHUD axis mode after init:', fftHUD._axisMode);
 
+    //initialize amp HUD
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,
@@ -623,6 +625,9 @@ function setup() {
         historySec: 2.5,
         fastResponse: true
     });
+    ampHUD.setCompressionMode('logarithmic', 0.4)  // 对数压缩，压缩比0.4
+        .setSoftClipParams(0.7, 0.95);
+    setTimeout(initAmplitudeSystem, 1000);          // 软限幅阈值0.7，最大显示高度95%
 
     if (isMobile()) {
         setTimeout(() => {
@@ -714,6 +719,23 @@ function setup() {
             integrateScoring();
         }
     }, 2000);
+}
+
+function initAmplitudeSystem() {
+    if (ampHUD) {
+        // 为 ampHUD 添加状态获取方法
+        ampHUD.getAmplitudeState = function () {
+            return {
+                preferAmp: this._preferAmp,
+                dynamicScale: this._dynamicScale,
+                instantAdapt: this._instantAdapt,
+                fastResponse: this._fastResponse,
+                compressionMode: this._compressionMode,
+                compressionRatio: this._compressionRatio
+            };
+        };
+        console.log('振幅系统已初始化，支持调试面板');
+    }
 }
 
 function isMobile() {
@@ -1702,42 +1724,72 @@ function drawGrid() {
 }
 
 function keyPressed() {
-    if (key === 'm' && ampHUD?.preferAmplitude) {
-        if (ampHUD._preferAmp) {
-            ampHUD.preferAmplitude(false);
-        } else {
-            ampHUD.preferAmplitude(true);
-        }
-    }
-
-    // 在调试模式下，按 P 键可以测试绘画模式
-    if (key === 'p' && debugMode) {
-        if (window.DrawingMode) {
-            if (window.DrawingMode.isActive()) {
-                window.DrawingMode.deactivate();
-            } else {
-                window.DrawingMode.activate(0); // 激活第一首歌
-            }
-        }
-    }
-
-    if (key === 'f' && ampHUD?.setFastResponse) {
-        const current = ampHUD._fastResponse;
-        ampHUD.setFastResponse(!current);
-        const mode = !current ? 'FAST (0.0/0.9 smooth)' : 'SMOOTH (0.85/0.15 smooth)';
-        console.log(`Audio response mode: ${mode}`);
-    }
-
+    // === 调试模式切换（最高优先级）===
     if (key === 'd') {
         debugMode = !debugMode;
         drumTrigger?.setDebug?.(debugMode);
-        console.log(`Debug mode: ${debugMode ? 'ON' : 'OFF'}`);
+
+        // 初始化调试面板（如果还没有）
+        if (!debugPanel) {
+            debugPanel = new DebugPanel();
+        }
+
+        // 切换调试面板显示
+        if (debugMode) {
+            debugPanel.show();
+            console.log('🔧 Debug Panel: OPENED');
+        } else {
+            debugPanel.hide();
+            console.log('🔧 Debug Panel: CLOSED');
+        }
+
+        return; // 防止其他键处理
     }
+
+    // === 调试面板激活时的热键处理 ===
+    if (debugPanel && debugPanel.visible) {
+        // 调试面板显示时，大部分热键由GUI接管
+        // 只保留必要的帮助功能
+        if (key.toLowerCase() === 'h') {
+            showAmplitudeHelp();
+            return;
+        }
+
+        // 提示用户使用GUI界面
+        console.log('💡 调试面板已激活，请使用图形界面代替热键操作');
+        return;
+    }
+
+    // === 正常模式下的热键（调试面板未显示时）===
+
+    // 振幅系统热键
+    if (key.toLowerCase() === 'a' && ampHUD) {
+        cycleAmplitudeMode();
+        return;
+    }
+
+    if (key.toLowerCase() === 'z' && ampHUD) {
+        cycleCompressionMode();
+        return;
+    }
+
+    if (key.toLowerCase() === 'x' && ampHUD && !isMobile()) {
+        toggleFastResponse();
+        return;
+    }
+
+    if (key.toLowerCase() === 'h') {
+        showAmplitudeHelp();
+        return;
+    }
+
+    // 鼓触发器热键
     if (key === 't' && drumTrigger) {
         const isEnabled = !drumTrigger._isEnabled;
         drumTrigger.enable(isEnabled);
         console.log(`Drum trigger: ${isEnabled ? 'ON' : 'OFF'}`);
     }
+
     if (key >= '1' && key <= '5' && drumTrigger) {
         const level = parseInt(key);
         const sensitivity = Math.pow(level / 5.0, 0.5);
@@ -1749,28 +1801,20 @@ function keyPressed() {
         drumTrigger.resetStats();
         console.log('Drum trigger stats reset');
     }
+
     if (key === 'i' && drumTrigger) {
         const stats = drumTrigger.getStats();
         console.log('Drum Trigger Stats:', stats);
     }
 
-    if (key === 'a' && ampHUD) {
-        const status = ampHUD.getStatus();
-        ampHUD.setDynamicScale(!status.dynamicScale);
-        const newStatus = ampHUD.getStatus();
-        console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
-    }
-    if (key === 's' && ampHUD) {
-        const status = ampHUD.getStatus();
-        if (status.dynamicScale) {
-            ampHUD.setInstantAdapt(!status.instantAdapt);
-            const newStatus = ampHUD.getStatus();
-            console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
-        } else {
-            console.log('Dynamic scaling is OFF - enable with "a" key first');
-        }
+    // FFT热键
+    if (key.toLowerCase() === 'l' && fftHUD?.setAxis) {
+        const m = (fftHUD._axisMode === 'linear') ? 'hybrid' : 'linear';
+        fftHUD.setAxis({ mode: m });
+        console.log('FFT axis mode:', m);
     }
 
+    // 移动端特殊功能
     if (key === 'x' && isMobile()) {
         console.log('手动触发移动端测试');
         if (drumTrigger && drumTrigger._onTrigger) {
@@ -1778,15 +1822,16 @@ function keyPressed() {
         }
     }
 
-    // 切换 FFT 频率轴：linear ↔ hybrid
-
-    if (key.toLowerCase() === 'l' && fftHUD?.setAxis) {
-        const m = (fftHUD._axisMode === 'linear') ? 'hybrid' : 'linear';
-        fftHUD.setAxis({ mode: m });
-        console.log('FFT axis mode:', m);
+    // 保留的开发者功能
+    if (key === 'p' && debugMode) {
+        if (window.DrawingMode) {
+            if (window.DrawingMode.isActive()) {
+                window.DrawingMode.deactivate();
+            } else {
+                window.DrawingMode.activate(0);
+            }
+        }
     }
-
-
 }
 
 function toggleFullscreen() {
@@ -1896,4 +1941,133 @@ function debugPauseResumeState() {
 - rm._t(): ${running ? rm._t().toFixed(1) : 'N/A'}ms
 - 循环内时间: ${running ? (rm._t() % rm.totalDuration).toFixed(1) : 'N/A'}ms
 - Wall时间: ${millis()}ms`);
+}
+
+
+//debugging helper functions
+function cycleAmplitudeMode() {
+    const modes = [
+        { name: 'FFT-RMS (固定)', preferAmp: false, dynamicScale: false },
+        { name: 'FFT-RMS (自动)', preferAmp: false, dynamicScale: true, instantAdapt: false },
+        { name: 'FFT-RMS (快速)', preferAmp: false, dynamicScale: true, instantAdapt: true }
+    ];
+
+    // 尝试添加p5.Amplitude模式
+    try {
+        ampHUD.tryEnableAmplitude();
+        if (ampHUD._amp) {
+            modes.push(
+                { name: 'p5.Amplitude (固定)', preferAmp: true, dynamicScale: false },
+                { name: 'p5.Amplitude (自动)', preferAmp: true, dynamicScale: true, instantAdapt: false }
+            );
+        }
+    } catch (e) { }
+
+    const current = ampHUD.getAmplitudeState();
+    let currentIndex = modes.findIndex(mode =>
+        mode.preferAmp === current.preferAmp &&
+        mode.dynamicScale === current.dynamicScale &&
+        mode.instantAdapt === current.instantAdapt
+    );
+
+    if (currentIndex === -1) currentIndex = 0;
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+
+    ampHUD.preferAmplitude(nextMode.preferAmp);
+    ampHUD.setDynamicScale(nextMode.dynamicScale);
+    if (nextMode.dynamicScale && nextMode.hasOwnProperty('instantAdapt')) {
+        ampHUD.setInstantAdapt(nextMode.instantAdapt);
+    }
+
+    console.log(`振幅模式: ${nextMode.name}`);
+    showTemporaryStatus(`振幅: ${nextMode.name}`, 2000);
+}
+
+function cycleCompressionMode() {
+    const modes = [
+        { mode: 'none', name: '无压缩' },
+        { mode: 'logarithmic', name: '对数压缩' },
+        { mode: 'tanh', name: 'Tanh压缩' },
+        { mode: 'soft_clip', name: '多项式压缩' }
+    ];
+
+    const currentMode = ampHUD._compressionMode || 'logarithmic';
+    const currentIndex = modes.findIndex(m => m.mode === currentMode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+
+    if (nextMode.mode === 'none') {
+        ampHUD._compressionMode = 'none';
+    } else {
+        ampHUD.setCompressionMode(nextMode.mode, 0.4);
+    }
+
+    console.log(`压缩模式: ${nextMode.name}`);
+    showTemporaryStatus(`压缩: ${nextMode.name}`, 2000);
+}
+
+function toggleFastResponse() {
+    const current = ampHUD._fastResponse;
+    ampHUD.setFastResponse(!current);
+
+    const mode = !current ? '快速响应' : '平滑响应';
+    console.log(`响应模式: ${mode}`);
+    showTemporaryStatus(`响应: ${mode}`, 1500);
+}
+
+function showAmplitudeHelp() {
+    const helpText = `
+振幅面板控制帮助
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[D] 打开/关闭调试面板 (推荐！)
+
+传统热键 (面板关闭时可用):
+[A] 振幅模式循环
+[Z] 压缩模式循环  
+[X] 响应速度切换 [桌面端]
+[H] 显示此帮助
+
+🔧 推荐使用调试面板的图形界面！
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    `;
+
+    console.log(helpText);
+    showTemporaryStatus('振幅帮助已显示 - 按D键打开调试面板', 3000);
+}
+
+// 临时状态指示器（如果还没有）
+let _statusTimeout = null;
+function showTemporaryStatus(message, duration = 2000) {
+    if (_statusTimeout) clearTimeout(_statusTimeout);
+
+    let statusDiv = document.getElementById('amp-status-indicator');
+    if (!statusDiv) {
+        statusDiv = document.createElement('div');
+        statusDiv.id = 'amp-status-indicator';
+        statusDiv.style.cssText = `
+            position: fixed; top: 20px; right: 20px;
+            background: rgba(0, 0, 0, 0.8); color: #00ff88;
+            padding: 8px 16px; border-radius: 4px;
+            font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold;
+            z-index: 9999; border: 1px solid rgba(0, 255, 136, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(statusDiv);
+    }
+
+    statusDiv.textContent = message;
+    statusDiv.style.opacity = '1';
+
+    _statusTimeout = setTimeout(() => {
+        if (statusDiv) {
+            statusDiv.style.opacity = '0';
+            setTimeout(() => {
+                if (statusDiv && statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 300);
+        }
+    }, duration);
 }
