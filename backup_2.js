@@ -1,4 +1,3 @@
-//store the preview code!
 /* ------------ Globals ------------ */
 window.userStartAudio = async function () {
     try {
@@ -20,6 +19,7 @@ window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: tr
 
 let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel, scoreHUD;
 let running = false, counting = false;
+let debugPanel = null;
 let ctStart = 0;
 let judgeLineGlow = 0;
 let metronomeEnabled = false;
@@ -364,6 +364,53 @@ function layoutRects() {
 }
 
 /* ------------ DrumTrigger 初始化函数 ------------ */
+// 触发稳健化参数
+const TRIG_REFRACTORY_MS = 140;   // 不可重复期（抑制一次击打被判两次）
+const TRIG_MIN_LEVEL = 0.015;     // 背景噪声下限
+let _lastTriggerWallMs = 0;
+
+function shouldAcceptTrigger(kindHint = null) {
+    const now = millis();
+    const intelligentMode = getIntelligentRecognitionSetting();
+
+    // 基础重复抑制 - 所有模式都需要
+    if (now - _lastTriggerWallMs < 50) return false;
+
+    if (intelligentMode) {
+        // 智能模式：极简过滤，让AI系统处理一切
+        console.log('智能模式 - 最小过滤');
+        let lvl = 0;
+        try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
+
+        // 只阻止完全无声的情况
+        if (lvl < 0.001) return false;
+
+        _lastTriggerWallMs = now;
+        return true; // 让智能系统决定这是否是有效击打
+
+    } else {
+        // 传统模式：保持适中的过滤
+        console.log('传统模式 - 适中过滤');
+        let lvl = 0;
+        try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
+
+        if (lvl < 0.004) return false;
+
+        // 保留轻量级频谱检查
+        try {
+            const fft = drumTrigger?._fft;
+            if (fft) {
+                const spec = fft.analyze();
+                const totalEnergy = spec.reduce((a, b) => a + b, 0) / spec.length;
+                if (totalEnergy < 15) return false; // 降低阈值
+            }
+        } catch (_) { }
+
+        _lastTriggerWallMs = now;
+        return true;
+    }
+}
+
 function initDrumTriggerForMobile() {
     console.log('移动端 DrumTrigger 初始化');
     console.log('Audio context state:', getAudioContext()?.state);
@@ -381,6 +428,8 @@ function initDrumTriggerForMobile() {
                     startPerformanceAfterFirstHit();
                     return; // 第一击不计入游戏判定
                 }
+                const hint = (reason === 'tip') ? 'tip' : null;
+                if (!shouldAcceptTrigger(hint)) return;
 
                 if (running) {
                     LatencyProbe?.markNote({
@@ -442,40 +491,58 @@ function initDrumTriggerForDesktop() {
         mic,
         debug: debugMode,
         onTrigger: (reason) => {
-            // ★ 检查是否在等待第一击状态
             if (waitingForFirstHit) {
                 startPerformanceAfterFirstHit();
-                return; // 第一击不计入游戏判定
+                return;
             }
-            if (running) {
-                LatencyProbe?.markNote({
-                    reason,
-                    mode: window.RhythmSelector?.getCurrentMode?.(),
-                    chart: window.ChartSelector?.currentChart?.name || 'unknown',
-                    bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
-                });
-                const hitTime = rm._t();
-                rm.registerHit();
-                SweepMode?.addHitNow?.();
-                HitMarkers.addHitMarker(hitTime);
-                judgeLineGlow = 1;
 
-                // ★ 添加ScorePanel集成
-                // const timing = calculateHitTiming();
-                // const hitType = detectHitType();
-                // scoreHUD?.registerHit?.(timing, hitType);
-                const hitType = detectHitType();
-                window._lastHitType = hitType;   // 让后面能带上击打类型
-                rm.registerHit(hitType);         // 只交给 RhythmManager 判定
-                if (debugMode) {
-                    console.log(`桌面端鼓击检测: ${reason}`);
+            const intelligentMode = getIntelligentRecognitionSetting();
+
+            if (intelligentMode && window.hitRecognitionIntegration?.isEnabled) {
+                // 智能模式：绕过shouldAcceptTrigger，直接给AI系统
+                console.log(`智能系统直接处理: ${reason}`);
+
+                if (running) {
+                    // 只做最基本的重复检查
+                    const now = millis();
+                    if (now - _lastTriggerWallMs < 30) {
+                        console.log('智能模式重复抑制');
+                        return;
+                    }
+                    _lastTriggerWallMs = now;
+
+                    // 让智能系统完全处理
+                    judgeLineGlow = 1; // 提供视觉反馈
+
+                    // 智能系统会自己决定是否执行游戏逻辑
+                    // 这里不执行rm.registerHit()等，让AI系统控制
+                }
+
+            } else {
+                // 传统模式：使用现有过滤机制
+                const hint = (reason === 'tip') ? 'tip' : null;
+                if (!shouldAcceptTrigger(hint)) {
+                    console.log('传统模式过滤拒绝');
+                    return;
+                }
+
+                if (running) {
+                    console.log('传统模式处理击打');
+                    const hitTime = rm._t();
+                    const hitType = detectHitType();
+
+                    rm.registerHit();
+                    SweepMode?.addHitNow?.();
+                    HitMarkers.addHitMarker(hitTime);
+                    judgeLineGlow = 1;
+                    window._lastHitType = hitType;
                 }
             }
         }
     });
 
     drumTrigger.enable(true);
-    drumTrigger.setSensitivity(0.6);
+    drumTrigger.setSensitivity(0.95); // 提高灵敏度
 }
 
 /* ------------ Setup --------------- */
@@ -565,10 +632,15 @@ function setup() {
         rectProvider: () => RECT.fft,
         bins: 1024,
         smoothing: 0.85,
-        vscale: 2,
+        vscale: 5,
         lift: 5
-    });
+    })
+    fftHUD.setAxis({ mode: 'hybrid', focusBelowHz: 5000, compressFraction: 0.20, logBase: 10 })
+        .showPowerLine50Hz(true)
+        .enablePeakMarkers(true);
+    console.log('fftHUD axis mode after init:', fftHUD._axisMode);
 
+    //initialize amp HUD
     ampHUD = AmpPanel.init({
         mic,
         rectProvider: () => RECT.amp,
@@ -577,6 +649,9 @@ function setup() {
         historySec: 2.5,
         fastResponse: true
     });
+    ampHUD.setCompressionMode('logarithmic', 0.4)  // 对数压缩，压缩比0.4
+        .setSoftClipParams(0.7, 0.95);
+    setTimeout(initAmplitudeSystem, 1000);          // 软限幅阈值0.7，最大显示高度95%
 
     if (isMobile()) {
         setTimeout(() => {
@@ -659,15 +734,109 @@ function setup() {
         _emaE = 0, _emaVar = 1;
     });
 
-    //初始化谱子选择器
+    //init chart selector
     initChartSelector();
 
-    //打分系统
+    //scoring system
     setTimeout(() => {
         if (window.rightPanelScoring) {
             integrateScoring();
         }
     }, 2000);
+
+    // //advanced classifier
+    setTimeout(async () => {
+        console.log('=== 智能识别依赖检查 ===');
+        console.log('window.initializeIntelligentRecognition:', typeof window.initializeIntelligentRecognition);
+        console.log('window.hitRecognitionIntegration:', !!window.hitRecognitionIntegration);
+
+        if (typeof window.initializeIntelligentRecognition === 'function') {
+            await initializeIntelligentRecognitionWrapper();
+        } else {
+            console.warn('❌ 智能识别模块未正确加载');
+        }
+    }, 5000);
+}
+
+async function initializeIntelligentRecognitionWrapper() {
+    if (window._intelligentRecognitionInitializing || window._intelligentRecognitionInitialized) {
+        console.log('智能识别系统已在初始化中或已完成，跳过重复初始化');
+        return;
+    }
+
+    window._intelligentRecognitionInitializing = true;
+
+    // 检查外部智能识别函数是否存在
+    if (!mic) {
+        console.warn('❌ 麦克风未准备就绪');
+        window._intelligentRecognitionInitializing = false;
+        return;
+    }
+
+    if (typeof window.initializeIntelligentRecognition !== 'function') {
+        console.warn('❌ 外部智能识别模块未加载');
+        window._intelligentRecognitionInitializing = false;
+        return;
+    }
+
+    try {
+        console.log('正在初始化智能打击识别系统...');
+
+        const config = {
+            fftSize: 2048,
+            sampleRate: 44100,
+            recognition: {
+                adaptiveLearning: true,
+                noiseFloor: 0.005,
+                detectionCooldown: 30
+            },
+            noiseReduction: {
+                spectralSubtraction: { enabled: true },
+                adaptiveFilter: { enabled: true },
+                gatingFilter: { enabled: false }
+            }
+        };
+
+        // 现在调用外部模块的函数
+        const success = await window.initializeIntelligentRecognition(mic, config);
+
+        if (success) {
+            console.log('✅ 智能识别系统启动成功');
+            window._intelligentRecognitionInitialized = true;
+
+            // 初始化其他组件...
+            if (window.initializeTestingSuite && window.hitRecognitionIntegration?.recognitionSystem) {
+                window.recognitionTestingSuite = window.initializeTestingSuite(
+                    window.hitRecognitionIntegration.recognitionSystem
+                );
+                console.log('测试套件已初始化');
+            }
+        } else {
+            console.log('❌ 智能识别系统启动失败');
+        }
+
+    } catch (error) {
+        console.error('智能识别系统初始化错误:', error);
+    } finally {
+        window._intelligentRecognitionInitializing = false;
+    }
+}
+
+function initAmplitudeSystem() {
+    if (ampHUD) {
+        // 为 ampHUD 添加状态获取方法
+        ampHUD.getAmplitudeState = function () {
+            return {
+                preferAmp: this._preferAmp,
+                dynamicScale: this._dynamicScale,
+                instantAdapt: this._instantAdapt,
+                fastResponse: this._fastResponse,
+                compressionMode: this._compressionMode,
+                compressionRatio: this._compressionRatio
+            };
+        };
+        console.log('振幅系统已初始化，支持调试面板');
+    }
 }
 
 function isMobile() {
@@ -1656,42 +1825,117 @@ function drawGrid() {
 }
 
 function keyPressed() {
-    if (key === 'm' && ampHUD?.preferAmplitude) {
-        if (ampHUD._preferAmp) {
-            ampHUD.preferAmplitude(false);
-        } else {
-            ampHUD.preferAmplitude(true);
+    // === 调试模式切换（最高优先级）===
+    // Ctrl+I: 调试面板
+    if (key === 'i' && keyIsDown(CONTROL)) {
+        if (window.hitRecognitionIntegration) {
+            window.hitRecognitionIntegration.toggleDebugInterface();
         }
+        return;
     }
 
-    // 在调试模式下，按 P 键可以测试绘画模式
-    if (key === 'p' && debugMode) {
-        if (window.DrawingMode) {
-            if (window.DrawingMode.isActive()) {
-                window.DrawingMode.deactivate();
-            } else {
-                window.DrawingMode.activate(0); // 激活第一首歌
-            }
+    // Ctrl+T: 测试套件
+    if (key === 't' && keyIsDown(CONTROL)) {
+        if (window.recognitionTestingSuite) {
+            window.recognitionTestingSuite.showTestingInterface();
         }
+        return;
     }
 
-    if (key === 'f' && ampHUD?.setFastResponse) {
-        const current = ampHUD._fastResponse;
-        ampHUD.setFastResponse(!current);
-        const mode = !current ? 'FAST (0.0/0.9 smooth)' : 'SMOOTH (0.85/0.15 smooth)';
-        console.log(`Audio response mode: ${mode}`);
+    // Ctrl+V: 频谱可视化
+    if (key === 'v' && keyIsDown(CONTROL)) {
+        if (window.spectrumVisualizer) {
+            window.spectrumVisualizer.toggle();
+        }
+        return;
+    }
+
+
+    // Shift+M: 切换识别模式
+    if (key === 'M') { // 注意这里是大写M，因为按了Shift
+        if (window.hitRecognitionIntegration) {
+            const modes = ['intelligent', 'hybrid', 'simple'];
+            const current = window.hitRecognitionIntegration.processingMode;
+            const nextIndex = (modes.indexOf(current) + 1) % modes.length;
+            window.hitRecognitionIntegration.setProcessingMode(modes[nextIndex]);
+        }
+        return;
+    }
+
+    // Shift+N: 重新校准噪音
+    if (key === 'N') { // 注意这里是大写N，因为按了Shift
+        if (window.hitRecognitionIntegration?.noiseProcessor) {
+            window.hitRecognitionIntegration.noiseProcessor.calibrateNoiseFloor();
+            console.log('手动触发噪音校准');
+        }
+        return;
     }
 
     if (key === 'd') {
         debugMode = !debugMode;
         drumTrigger?.setDebug?.(debugMode);
-        console.log(`Debug mode: ${debugMode ? 'ON' : 'OFF'}`);
+
+        // 初始化调试面板（如果还没有）
+        if (!debugPanel) {
+            debugPanel = new DebugPanel();
+        }
+
+        // 切换调试面板显示
+        if (debugMode) {
+            debugPanel.show();
+            console.log('🔧 Debug Panel: OPENED');
+        } else {
+            debugPanel.hide();
+            console.log('🔧 Debug Panel: CLOSED');
+        }
+
+        return; // 防止其他键处理
     }
+
+    // === 调试面板激活时的热键处理 ===
+    if (debugPanel && debugPanel.visible) {
+        // 调试面板显示时，大部分热键由GUI接管
+        // 只保留必要的帮助功能
+        if (key.toLowerCase() === 'h') {
+            showAmplitudeHelp();
+            return;
+        }
+
+        // 提示用户使用GUI界面
+        console.log('💡 调试面板已激活，请使用图形界面代替热键操作');
+        return;
+    }
+
+    // === 正常模式下的热键（调试面板未显示时）===
+
+    // 振幅系统热键
+    if (key.toLowerCase() === 'a' && ampHUD) {
+        cycleAmplitudeMode();
+        return;
+    }
+
+    if (key.toLowerCase() === 'z' && ampHUD) {
+        cycleCompressionMode();
+        return;
+    }
+
+    if (key.toLowerCase() === 'x' && ampHUD && !isMobile()) {
+        toggleFastResponse();
+        return;
+    }
+
+    if (key.toLowerCase() === 'h') {
+        showAmplitudeHelp();
+        return;
+    }
+
+    // 鼓触发器热键
     if (key === 't' && drumTrigger) {
         const isEnabled = !drumTrigger._isEnabled;
         drumTrigger.enable(isEnabled);
         console.log(`Drum trigger: ${isEnabled ? 'ON' : 'OFF'}`);
     }
+
     if (key >= '1' && key <= '5' && drumTrigger) {
         const level = parseInt(key);
         const sensitivity = Math.pow(level / 5.0, 0.5);
@@ -1703,32 +1947,35 @@ function keyPressed() {
         drumTrigger.resetStats();
         console.log('Drum trigger stats reset');
     }
+
     if (key === 'i' && drumTrigger) {
         const stats = drumTrigger.getStats();
         console.log('Drum Trigger Stats:', stats);
     }
 
-    if (key === 'a' && ampHUD) {
-        const status = ampHUD.getStatus();
-        ampHUD.setDynamicScale(!status.dynamicScale);
-        const newStatus = ampHUD.getStatus();
-        console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
-    }
-    if (key === 's' && ampHUD) {
-        const status = ampHUD.getStatus();
-        if (status.dynamicScale) {
-            ampHUD.setInstantAdapt(!status.instantAdapt);
-            const newStatus = ampHUD.getStatus();
-            console.log(`Amplitude scaling: ${newStatus.currentMode} mode`);
-        } else {
-            console.log('Dynamic scaling is OFF - enable with "a" key first');
-        }
+    // FFT热键
+    if (key.toLowerCase() === 'l' && fftHUD?.setAxis) {
+        const m = (fftHUD._axisMode === 'linear') ? 'hybrid' : 'linear';
+        fftHUD.setAxis({ mode: m });
+        console.log('FFT axis mode:', m);
     }
 
+    // 移动端特殊功能
     if (key === 'x' && isMobile()) {
         console.log('手动触发移动端测试');
         if (drumTrigger && drumTrigger._onTrigger) {
             drumTrigger._onTrigger('MANUAL_MOBILE_TEST');
+        }
+    }
+
+    // 保留的开发者功能
+    if (key === 'p' && debugMode) {
+        if (window.DrawingMode) {
+            if (window.DrawingMode.isActive()) {
+                window.DrawingMode.deactivate();
+            } else {
+                window.DrawingMode.activate(0);
+            }
         }
     }
 }
@@ -1840,4 +2087,133 @@ function debugPauseResumeState() {
 - rm._t(): ${running ? rm._t().toFixed(1) : 'N/A'}ms
 - 循环内时间: ${running ? (rm._t() % rm.totalDuration).toFixed(1) : 'N/A'}ms
 - Wall时间: ${millis()}ms`);
+}
+
+
+//debugging helper functions
+function cycleAmplitudeMode() {
+    const modes = [
+        { name: 'FFT-RMS (固定)', preferAmp: false, dynamicScale: false },
+        { name: 'FFT-RMS (自动)', preferAmp: false, dynamicScale: true, instantAdapt: false },
+        { name: 'FFT-RMS (快速)', preferAmp: false, dynamicScale: true, instantAdapt: true }
+    ];
+
+    // 尝试添加p5.Amplitude模式
+    try {
+        ampHUD.tryEnableAmplitude();
+        if (ampHUD._amp) {
+            modes.push(
+                { name: 'p5.Amplitude (固定)', preferAmp: true, dynamicScale: false },
+                { name: 'p5.Amplitude (自动)', preferAmp: true, dynamicScale: true, instantAdapt: false }
+            );
+        }
+    } catch (e) { }
+
+    const current = ampHUD.getAmplitudeState();
+    let currentIndex = modes.findIndex(mode =>
+        mode.preferAmp === current.preferAmp &&
+        mode.dynamicScale === current.dynamicScale &&
+        mode.instantAdapt === current.instantAdapt
+    );
+
+    if (currentIndex === -1) currentIndex = 0;
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+
+    ampHUD.preferAmplitude(nextMode.preferAmp);
+    ampHUD.setDynamicScale(nextMode.dynamicScale);
+    if (nextMode.dynamicScale && nextMode.hasOwnProperty('instantAdapt')) {
+        ampHUD.setInstantAdapt(nextMode.instantAdapt);
+    }
+
+    console.log(`振幅模式: ${nextMode.name}`);
+    showTemporaryStatus(`振幅: ${nextMode.name}`, 2000);
+}
+
+function cycleCompressionMode() {
+    const modes = [
+        { mode: 'none', name: '无压缩' },
+        { mode: 'logarithmic', name: '对数压缩' },
+        { mode: 'tanh', name: 'Tanh压缩' },
+        { mode: 'soft_clip', name: '多项式压缩' }
+    ];
+
+    const currentMode = ampHUD._compressionMode || 'logarithmic';
+    const currentIndex = modes.findIndex(m => m.mode === currentMode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+
+    if (nextMode.mode === 'none') {
+        ampHUD._compressionMode = 'none';
+    } else {
+        ampHUD.setCompressionMode(nextMode.mode, 0.4);
+    }
+
+    console.log(`压缩模式: ${nextMode.name}`);
+    showTemporaryStatus(`压缩: ${nextMode.name}`, 2000);
+}
+
+function toggleFastResponse() {
+    const current = ampHUD._fastResponse;
+    ampHUD.setFastResponse(!current);
+
+    const mode = !current ? '快速响应' : '平滑响应';
+    console.log(`响应模式: ${mode}`);
+    showTemporaryStatus(`响应: ${mode}`, 1500);
+}
+
+function showAmplitudeHelp() {
+    const helpText = `
+振幅面板控制帮助
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[D] 打开/关闭调试面板 (推荐！)
+
+传统热键 (面板关闭时可用):
+[A] 振幅模式循环
+[Z] 压缩模式循环  
+[X] 响应速度切换 [桌面端]
+[H] 显示此帮助
+
+🔧 推荐使用调试面板的图形界面！
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    `;
+
+    console.log(helpText);
+    showTemporaryStatus('振幅帮助已显示 - 按D键打开调试面板', 3000);
+}
+
+// 临时状态指示器（如果还没有）
+let _statusTimeout = null;
+function showTemporaryStatus(message, duration = 2000) {
+    if (_statusTimeout) clearTimeout(_statusTimeout);
+
+    let statusDiv = document.getElementById('amp-status-indicator');
+    if (!statusDiv) {
+        statusDiv = document.createElement('div');
+        statusDiv.id = 'amp-status-indicator';
+        statusDiv.style.cssText = `
+            position: fixed; top: 20px; right: 20px;
+            background: rgba(0, 0, 0, 0.8); color: #00ff88;
+            padding: 8px 16px; border-radius: 4px;
+            font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold;
+            z-index: 9999; border: 1px solid rgba(0, 255, 136, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(statusDiv);
+    }
+
+    statusDiv.textContent = message;
+    statusDiv.style.opacity = '1';
+
+    _statusTimeout = setTimeout(() => {
+        if (statusDiv) {
+            statusDiv.style.opacity = '0';
+            setTimeout(() => {
+                if (statusDiv && statusDiv.parentNode) {
+                    statusDiv.parentNode.removeChild(statusDiv);
+                }
+            }, 300);
+        }
+    }, duration);
 }
