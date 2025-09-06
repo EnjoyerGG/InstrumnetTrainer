@@ -491,13 +491,32 @@ function initDrumTriggerForDesktop() {
             if (!shouldAcceptTrigger(hint)) return;
 
             if (running) {
-                LatencyProbe?.markNote({
-                    reason,
-                    mode: window.RhythmSelector?.getCurrentMode?.(),
-                    chart: window.ChartSelector?.currentChart?.name || 'unknown',
-                    bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
-                });
+                // 如果智能识别系统已启用，让它优先处理
+                // if (window.hitRecognitionIntegration?.isEnabled &&
+                //     window.hitRecognitionIntegration?.processingMode === 'intelligent') {
+                //     // 智能系统会自动处理，这里不做额外处理
+                //     return;
+                // }
                 const hitTime = rm._t();
+                const hitType = detectHitType();
+
+                // 否则使用传统处理方式
+                if (window.hitRecognitionIntegration?.isEnabled &&
+                    window.hitRecognitionIntegration?.processingMode === 'intelligent') {
+                    // 让智能系统处理，但仍然触发视觉反馈
+                    console.log('智能识别处理击打');
+                } else {
+                    // 传统处理方式
+                    if (window.LatencyProbe) {
+                        window.LatencyProbe.markNote({
+                            reason,
+                            mode: window.RhythmSelector?.getCurrentMode?.(),
+                            chart: window.ChartSelector?.currentChart?.name || 'unknown',
+                            bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
+                        });
+                    }
+
+                }
                 rm.registerHit();
                 SweepMode?.addHitNow?.();
                 HitMarkers.addHitMarker(hitTime);
@@ -507,11 +526,11 @@ function initDrumTriggerForDesktop() {
                 // const timing = calculateHitTiming();
                 // const hitType = detectHitType();
                 // scoreHUD?.registerHit?.(timing, hitType);
-                const hitType = detectHitType();
+
                 window._lastHitType = hitType;   // 让后面能带上击打类型
-                rm.registerHit(hitType);         // 只交给 RhythmManager 判定
+                //rm.registerHit(hitType);         // 只交给 RhythmManager 判定
                 if (debugMode) {
-                    console.log(`桌面端鼓击检测: ${reason}`);
+                    console.log(`桌面端鼓击检测: ${reason}, 模式: ${window.hitRecognitionIntegration?.processingMode || '传统'}`);
                 }
             }
         }
@@ -710,15 +729,92 @@ function setup() {
         _emaE = 0, _emaVar = 1;
     });
 
-    //初始化谱子选择器
+    //init chart selector
     initChartSelector();
 
-    //打分系统
+    //scoring system
     setTimeout(() => {
         if (window.rightPanelScoring) {
             integrateScoring();
         }
     }, 2000);
+
+    // //advanced classifier
+    setTimeout(async () => {
+        console.log('=== 智能识别依赖检查 ===');
+        console.log('window.initializeIntelligentRecognition:', typeof window.initializeIntelligentRecognition);
+        console.log('window.hitRecognitionIntegration:', !!window.hitRecognitionIntegration);
+
+        if (typeof window.initializeIntelligentRecognition === 'function') {
+            await initializeIntelligentRecognitionWrapper();
+        } else {
+            console.warn('❌ 智能识别模块未正确加载');
+        }
+    }, 5000);
+}
+
+async function initializeIntelligentRecognitionWrapper() {
+    if (window._intelligentRecognitionInitializing || window._intelligentRecognitionInitialized) {
+        console.log('智能识别系统已在初始化中或已完成，跳过重复初始化');
+        return;
+    }
+
+    window._intelligentRecognitionInitializing = true;
+
+    // 检查外部智能识别函数是否存在
+    if (!mic) {
+        console.warn('❌ 麦克风未准备就绪');
+        window._intelligentRecognitionInitializing = false;
+        return;
+    }
+
+    if (typeof window.initializeIntelligentRecognition !== 'function') {
+        console.warn('❌ 外部智能识别模块未加载');
+        window._intelligentRecognitionInitializing = false;
+        return;
+    }
+
+    try {
+        console.log('正在初始化智能打击识别系统...');
+
+        const config = {
+            fftSize: 2048,
+            sampleRate: 44100,
+            recognition: {
+                adaptiveLearning: true,
+                noiseFloor: 0.02,
+                detectionCooldown: 150
+            },
+            noiseReduction: {
+                spectralSubtraction: { enabled: true },
+                adaptiveFilter: { enabled: true },
+                gatingFilter: { enabled: true }
+            }
+        };
+
+        // 现在调用外部模块的函数
+        const success = await window.initializeIntelligentRecognition(mic, config);
+
+        if (success) {
+            console.log('✅ 智能识别系统启动成功');
+            window._intelligentRecognitionInitialized = true;
+
+            // 初始化其他组件...
+            if (window.initializeTestingSuite && window.hitRecognitionIntegration?.recognitionSystem) {
+                window.recognitionTestingSuite = window.initializeTestingSuite(
+                    window.hitRecognitionIntegration.recognitionSystem
+                );
+                console.log('测试套件已初始化');
+            }
+        } else {
+            console.log('❌ 智能识别系统启动失败');
+        }
+
+    } catch (error) {
+        console.error('智能识别系统初始化错误:', error);
+    } finally {
+        window._intelligentRecognitionInitializing = false;
+    }
 }
 
 function initAmplitudeSystem() {
@@ -1725,6 +1821,51 @@ function drawGrid() {
 
 function keyPressed() {
     // === 调试模式切换（最高优先级）===
+    // Ctrl+I: 调试面板
+    if (key === 'i' && keyIsDown(CONTROL)) {
+        if (window.hitRecognitionIntegration) {
+            window.hitRecognitionIntegration.toggleDebugInterface();
+        }
+        return;
+    }
+
+    // Ctrl+T: 测试套件
+    if (key === 't' && keyIsDown(CONTROL)) {
+        if (window.recognitionTestingSuite) {
+            window.recognitionTestingSuite.showTestingInterface();
+        }
+        return;
+    }
+
+    // Ctrl+V: 频谱可视化
+    if (key === 'v' && keyIsDown(CONTROL)) {
+        if (window.spectrumVisualizer) {
+            window.spectrumVisualizer.toggle();
+        }
+        return;
+    }
+
+
+    // Shift+M: 切换识别模式
+    if (key === 'M') { // 注意这里是大写M，因为按了Shift
+        if (window.hitRecognitionIntegration) {
+            const modes = ['intelligent', 'hybrid', 'simple'];
+            const current = window.hitRecognitionIntegration.processingMode;
+            const nextIndex = (modes.indexOf(current) + 1) % modes.length;
+            window.hitRecognitionIntegration.setProcessingMode(modes[nextIndex]);
+        }
+        return;
+    }
+
+    // Shift+N: 重新校准噪音
+    if (key === 'N') { // 注意这里是大写N，因为按了Shift
+        if (window.hitRecognitionIntegration?.noiseProcessor) {
+            window.hitRecognitionIntegration.noiseProcessor.calibrateNoiseFloor();
+            console.log('手动触发噪音校准');
+        }
+        return;
+    }
+
     if (key === 'd') {
         debugMode = !debugMode;
         drumTrigger?.setDebug?.(debugMode);
