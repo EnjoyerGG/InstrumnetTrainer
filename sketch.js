@@ -381,7 +381,7 @@ function layoutRects() {
 /* ------------ DrumTrigger 初始化函数 ------------ */
 // 触发稳健化参数
 const TRIG_REFRACTORY_MS = 140;   // 不可重复期（抑制一次击打被判两次）
-const TRIG_MIN_LEVEL = 0.010;     // 背景噪声下限
+const TRIG_MIN_LEVEL = 0.006;     // 背景噪声下限
 let _lastTriggerWallMs = 0;
 
 function shouldAcceptTrigger(kindHint = null) {
@@ -397,7 +397,7 @@ function shouldAcceptTrigger(kindHint = null) {
     let lvl = 0;
     try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
     if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') {
-        window.__GateLastReason = `level<${TRIG_MIN_LEVEL.toFixed(3)} (lvl=${lvl.toFixed(3)})`;
+        window.__GateLastReason = `level<${TRIG_MIN_LEVEL.toFixed(2)} (lvl=${lvl.toFixed(3)})`;
         return false;
     }
 
@@ -417,8 +417,8 @@ function shouldAcceptTrigger(kindHint = null) {
                 return false;
             }
             const midHighFrac = (mid + high) / Math.max(1, total);
-            if (kindHint !== 'tip' && midHighFrac < 0.25) {
-                window.__GateLastReason = `midHighFrac<0.25 (=${midHighFrac.toFixed(2)})`;
+            if (kindHint !== 'tip' && midHighFrac < 0.15) {
+                window.__GateLastReason = `midHighFrac<0.15 (=${midHighFrac.toFixed(2)})`;
                 return false;
             }
         }
@@ -532,45 +532,31 @@ function initDrumTriggerForDesktop() {
             }
 
             if (running) {
-                // 如果智能识别系统已启用，让它优先处理
-                // if (window.hitRecognitionIntegration?.isEnabled &&
-                //     window.hitRecognitionIntegration?.processingMode === 'intelligent') {
-                //     // 智能系统会自动处理，这里不做额外处理
-                //     return;
-                // }
+                // ★ 智能模式：交给 AI，传统通道不再记分，避免双计数
+                if (window.hitRecognitionIntegration?.isEnabled &&
+                    window.hitRecognitionIntegration?.processingMode === 'intelligent') {
+                    // 只做视觉反馈的话，可在这里加上需要的 UI 效果；不再 registerHit
+                    return;
+                }
+                // 非智能模式 → 传统处理
                 const hitTime = rm._t();
                 const hitType = detectHitType();
 
-                // 否则使用传统处理方式
-                if (window.hitRecognitionIntegration?.isEnabled &&
-                    window.hitRecognitionIntegration?.processingMode === 'intelligent') {
-                    // 让智能系统处理，但仍然触发视觉反馈
-                    console.log('智能识别处理击打');
-                } else {
-                    // 传统处理方式
-                    if (window.LatencyProbe) {
-                        window.LatencyProbe.markNote({
-                            reason,
-                            mode: window.RhythmSelector?.getCurrentMode?.(),
-                            chart: window.ChartSelector?.currentChart?.name || 'unknown',
-                            bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
-                        });
-                    }
-
+                if (window.LatencyProbe) {
+                    window.LatencyProbe.markNote({
+                        reason,
+                        mode: window.RhythmSelector?.getCurrentMode?.(),
+                        chart: window.ChartSelector?.currentChart?.name || 'unknown',
+                        bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
+                    });
                 }
 
                 rm.registerHit();
                 SweepMode?.addHitNow?.();
                 HitMarkers.addHitMarker(hitTime);
                 judgeLineGlow = 1;
+                window._lastHitType = hitType;
 
-                // ★ 添加ScorePanel集成
-                // const timing = calculateHitTiming();
-                // const hitType = detectHitType();
-                // scoreHUD?.registerHit?.(timing, hitType);
-
-                window._lastHitType = hitType;   // 让后面能带上击打类型
-                //rm.registerHit(hitType);         // 只交给 RhythmManager 判定
                 if (debugMode) {
                     console.log(`桌面端鼓击检测: ${reason}, 模式: ${window.hitRecognitionIntegration?.processingMode || '传统'}`);
                 }

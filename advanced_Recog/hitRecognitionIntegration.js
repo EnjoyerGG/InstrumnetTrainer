@@ -156,7 +156,10 @@ class HitRecognitionIntegration {
      * 处理智能识别结果
      */
     processIntelligentResult(result) {
-        if (result.confidence < 0.5) {
+        const typeMin = { bass: 0.35, open: 0.45, tip: 0.40, slap: 0.50 };
+        const minC = typeMin[result.type] ?? 0.45;
+
+        if (result.confidence < minC) {
             this.performanceMonitor.errorCount++;
             if (typeof window !== 'undefined') {
                 window.__HitDebug = window.__HitDebug || {};
@@ -206,15 +209,17 @@ class HitRecognitionIntegration {
             }
 
             // 检查触发条件
-            if (!window.shouldAcceptTrigger(hitType)) {
+            const highConf = (recognitionData?.confidence ?? 0) >= 0.80;
+            if (!highConf && !window.shouldAcceptTrigger(hitType)) {
                 if (typeof window !== 'undefined') {
                     window.__HitDebug = window.__HitDebug || {};
                     window.__HitDebug.aiRejectedByGate = (window.__HitDebug.aiRejectedByGate || 0) + 1;
                     window.__HitDebug.lastSource = 'AI';
-                    window.__HitDebug.lastReason = window.__GateLastReason || 'unknown';
+                    window.__HitDebug.lastReason = window.__GateLastReason || 'gate';
                 }
                 return;
             }
+
             if (typeof window !== 'undefined') {
                 window.__HitDebug = window.__HitDebug || {};
                 window.__HitDebug.aiAccepted = (window.__HitDebug.aiAccepted || 0) + 1;
