@@ -366,7 +366,7 @@ function layoutRects() {
 /* ------------ DrumTrigger 初始化函数 ------------ */
 // 触发稳健化参数
 const TRIG_REFRACTORY_MS = 140;   // 不可重复期（抑制一次击打被判两次）
-const TRIG_MIN_LEVEL = 0.015;     // 背景噪声下限
+const TRIG_MIN_LEVEL = 0.010;     // 背景噪声下限
 let _lastTriggerWallMs = 0;
 
 function shouldAcceptTrigger(kindHint = null) {
@@ -393,7 +393,12 @@ function shouldAcceptTrigger(kindHint = null) {
             const total = low + mid + high;
             if (total < 50 && kindHint !== 'tip') return false;
             const midHighFrac = (mid + high) / Math.max(1, total);
-            if (kindHint !== 'tip' && midHighFrac < 0.25) return false;
+            if (kindHint === 'bass') {
+                // 放宽电平门限 & 不要求中高频比例
+                if (lvl < TRIG_MIN_LEVEL * 0.8) return false;
+            } else if (kindHint !== 'tip' && midHighFrac < 0.15) {
+                return false;
+            }
         }
     } catch (_) { }
 
@@ -402,6 +407,7 @@ function shouldAcceptTrigger(kindHint = null) {
 
     function avg(arr, a, b) { let s = 0, c = 0; for (let i = a; i <= b; i++) { s += arr[i] || 0; c++; } return c ? s / c : 0; }
 }
+
 function initDrumTriggerForMobile() {
     console.log('移动端 DrumTrigger 初始化');
     console.log('Audio context state:', getAudioContext()?.state);

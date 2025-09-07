@@ -73,7 +73,7 @@ class CongaHitRecognition {
 
         // 自适应学习
         this.adaptiveLearning = {
-            enabled: options.adaptiveLearning || true,
+            enabled: (options.adaptiveLearning ?? true),
             sampleHistory: [],
             maxHistorySize: 100
         };

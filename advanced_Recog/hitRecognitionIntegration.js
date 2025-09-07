@@ -81,6 +81,9 @@ class HitRecognitionIntegration {
 
             this.isInitialized = true;
             this.isEnabled = true;
+            if (typeof window !== 'undefined') {
+                window.hitRecognitionIntegration = this;
+            }
 
             console.log('智能打击识别系统初始化完成');
 
