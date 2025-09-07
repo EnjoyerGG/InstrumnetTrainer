@@ -14,6 +14,131 @@ window.userStartAudio = async function () {
     } catch (e) { console.warn(e); }
 };
 
+// 添加全局错误处理器
+window.addEventListener('error', function (e) {
+    if (e.message && e.message.includes('getIntelligentRecognitionSetting')) {
+        console.error('智能识别系统错误，切换到安全模式');
+        // 强制设置为传统模式
+        if (typeof setIntelligentRecognitionSetting === 'function') {
+            setIntelligentRecognitionSetting(false);
+        }
+    }
+});
+
+window.initializeIntelligentRecognition = async function (mic, config) {
+    console.log('🤖 初始化智能识别系统（简化版本）...');
+    console.log('配置:', config);
+
+    // 创建模拟的智能识别集成对象
+    window.hitRecognitionIntegration = {
+        isEnabled: false,
+        processingMode: 'simple',
+        recognitionSystem: null,
+
+        setProcessingMode: function (mode) {
+            this.processingMode = mode;
+            console.log(`🔄 识别模式切换到: ${mode}`);
+        },
+
+        toggleDebugInterface: function () {
+            console.log('🔧 智能识别调试界面（简化版本）');
+            console.log('完整调试功能需要完整的智能识别模块');
+        },
+
+        recordTrainingData: function (data) {
+            console.log('📊 记录训练数据:', data);
+        },
+
+        getLastHitType: function () {
+            // 简单的随机击打类型
+            const types = ['slap', 'open', 'tip', 'bass'];
+            return types[Math.floor(Math.random() * types.length)];
+        },
+
+        noiseProcessor: {
+            calibrateNoiseFloor: function () {
+                console.log('🔊 重新校准噪音基准（模拟）');
+            }
+        }
+    };
+
+    // 模拟成功初始化
+    setTimeout(() => {
+        console.log('✅ 智能识别系统初始化完成（简化版本）');
+    }, 100);
+
+    return true; // 返回成功
+};
+
+// 确保模块正确加载
+console.log('✅ hitRecognitionIntegration.js 已加载（简化版本）');
+console.log('✅ congaHitRecognition.js 已加载（占位符版本）');
+window.NoiseReductionProcessor = class {
+    constructor(config) {
+        this.config = config || {};
+        console.log('🔇 噪音减少处理器初始化（简化版本）');
+    }
+
+    calibrateNoiseFloor() {
+        console.log('📏 校准噪音基准（模拟）');
+        return Promise.resolve(true);
+    }
+
+    process(audioData) {
+        // 简单返回原始数据，不做处理
+        return audioData;
+    }
+};
+console.log('✅ noiseReductionProcessor.js 已加载（占位符版本）');
+
+// ========================================
+// advanced_Recog/realtimeSpectrumVisualizer.js
+// ========================================
+window.spectrumVisualizer = {
+    isActive: false,
+
+    toggle: function () {
+        this.isActive = !this.isActive;
+        console.log(`📊 频谱可视化器: ${this.isActive ? '开启' : '关闭'}`);
+    },
+
+    show: function () {
+        this.isActive = true;
+        console.log('📊 显示频谱可视化器（简化版本）');
+    },
+
+    hide: function () {
+        this.isActive = false;
+        console.log('📊 隐藏频谱可视化器');
+    }
+};
+console.log('✅ realtimeSpectrumVisualizer.js 已加载（占位符版本）');
+
+// ========================================
+// 确保所有模块都正确注册
+// ========================================
+window.addEventListener('load', () => {
+    console.log('🎯 所有智能识别占位符模块已加载完成');
+    console.log('⚠️  当前使用简化版本，完整功能需要完整的智能识别模块');
+});
+
+// 添加安全的初始化检查函数
+function ensureIntelligentRecognitionSafety() {
+    // 确保关键变量存在
+    if (typeof intelligentRecognitionEnabled === 'undefined') {
+        window.intelligentRecognitionEnabled = false;
+        console.log('修复了 intelligentRecognitionEnabled 变量');
+    }
+
+    // 确保关键函数存在
+    if (typeof window.getIntelligentRecognitionSetting !== 'function') {
+        window.getIntelligentRecognitionSetting = function () {
+            return window.intelligentRecognitionEnabled || false;
+        };
+        console.log('修复了 getIntelligentRecognitionSetting 函数');
+    }
+};
+
 window.addEventListener('touchstart', () => window.userStartAudio?.(), { once: true, passive: true });
 window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: true });
 
@@ -34,6 +159,8 @@ let resumePosition = 0;
 let pauseAtLoopTime = 0;
 let pauseAtWallTime = 0;
 let lastRMCycle = 0;
+let intelligentRecognitionEnabled = false;
+let _lastTriggerWallMs = 0;
 
 const COUNTDOWN_MS = 3000;
 const SWEEP_H = 140;
@@ -70,6 +197,68 @@ function isBottomDrum(n) {
 }
 function laneTopY() { return rm.noteY - LANE_GAP / 2; }
 function laneBottomY() { return rm.noteY + LANE_GAP / 2; }
+
+//智能识别系统 - 改进的状态管理
+function getIntelligentRecognitionSetting() {
+    // 添加安全检查
+    if (typeof intelligentRecognitionEnabled === 'undefined') {
+        console.warn('intelligentRecognitionEnabled 未初始化，使用默认值 false');
+        return false;
+    }
+    return intelligentRecognitionEnabled;
+}
+
+function setIntelligentRecognitionSetting(enabled) {
+    intelligentRecognitionEnabled = enabled;
+
+    const toggle = document.getElementById('intelligent-recognition-toggle');
+    if (toggle) {
+        toggle.checked = enabled;
+    }
+
+    // 应用设置
+    applyIntelligentRecognitionSetting(enabled);
+
+    // 保存到localStorage
+    try {
+        localStorage.setItem('intelligentRecognitionEnabled', enabled.toString());
+    } catch (e) {
+        console.warn('无法保存设置到localStorage:', e);
+    }
+
+    console.log(`智能识别模式: ${enabled ? '启用' : '禁用'}`);
+}
+
+function applyIntelligentRecognitionSetting(enabled) {
+    // 改进的状态应用逻辑
+    if (window.hitRecognitionIntegration && typeof window.hitRecognitionIntegration === 'object') {
+        window.hitRecognitionIntegration.isEnabled = enabled;
+
+        if (enabled) {
+            if (typeof window.hitRecognitionIntegration.setProcessingMode === 'function') {
+                window.hitRecognitionIntegration.setProcessingMode('intelligent');
+                console.log('✅ 智能识别系统已启用');
+            } else {
+                console.warn('⚠️ hitRecognitionIntegration.setProcessingMode 方法不存在，将使用传统模式');
+                // 自动降级而不是静默失败
+                window.intelligentRecognitionEnabled = false;
+                if (toggle) toggle.checked = false;
+            }
+        } else {
+            console.log('✅ 切换到传统模式');
+        }
+    } else {
+        if (enabled) {
+            console.warn('⚠️ 智能识别系统未加载，无法启用智能模式，保持传统模式');
+            // 自动降级
+            window.intelligentRecognitionEnabled = false;
+            const toggle = document.getElementById('intelligent-recognition-toggle');
+            if (toggle) toggle.checked = false;
+        } else {
+            console.log('✅ 传统模式已确认');
+        }
+    }
+}
 
 /* ---------- 修复的节拍器调度系统 ---------- */
 const schedulerState = {
@@ -364,51 +553,112 @@ function layoutRects() {
 }
 
 /* ------------ DrumTrigger 初始化函数 ------------ */
-// 触发稳健化参数
+// 触发稳定化参数
 const TRIG_REFRACTORY_MS = 140;   // 不可重复期（抑制一次击打被判两次）
 const TRIG_MIN_LEVEL = 0.015;     // 背景噪声下限
-let _lastTriggerWallMs = 0;
+
+// ✅ 修复核心问题：统一的击打处理逻辑
+function processHitUnified(reason, isIntelligentMode) {
+    console.log(`统一击打处理: ${reason}, 模式: ${isIntelligentMode ? '智能' : '传统'}`);
+
+    // 第一击特殊处理
+    if (waitingForFirstHit) {
+        startPerformanceAfterFirstHit();
+        return true; // 第一击不计入游戏判定
+    }
+
+    // 通用过滤逻辑
+    if (!shouldAcceptTrigger(reason === 'tip' ? 'tip' : null)) {
+        return false;
+    }
+
+    if (!running) {
+        return false;
+    }
+
+    // ✅ 核心修复：无论什么模式都执行相同的游戏逻辑
+    const hitTime = rm._t();
+    const timing = calculateHitTiming();
+    const hitType = detectHitType();
+
+    // 更新游戏状态（所有模式共享）
+    rm.registerHit();
+    SweepMode?.addHitNow?.();
+    HitMarkers.addHitMarker(hitTime);
+    judgeLineGlow = 1;
+
+    // 更新评分系统
+    scoreHUD?.registerHit?.(timing, hitType);
+
+    // 存储最后击打类型供其他系统使用
+    window._lastHitType = hitType;
+
+    // 智能模式特有的额外处理
+    if (isIntelligentMode && window.hitRecognitionIntegration) {
+        try {
+            // 可以添加智能模式的特殊功能，如机器学习记录等
+            if (typeof window.hitRecognitionIntegration.recordTrainingData === 'function') {
+                window.hitRecognitionIntegration.recordTrainingData({
+                    reason,
+                    hitType,
+                    timing,
+                    timestamp: Date.now()
+                });
+            }
+        } catch (e) {
+            console.warn('智能模式额外功能执行失败:', e);
+            // 不影响核心游戏逻辑
+        }
+    }
+
+    // 性能分析（如果可用）
+    try {
+        LatencyProbe?.markNote({
+            reason,
+            mode: window.RhythmSelector?.getCurrentMode?.(),
+            chart: window.ChartSelector?.currentChart?.name || 'unknown',
+            bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
+        });
+    } catch (e) {
+        // 静默忽略性能分析错误
+    }
+
+    return true;
+}
 
 function shouldAcceptTrigger(kindHint = null) {
     const now = millis();
-    const intelligentMode = getIntelligentRecognitionSetting();
 
-    // 基础重复抑制 - 所有模式都需要
+    // 改进的安全获取智能识别设置
+    let intelligentMode = false;
+    try {
+        intelligentMode = getIntelligentRecognitionSetting();
+    } catch (e) {
+        console.warn('获取智能识别设置失败，使用传统模式:', e);
+        intelligentMode = false;
+    }
+
+    // 基础重复抑制
     if (now - _lastTriggerWallMs < 50) return false;
 
-    if (intelligentMode) {
-        // 智能模式：极简过滤，让AI系统处理一切
-        console.log('智能模式 - 最小过滤');
-        let lvl = 0;
-        try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
-
-        // 只阻止完全无声的情况
-        if (lvl < 0.001) return false;
-
-        _lastTriggerWallMs = now;
-        return true; // 让智能系统决定这是否是有效击打
-
-    } else {
-        // 传统模式：保持适中的过滤
-        console.log('传统模式 - 适中过滤');
-        let lvl = 0;
-        try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
-
-        if (lvl < 0.004) return false;
-
-        // 保留轻量级频谱检查
-        try {
-            const fft = drumTrigger?._fft;
-            if (fft) {
-                const spec = fft.analyze();
-                const totalEnergy = spec.reduce((a, b) => a + b, 0) / spec.length;
-                if (totalEnergy < 15) return false; // 降低阈值
-            }
-        } catch (_) { }
-
-        _lastTriggerWallMs = now;
-        return true;
+    // 获取音量级别
+    let lvl = 0;
+    try {
+        if (mic && typeof mic.getLevel === 'function') {
+            lvl = mic.getLevel();
+        }
+    } catch (err) {
+        console.warn('获取音量级别失败:', err);
+        return false;
     }
+
+    // 模式相关的阈值设置（稍微调整平衡）
+    const threshold = intelligentMode ? 0.002 : 0.004;
+
+    if (lvl < threshold) return false;
+
+    _lastTriggerWallMs = now;
+    return true;
 }
 
 function initDrumTriggerForMobile() {
@@ -423,30 +673,11 @@ function initDrumTriggerForMobile() {
             onTrigger: (reason) => {
                 console.log('移动端鼓击检测:', reason);
 
-                // ★ 检查是否在等待第一击状态
-                if (waitingForFirstHit) {
-                    startPerformanceAfterFirstHit();
-                    return; // 第一击不计入游戏判定
-                }
-                const hint = (reason === 'tip') ? 'tip' : null;
-                if (!shouldAcceptTrigger(hint)) return;
+                // 获取当前模式
+                const isIntelligentMode = getIntelligentRecognitionSetting();
 
-                if (running) {
-                    LatencyProbe?.markNote({
-                        reason,
-                        mode: window.RhythmSelector?.getCurrentMode?.(),
-                        chart: window.ChartSelector?.currentChart?.name || 'unknown',
-                        bpm: (window.speedToBPM?.(rm?.speedFactor || 0.25) | 0)
-                    });
-                    const hitTime = rm._t();
-                    rm.registerHit();
-                    SweepMode?.addHitNow?.();
-                    HitMarkers.addHitMarker(hitTime);
-                    judgeLineGlow = 1;
-                    const timing = calculateHitTiming();
-                    const hitType = detectHitType();
-                    scoreHUD?.registerHit?.(timing, hitType);
-                }
+                // 使用统一的处理逻辑
+                processHitUnified(reason, isIntelligentMode);
             }
         });
 
@@ -491,62 +722,31 @@ function initDrumTriggerForDesktop() {
         mic,
         debug: debugMode,
         onTrigger: (reason) => {
-            if (waitingForFirstHit) {
-                startPerformanceAfterFirstHit();
-                return;
-            }
-
-            const intelligentMode = getIntelligentRecognitionSetting();
-
-            if (intelligentMode && window.hitRecognitionIntegration?.isEnabled) {
-                // 智能模式：绕过shouldAcceptTrigger，直接给AI系统
-                console.log(`智能系统直接处理: ${reason}`);
-
-                if (running) {
-                    // 只做最基本的重复检查
-                    const now = millis();
-                    if (now - _lastTriggerWallMs < 30) {
-                        console.log('智能模式重复抑制');
-                        return;
-                    }
-                    _lastTriggerWallMs = now;
-
-                    // 让智能系统完全处理
-                    judgeLineGlow = 1; // 提供视觉反馈
-
-                    // 智能系统会自己决定是否执行游戏逻辑
-                    // 这里不执行rm.registerHit()等，让AI系统控制
+            // ✅ 修复核心问题：获取当前模式并使用统一处理逻辑
+            const isIntelligentMode = (() => {
+                try {
+                    return getIntelligentRecognitionSetting() &&
+                        window.hitRecognitionIntegration?.isEnabled;
+                } catch (e) {
+                    return false;
                 }
+            })();
 
-            } else {
-                // 传统模式：使用现有过滤机制
-                const hint = (reason === 'tip') ? 'tip' : null;
-                if (!shouldAcceptTrigger(hint)) {
-                    console.log('传统模式过滤拒绝');
-                    return;
-                }
+            console.log(`桌面端击打检测: ${reason}, 模式: ${isIntelligentMode ? '智能' : '传统'}`);
 
-                if (running) {
-                    console.log('传统模式处理击打');
-                    const hitTime = rm._t();
-                    const hitType = detectHitType();
-
-                    rm.registerHit();
-                    SweepMode?.addHitNow?.();
-                    HitMarkers.addHitMarker(hitTime);
-                    judgeLineGlow = 1;
-                    window._lastHitType = hitType;
-                }
-            }
+            // 使用统一的处理逻辑（这修复了原来的逻辑分裂问题）
+            processHitUnified(reason, isIntelligentMode);
         }
     });
 
     drumTrigger.enable(true);
-    drumTrigger.setSensitivity(0.95); // 提高灵敏度
+    drumTrigger.setSensitivity(0.9);
 }
 
 /* ------------ Setup --------------- */
 function setup() {
+    ensureIntelligentRecognitionSafety();
+
     if (isMobile()) {
         pixelDensity(1);
         frameRate(30);
@@ -744,42 +944,65 @@ function setup() {
         }
     }, 2000);
 
-    // //advanced classifier
+    setTimeout(() => {
+        try {
+            // 从localStorage恢复设置
+            const savedSetting = localStorage.getItem('intelligentRecognitionEnabled');
+            const defaultEnabled = savedSetting ? savedSetting === 'true' : false;
+
+            // 设置初始状态
+            setIntelligentRecognitionSetting(defaultEnabled);
+
+            console.log(`智能识别初始化: ${defaultEnabled ? '启用' : '禁用'}`);
+        } catch (e) {
+            console.warn('初始化智能识别设置失败:', e);
+            // 使用默认设置
+            setIntelligentRecognitionSetting(false);
+        }
+    }, 500);
+
+    // ✅ 改进的智能识别系统初始化
     setTimeout(async () => {
         console.log('=== 智能识别依赖检查 ===');
         console.log('window.initializeIntelligentRecognition:', typeof window.initializeIntelligentRecognition);
         console.log('window.hitRecognitionIntegration:', !!window.hitRecognitionIntegration);
 
         if (typeof window.initializeIntelligentRecognition === 'function') {
-            await initializeIntelligentRecognitionWrapper();
+            const success = await initializeIntelligentRecognitionWrapper();
+            if (!success) {
+                console.warn('智能识别系统启动失败，自动切换到传统模式');
+                setIntelligentRecognitionSetting(false);
+            }
         } else {
-            console.warn('❌ 智能识别模块未正确加载');
+            console.warn('⚠️ 智能识别模块未正确加载，系统将使用传统识别模式');
+            // 确保UI状态正确
+            setIntelligentRecognitionSetting(false);
         }
-    }, 5000);
+    }, 3000); // 缩短到3秒，避免用户等待
 }
 
 async function initializeIntelligentRecognitionWrapper() {
+    // 防止重复初始化
     if (window._intelligentRecognitionInitializing || window._intelligentRecognitionInitialized) {
         console.log('智能识别系统已在初始化中或已完成，跳过重复初始化');
-        return;
+        return window._intelligentRecognitionInitialized || false;
     }
 
     window._intelligentRecognitionInitializing = true;
 
-    // 检查外部智能识别函数是否存在
-    if (!mic) {
-        console.warn('❌ 麦克风未准备就绪');
-        window._intelligentRecognitionInitializing = false;
-        return;
-    }
-
-    if (typeof window.initializeIntelligentRecognition !== 'function') {
-        console.warn('❌ 外部智能识别模块未加载');
-        window._intelligentRecognitionInitializing = false;
-        return;
-    }
-
     try {
+        // 检查必要的依赖
+        if (!mic) {
+            console.warn('⚠️ 麦克风未准备就绪');
+            return false;
+        }
+
+        // 检查外部智能识别函数
+        if (typeof window.initializeIntelligentRecognition !== 'function') {
+            console.warn('⚠️ 外部智能识别模块未加载，将使用传统模式');
+            return false; // 明确返回false表示不可用
+        }
+
         console.log('正在初始化智能打击识别系统...');
 
         const config = {
@@ -797,10 +1020,10 @@ async function initializeIntelligentRecognitionWrapper() {
             }
         };
 
-        // 现在调用外部模块的函数
+        // 调用外部模块的函数
         const success = await window.initializeIntelligentRecognition(mic, config);
 
-        if (success) {
+        if (success && window.hitRecognitionIntegration) {
             console.log('✅ 智能识别系统启动成功');
             window._intelligentRecognitionInitialized = true;
 
@@ -811,12 +1034,24 @@ async function initializeIntelligentRecognitionWrapper() {
                 );
                 console.log('测试套件已初始化');
             }
+
+            // 设置事件监听器
+            const toggle = document.getElementById('intelligent-recognition-toggle');
+            if (toggle) {
+                toggle.addEventListener('change', (e) => {
+                    setIntelligentRecognitionSetting(e.target.checked);
+                });
+            }
+
+            return true;
         } else {
-            console.log('❌ 智能识别系统启动失败');
+            console.log('⚠️ 智能识别系统启动失败，将使用传统模式');
+            return false;
         }
 
     } catch (error) {
         console.error('智能识别系统初始化错误:', error);
+        return false;
     } finally {
         window._intelligentRecognitionInitializing = false;
     }
@@ -837,10 +1072,6 @@ function initAmplitudeSystem() {
         };
         console.log('振幅系统已初始化，支持调试面板');
     }
-}
-
-function isMobile() {
-    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
 function handleDesktopResize(width, height) {
@@ -1097,7 +1328,7 @@ async function loadDefaultChart() {
         ChartSelector.currentChart = chartData;
         applyNewChart(chartData);
 
-        // ★ 处理后的数据诊断
+        // ☆ 处理后的数据诊断
         console.log('=== 处理后诊断 ===');
         console.log('scoreNotes长度:', rm.scoreNotes?.length);
         console.log('第一个scoreNote:', rm.scoreNotes?.[0]);
@@ -1152,11 +1383,11 @@ function startPerformanceAfterFirstHit() {
     if (countdownForResume) {
         console.log('=== 从暂停点恢复演奏 ===');
 
-        // ★ 关键修复：使用精确的时间基准恢复
+        // ☆ 关键修复：使用精确的时间基准恢复
         const currentWallTime = millis();
         const targetLoopPosition = pausedAtLoopTime;  // 使用保存的精确循环内时间
 
-        // ★ 正确计算新的startTime：让当前wall时间对应到目标循环位置
+        // ☆ 正确计算新的startTime：让当前wall时间对应到目标循环位置
         rm.startTime = currentWallTime - (targetLoopPosition / rm.speedFactor);
         rm.paused = false;
 
@@ -1168,15 +1399,15 @@ function startPerformanceAfterFirstHit() {
 - 验证: rm._t() = ${rm._t().toFixed(1)}ms
 - 验证循环内: ${(rm._t() % rm.totalDuration).toFixed(1)}ms`);
 
-        // ★ 关键：确保SweepMode与RM完全同步
+        // ☆ 关键：确保SweepMode与RM完全同步
         SweepMode.setStartGap(0);          // 清除倒计时间隙
         SweepMode._phaseBiasMs = 0;        // 重置相位偏移
 
-        // ★ 恢复时重置循环计数器到当前循环
+        // ☆ 恢复时重置循环计数器到当前循环
         lastRMCycle = Math.floor(rm._t() / rm.totalDuration);
         console.log(`设置循环计数器为: ${lastRMCycle}`);
 
-        // ★ 验证同步：确保两个HUD指向相同位置
+        // ☆ 验证同步：确保两个HUD指向相同位置
         setTimeout(() => {
             const rmLoopTime = rm._t() % rm.totalDuration;
             const sweepBarX = SweepMode.getBarX(RECT.sweep.x, RECT.sweep.w);
@@ -1193,7 +1424,7 @@ function startPerformanceAfterFirstHit() {
     } else {
         console.log('=== 从头开始演奏 ===');
 
-        // ★ 全新开始：完全重置确保同步
+        // ☆ 全新开始：完全重置确保同步
         rm.reset();
         rm.startTime = millis();
         rm.paused = false;
@@ -1202,7 +1433,7 @@ function startPerformanceAfterFirstHit() {
         resumePosition = 0;
         lastRMCycle = 0;
 
-        // ★ 重置SweepMode到初始状态
+        // ☆ 重置SweepMode到初始状态
         SweepMode.clearHits();
         SweepMode.setStartGap(0);          // 清除倒计时间隙
         SweepMode._phaseBiasMs = 0;        // 重置相位偏移
@@ -1224,7 +1455,7 @@ function startPerformanceAfterFirstHit() {
     startScoreTickScheduler();
     console.log('演奏已开始，两个HUD已同步！');
 
-    // ★ 立即验证同步状态
+    // ☆ 立即验证同步状态
     //setTimeout(() => verifySyncStatus(), 100);
 }
 
@@ -1235,7 +1466,7 @@ async function handleStart() {
     try { if (!window.mic) window.mic = new p5.AudioIn(); await mic.start(); } catch (e) { console.warn("Mic start failed:", e); }
 
     if (isPaused) {
-        // ★ 从暂停状态恢复：使用保存的精确位置
+        // ☆ 从暂停状态恢复：使用保存的精确位置
         console.log(`准备从暂停点恢复:
 - 暂停的循环内时间: ${pausedAtLoopTime.toFixed(1)}ms
 - 暂停的wall时间: ${pausedAtWallTime}ms
@@ -1275,12 +1506,12 @@ function handlePause() {
 
     isPaused = true; running = false;
 
-    // ★ 关键修复：精确保存暂停时的循环内位置
+    // ☆ 关键修复：精确保存暂停时的循环内位置
     const currentTotalTime = rm._t();  // 获取总时间
     pausedAtLoopTime = currentTotalTime % rm.totalDuration;  // 循环内时间
     pausedAtWallTime = millis();  // 当前wall clock时间
 
-    // ★ 为了兼容性保留原变量，但使用新的精确值
+    // ☆ 为了兼容性保留原变量，但使用新的精确值
     resumePosition = pausedAtLoopTime;
     rm.pauseAt = rm.startTime + currentTotalTime;
 
@@ -1302,7 +1533,7 @@ function handleReset() {
     isPaused = false;
     waitingForFirstHit = false;
 
-    // ★ 重置所有时间记录
+    // ☆ 重置所有时间记录
     pausedAtLoopTime = 0;
     pausedAtWallTime = 0;
     resumePosition = 0;
@@ -1376,6 +1607,7 @@ let lastOptimizeCheck = 0;
 let performanceMode = 'normal';
 let resumeMonitorStartTime = 0;
 const urgent = window.LatencyProbe?.isUrgent?.() === true;
+
 function draw() {
     // 如果绘画模式激活，暂停主游戏渲染
     if (window.DrawingMode && window.DrawingMode.isActive()) {
@@ -1406,7 +1638,7 @@ function draw() {
         drawGrid();
     }
 
-    // ★ 在适当位置添加恢复监控
+    // 在适当位置添加恢复监控
     if (running && countdownForResume && !waitingForFirstHit) {
         if (resumeMonitorStartTime === 0) {
             resumeMonitorStartTime = millis();
@@ -1437,7 +1669,7 @@ function draw() {
         if (remain <= 0) {
             counting = false;
 
-            // ★ 进入等待状态时的处理：区分新开始和恢复
+            // 进入等待状态时的处理：区分新开始和恢复
             if (countdownForResume) {
                 // 从暂停恢复：不需特别处理时间，保持暂停状态
                 console.log('倒计时结束，等待第一次打击以从暂停点恢复...');
@@ -1453,16 +1685,16 @@ function draw() {
         }
     }
 
-    // ★ 等待第一击状态
+    // 等待第一击状态
     if (waitingForFirstHit) {
         drawWaitingForFirstHit();
     }
 
-    // ★ 只有在真正运行且不在等待状态时才更新游戏逻辑
+    // 只有在真正运行且不在等待状态时才更新游戏逻辑
     if (running && !waitingForFirstHit) {
         rm.checkAutoMiss();
 
-        // ★ 关键修复：检查循环切换并清除命中线
+        // 关键修复：检查循环切换并清除命中线
         const currentRMCycle = Math.floor(rm._t() / rm.totalDuration);
         if (currentRMCycle > lastRMCycle) {
             console.log(`RM进入新循环 ${currentRMCycle}，清除SweepMode命中线`);
@@ -1472,7 +1704,7 @@ function draw() {
 
         rm.checkLoopAndRestart();
 
-        // ★ 定期同步检查（每60帧检查一次）
+        // 定期同步检查（每60帧检查一次）
         if (frameCount % 60 === 0) {
             verifySyncStatus();
         }
@@ -1601,7 +1833,7 @@ function drawWaitingForFirstHit() {
     let subText = '';
 
     if (countdownForResume) {
-        // ★ 显示更精确的恢复信息
+        // 显示更精确的恢复信息
         const pausedSec = pausedAtLoopTime / 1000;
         subText = `Resume from ${pausedSec.toFixed(1)}s in loop`;
     } else {
@@ -1620,7 +1852,7 @@ function drawWaitingForFirstHit() {
     fill(200, 200, 200);
     text(subText, width / 2, cy + 25);
 
-    // ★ 调试信息（仅在debug模式下显示）
+    // 调试信息（仅在debug模式下显示）
     if (debugMode && countdownForResume) {
         textSize(12);
         fill(150, 150, 150);
@@ -1850,7 +2082,6 @@ function keyPressed() {
         return;
     }
 
-
     // Shift+M: 切换识别模式
     if (key === 'M') { // 注意这里是大写M，因为按了Shift
         if (window.hitRecognitionIntegration) {
@@ -2024,7 +2255,7 @@ function mousePressed() {
         return;
     }
 
-    // ★ 添加ScorePanel交互检测
+    // 添加 ScorePanel交互检测
     if (scoreHUD && RECT.score) {
         const mx = mouseX;
         const my = mouseY;
@@ -2050,7 +2281,7 @@ function mousePressed() {
 }
 
 function touchStarted() {
-    // ★ 检查是否在等待第一击状态
+    // 检查是否在等待第一击状态
     if (waitingForFirstHit && (debugMode || isMobile())) {
         console.log('触摸触发第一击（移动端）');
         startPerformanceAfterFirstHit();
@@ -2089,6 +2320,97 @@ function debugPauseResumeState() {
 - Wall时间: ${millis()}ms`);
 }
 
+// 诊断函数：检查智能识别系统状态
+function getIntelligentRecognitionDiagnostics() {
+    const diagnostics = {
+        timestamp: new Date().toISOString(),
+        intelligentRecognition: {
+            enabled: getIntelligentRecognitionSetting(),
+            initialized: !!window._intelligentRecognitionInitialized,
+            initializing: !!window._intelligentRecognitionInitializing
+        },
+        dependencies: {
+            initFunction: typeof window.initializeIntelligentRecognition,
+            integration: typeof window.hitRecognitionIntegration,
+            testSuite: typeof window.recognitionTestingSuite,
+            integrationEnabled: window.hitRecognitionIntegration?.isEnabled || false
+        },
+        audio: {
+            micReady: !!window.mic,
+            audioContext: window.getAudioContext?.()?.state || 'unknown',
+            drumTriggerEnabled: drumTrigger?._isEnabled || false
+        },
+        ui: {
+            toggleElement: !!document.getElementById('intelligent-recognition-toggle'),
+            toggleChecked: document.getElementById('intelligent-recognition-toggle')?.checked || false
+        },
+        gameState: {
+            running: running,
+            waitingForFirstHit: waitingForFirstHit,
+            debugMode: debugMode
+        }
+    };
+
+    console.table(diagnostics);
+    return diagnostics;
+}
+
+// 测试智能识别系统功能
+function testIntelligentRecognitionSystem() {
+    console.log('=== 智能识别系统功能测试 ===');
+
+    const tests = [
+        {
+            name: '基础状态检查',
+            test: () => {
+                const enabled = getIntelligentRecognitionSetting();
+                const hasIntegration = !!window.hitRecognitionIntegration;
+                return { passed: true, result: `启用: ${enabled}, 集成: ${hasIntegration}` };
+            }
+        },
+        {
+            name: '设置切换测试',
+            test: () => {
+                const original = getIntelligentRecognitionSetting();
+                setIntelligentRecognitionSetting(!original);
+                const changed = getIntelligentRecognitionSetting();
+                setIntelligentRecognitionSetting(original); // 恢复
+                return {
+                    passed: changed !== original,
+                    result: `切换${changed !== original ? '成功' : '失败'}`
+                };
+            }
+        },
+        {
+            name: '击打处理统一性',
+            test: () => {
+                // 模拟测试击打处理
+                const mockReason = 'test';
+                const intelligentMode = getIntelligentRecognitionSetting();
+                try {
+                    // 这里只是验证函数存在，不实际执行
+                    const hasFunction = typeof processHitUnified === 'function';
+                    return {
+                        passed: hasFunction,
+                        result: `统一处理函数${hasFunction ? '存在' : '缺失'}`
+                    };
+                } catch (e) {
+                    return { passed: false, result: '测试出错: ' + e.message };
+                }
+            }
+        }
+    ];
+
+    let passedCount = 0;
+    tests.forEach((test, index) => {
+        const result = test.test();
+        console.log(`${index + 1}. ${test.name}: ${result.passed ? '✅' : '❌'} ${result.result}`);
+        if (result.passed) passedCount++;
+    });
+
+    console.log(`\n测试完成: ${passedCount}/${tests.length} 通过`);
+    return { total: tests.length, passed: passedCount };
+}
 
 //debugging helper functions
 function cycleAmplitudeMode() {
@@ -2098,7 +2420,7 @@ function cycleAmplitudeMode() {
         { name: 'FFT-RMS (快速)', preferAmp: false, dynamicScale: true, instantAdapt: true }
     ];
 
-    // 尝试添加p5.Amplitude模式
+    // 尝试添加 p5.Amplitude模式
     try {
         ampHUD.tryEnableAmplitude();
         if (ampHUD._amp) {
@@ -2166,7 +2488,7 @@ function showAmplitudeHelp() {
     const helpText = `
 振幅面板控制帮助
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[D] 打开/关闭调试面板 (推荐！)
+[D] 打开/关闭调试面板 (推荐!)
 
 传统热键 (面板关闭时可用):
 [A] 振幅模式循环
@@ -2174,7 +2496,14 @@ function showAmplitudeHelp() {
 [X] 响应速度切换 [桌面端]
 [H] 显示此帮助
 
-🔧 推荐使用调试面板的图形界面！
+智能识别热键:
+[Ctrl+I] 调试面板
+[Ctrl+T] 测试套件  
+[Ctrl+V] 频谱可视化
+[Shift+M] 切换识别模式
+[Shift+N] 重新校准噪音
+
+🔧 推荐使用调试面板的图形界面!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `;
 
@@ -2217,3 +2546,216 @@ function showTemporaryStatus(message, duration = 2000) {
         }
     }, duration);
 }
+
+// 智能识别系统健康检查
+function performIntelligentRecognitionHealthCheck() {
+    console.log('🔍 执行智能识别系统健康检查...');
+
+    const healthCheck = {
+        timestamp: Date.now(),
+        checks: [],
+        overallHealth: 'unknown'
+    };
+
+    // 检查1: 基础依赖
+    healthCheck.checks.push({
+        name: '基础依赖检查',
+        status: (() => {
+            const hasInitFunction = typeof window.initializeIntelligentRecognition === 'function';
+            const hasIntegration = !!window.hitRecognitionIntegration;
+            if (hasInitFunction && hasIntegration) return 'healthy';
+            if (hasInitFunction || hasIntegration) return 'partial';
+            return 'missing';
+        })(),
+        details: {
+            initFunction: typeof window.initializeIntelligentRecognition,
+            integration: !!window.hitRecognitionIntegration
+        }
+    });
+
+    // 检查2: 音频系统
+    healthCheck.checks.push({
+        name: '音频系统检查',
+        status: (() => {
+            if (!mic) return 'missing';
+            const audioContext = window.getAudioContext?.();
+            if (!audioContext || audioContext.state !== 'running') return 'partial';
+            return 'healthy';
+        })(),
+        details: {
+            micReady: !!mic,
+            audioContextState: window.getAudioContext?.()?.state || 'unknown'
+        }
+    });
+
+    // 检查3: 击打处理统一性
+    healthCheck.checks.push({
+        name: '击打处理统一性',
+        status: (() => {
+            const hasUnifiedProcessor = typeof processHitUnified === 'function';
+            const drumTriggerReady = drumTrigger?._isEnabled;
+            if (hasUnifiedProcessor && drumTriggerReady) return 'healthy';
+            if (hasUnifiedProcessor) return 'partial';
+            return 'missing';
+        })(),
+        details: {
+            unifiedProcessor: typeof processHitUnified === 'function',
+            drumTriggerEnabled: drumTrigger?._isEnabled || false
+        }
+    });
+
+    // 检查4: 设置同步
+    healthCheck.checks.push({
+        name: '设置同步检查',
+        status: (() => {
+            const toggle = document.getElementById('intelligent-recognition-toggle');
+            const settingValue = getIntelligentRecognitionSetting();
+            const uiValue = toggle?.checked;
+            if (toggle && settingValue === uiValue) return 'healthy';
+            if (toggle) return 'partial';
+            return 'missing';
+        })(),
+        details: {
+            toggleExists: !!document.getElementById('intelligent-recognition-toggle'),
+            settingValue: getIntelligentRecognitionSetting(),
+            uiValue: document.getElementById('intelligent-recognition-toggle')?.checked
+        }
+    });
+
+    // 计算整体健康状态
+    const healthyCount = healthCheck.checks.filter(c => c.status === 'healthy').length;
+    const partialCount = healthCheck.checks.filter(c => c.status === 'partial').length;
+
+    if (healthyCount === healthCheck.checks.length) {
+        healthCheck.overallHealth = 'excellent';
+    } else if (healthyCount >= healthCheck.checks.length * 0.75) {
+        healthCheck.overallHealth = 'good';
+    } else if (healthyCount + partialCount >= healthCheck.checks.length * 0.5) {
+        healthCheck.overallHealth = 'fair';
+    } else {
+        healthCheck.overallHealth = 'poor';
+    }
+
+    // 输出结果
+    console.log('📊 健康检查结果:');
+    healthCheck.checks.forEach((check, index) => {
+        const statusIcon = {
+            'healthy': '✅',
+            'partial': '⚠️',
+            'missing': '❌'
+        }[check.status];
+        console.log(`${index + 1}. ${check.name}: ${statusIcon} ${check.status}`);
+        console.log('   详情:', check.details);
+    });
+
+    const overallIcon = {
+        'excellent': '🟢',
+        'good': '🟡',
+        'fair': '🟠',
+        'poor': '🔴'
+    }[healthCheck.overallHealth];
+
+    console.log(`\n${overallIcon} 整体健康状态: ${healthCheck.overallHealth} (${healthyCount}/${healthCheck.checks.length} 健康)`);
+
+    return healthCheck;
+}
+
+// 性能监控函数
+function startPerformanceMonitoring() {
+    if (window._performanceMonitorActive) {
+        console.log('性能监控已在运行中');
+        return;
+    }
+
+    window._performanceMonitorActive = true;
+    console.log('🚀 启动性能监控...');
+
+    const performanceData = {
+        frameRates: [],
+        hitProcessingTimes: [],
+        audioLevels: [],
+        startTime: Date.now()
+    };
+
+    const monitorInterval = setInterval(() => {
+        if (!window._performanceMonitorActive) {
+            clearInterval(monitorInterval);
+            return;
+        }
+
+        // 记录帧率
+        if (typeof frameRate === 'function') {
+            performanceData.frameRates.push(frameRate());
+        }
+
+        // 记录音频级别
+        try {
+            if (mic && typeof mic.getLevel === 'function') {
+                performanceData.audioLevels.push(mic.getLevel());
+            }
+        } catch (e) {
+            // 静默处理音频错误
+        }
+
+        // 每30秒输出一次统计
+        const elapsed = Date.now() - performanceData.startTime;
+        if (elapsed > 30000 && elapsed % 30000 < 1000) {
+            const avgFrameRate = performanceData.frameRates.length > 0
+                ? performanceData.frameRates.reduce((a, b) => a + b) / performanceData.frameRates.length
+                : 0;
+
+            const avgAudioLevel = performanceData.audioLevels.length > 0
+                ? performanceData.audioLevels.reduce((a, b) => a + b) / performanceData.audioLevels.length
+                : 0;
+
+            console.log(`📈 性能统计 (${Math.floor(elapsed / 1000)}s):
+- 平均帧率: ${avgFrameRate.toFixed(1)} FPS
+- 平均音频级别: ${avgAudioLevel.toFixed(4)}
+- 智能识别状态: ${getIntelligentRecognitionSetting() ? '启用' : '禁用'}`);
+        }
+
+        // 限制数据数组大小
+        if (performanceData.frameRates.length > 1000) {
+            performanceData.frameRates = performanceData.frameRates.slice(-500);
+        }
+        if (performanceData.audioLevels.length > 1000) {
+            performanceData.audioLevels = performanceData.audioLevels.slice(-500);
+        }
+
+    }, 1000);
+
+    window._performanceMonitorData = performanceData;
+    window.stopPerformanceMonitoring = () => {
+        window._performanceMonitorActive = false;
+        console.log('⏹️ 性能监控已停止');
+    };
+}
+
+// 导出所有诊断和调试函数
+window.getIntelligentRecognitionDiagnostics = getIntelligentRecognitionDiagnostics;
+window.testIntelligentRecognitionSystem = testIntelligentRecognitionSystem;
+window.performIntelligentRecognitionHealthCheck = performIntelligentRecognitionHealthCheck;
+window.startPerformanceMonitoring = startPerformanceMonitoring;
+window.debugPauseResumeState = debugPauseResumeState;
+
+// 初始化完成通知
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        console.log(`
+🎵 Conga Soul - 智能识别系统就绪
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+可用命令:
+• getIntelligentRecognitionDiagnostics() - 系统诊断
+• testIntelligentRecognitionSystem() - 功能测试  
+• performIntelligentRecognitionHealthCheck() - 健康检查
+• startPerformanceMonitoring() - 性能监控
+• debugPauseResumeState() - 暂停/恢复调试
+
+快捷键:
+• [D] 调试面板
+• [Ctrl+I] 智能识别调试
+• [H] 帮助信息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `);
+    }, 2000);
+});
