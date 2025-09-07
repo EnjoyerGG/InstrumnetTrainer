@@ -387,48 +387,121 @@ let _lastTriggerWallMs = 0;
 function shouldAcceptTrigger(kindHint = null) {
     const now = millis();
 
-    // 1) 硬性不可重复期
-    if (now - _lastTriggerWallMs < TRIG_REFRACTORY_MS) {
-        window.__GateLastReason = 'refractory';
-        return false;
-    }
+    // ★ 检查当前是否在智能识别模式
+    const isIntelligentMode = window.hitRecognitionIntegration?.isEnabled &&
+        window.hitRecognitionIntegration?.processingMode === 'intelligent';
 
-    // 2) 电平门限
-    let lvl = 0;
-    try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
-    if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') {
-        window.__GateLastReason = `level<${TRIG_MIN_LEVEL.toFixed(2)} (lvl=${lvl.toFixed(3)})`;
-        return false;
-    }
+    if (isIntelligentMode) {
+        // =================================================================
+        // 智能模式：宽松收集策略 - 只做最基础的防抖和噪音过滤
+        // =================================================================
 
-    // 3) 频谱特征（抑制同一击的低频余振二次触发）
-    try {
-        const fft = drumTrigger?._fft;
-        if (fft) {
-            const spec = fft.analyze();
-            const N = spec.length, nyq = sampleRate() / 2;
-            const idx = hz => Math.max(0, Math.min(N - 1, Math.round(hz / (nyq / N))));
-            const low = avg(spec, idx(40), idx(180));
-            const mid = avg(spec, idx(180), idx(800));
-            const high = avg(spec, idx(1000), idx(4000));
-            const total = low + mid + high;
-            if (total < 50 && kindHint !== 'tip') {
-                window.__GateLastReason = 'totalEnergy<50';
-                return false;
-            }
-            const midHighFrac = (mid + high) / Math.max(1, total);
-            if (kindHint !== 'tip' && midHighFrac < 0.15) {
-                window.__GateLastReason = `midHighFrac<0.15 (=${midHighFrac.toFixed(2)})`;
-                return false;
-            }
+        // 1) 基础防抖（缩短到更合理的时间）
+        const minInterval = 60; // 从140ms大幅缩短到60ms
+        if (now - _lastTriggerWallMs < minInterval) {
+            window.__GateLastReason = 'smart_refractory_60ms';
+            return false;
         }
-    } catch (_) { }
 
-    window.__GateLastReason = 'ok';
-    _lastTriggerWallMs = now;
-    return true;
+        // 2) 基础音量门限（大幅降低要求）
+        let lvl = 0;
+        try {
+            if (mic?.getLevel) lvl = mic.getLevel();
+        } catch (_) { }
 
-    function avg(arr, a, b) { let s = 0, c = 0; for (let i = a; i <= b; i++) { s += arr[i] || 0; c++; } return c ? s / c : 0; }
+        const relaxedMinLevel = 0.002; // 从0.006降低到0.002
+        if (lvl < relaxedMinLevel) {
+            window.__GateLastReason = `smart_level<${relaxedMinLevel.toFixed(3)} (lvl=${lvl.toFixed(4)})`;
+            return false;
+        }
+
+        // 3) 简化的能量检查（替代复杂的频谱分析）
+        try {
+            const fft = drumTrigger?._fft;
+            if (fft) {
+                const spec = fft.analyze();
+                const totalEnergy = spec.reduce((sum, val) => sum + val, 0) / spec.length;
+
+                // 智能模式下只需要很低的总能量阈值
+                if (totalEnergy < 15) { // 从50降低到15
+                    window.__GateLastReason = `smart_totalEnergy<15 (=${totalEnergy.toFixed(1)})`;
+                    return false;
+                }
+            }
+        } catch (_) {
+            // FFT失败不阻止触发，让智能识别系统处理
+        }
+
+        // 4) 智能模式成功通过基础门控
+        window.__GateLastReason = 'smart_mode_accepted';
+        _lastTriggerWallMs = now;
+
+        // ★ 记录调试统计
+        if (window.__HitDebug) {
+            window.__HitDebug.smartModeAccepted = (window.__HitDebug.smartModeAccepted || 0) + 1;
+            window.__HitDebug.lastSource = 'SMART_GATE';
+            window.__HitDebug.lastReason = 'relaxed_collection';
+        }
+
+        return true;
+
+    } else {
+        // =================================================================
+        // 传统模式：保持原有的严格筛选逻辑（保证兼容性）
+        // =================================================================
+
+        // 1) 硬性不可重复期
+        if (now - _lastTriggerWallMs < TRIG_REFRACTORY_MS) {
+            window.__GateLastReason = 'classic_refractory';
+            return false;
+        }
+
+        // 2) 电平门限
+        let lvl = 0;
+        try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
+        if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') {
+            window.__GateLastReason = `classic_level<${TRIG_MIN_LEVEL.toFixed(3)} (lvl=${lvl.toFixed(4)})`;
+            return false;
+        }
+
+        // 3) 频谱特征检查（保持原有逻辑）
+        try {
+            const fft = drumTrigger?._fft;
+            if (fft) {
+                const spec = fft.analyze();
+                const N = spec.length, nyq = sampleRate() / 2;
+                const idx = hz => Math.max(0, Math.min(N - 1, Math.round(hz / (nyq / N))));
+                const low = avg(spec, idx(40), idx(180));
+                const mid = avg(spec, idx(180), idx(800));
+                const high = avg(spec, idx(1000), idx(4000));
+                const total = low + mid + high;
+
+                if (total < 50 && kindHint !== 'tip') {
+                    window.__GateLastReason = 'classic_totalEnergy<50';
+                    return false;
+                }
+
+                const midHighFrac = (mid + high) / Math.max(1, total);
+                if (kindHint !== 'tip' && midHighFrac < 0.15) {
+                    window.__GateLastReason = `classic_midHighFrac<0.15 (=${midHighFrac.toFixed(2)})`;
+                    return false;
+                }
+            }
+        } catch (_) { }
+
+        window.__GateLastReason = 'classic_mode_ok';
+        _lastTriggerWallMs = now;
+        return true;
+    }
+
+    function avg(arr, a, b) {
+        let s = 0, c = 0;
+        for (let i = a; i <= b; i++) {
+            s += arr[i] || 0;
+            c++;
+        }
+        return c ? s / c : 0;
+    }
 }
 
 function initDrumTriggerForMobile() {

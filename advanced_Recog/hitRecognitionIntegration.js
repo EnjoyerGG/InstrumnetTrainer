@@ -39,6 +39,24 @@ class HitRecognitionIntegration {
         this.originalTriggerHandler = null;
         this.recognitionCallbacks = new Set();
 
+        // 质量评估相关
+        this.qualityThresholds = {
+            bass: 0.35,
+            open: 0.45,
+            tip: 0.40,
+            slap: 0.50
+        };
+
+        this.qualityStats = {
+            totalProcessed: 0,
+            qualityDistribution: {
+                excellent: 0,
+                good: 0,
+                fair: 0,
+                poor: 0
+            }
+        };
+
         console.log('打击识别集成模块已创建');
     }
 
@@ -156,26 +174,273 @@ class HitRecognitionIntegration {
      * 处理智能识别结果
      */
     processIntelligentResult(result) {
-        const typeMin = { bass: 0.35, open: 0.45, tip: 0.40, slap: 0.50 };
-        const minC = typeMin[result.type] ?? 0.45;
+        // 1) 动态置信度阈值（根据打击类型调整）
+        const minConfidence = this.qualityThresholds[result.type] || 0.45;
 
-        if (result.confidence < minC) {
-            this.performanceMonitor.errorCount++;
-            if (typeof window !== 'undefined') {
-                window.__HitDebug = window.__HitDebug || {};
-                window.__HitDebug.aiLowConfidence = (window.__HitDebug.aiLowConfidence || 0) + 1;
+        // 2) 质量评估算法
+        const qualityScore = this.calculateHitQuality(result);
+        const finalConfidence = result.confidence * qualityScore.multiplier;
+
+        console.log(`智能评估: ${result.type}, 原始置信度: ${(result.confidence * 100).toFixed(1)}%, 质量分: ${qualityScore.score.toFixed(2)}, 最终: ${(finalConfidence * 100).toFixed(1)}%`);
+
+        // 更新统计
+        this.qualityStats.totalProcessed++;
+        this.qualityStats.qualityDistribution[qualityScore.grade]++;
+
+        // 3) 质量分级判定
+        if (finalConfidence < minConfidence) {
+            // 低质量击打 - 记录但不触发游戏事件
+            if (window.__HitDebug) {
+                window.__HitDebug.aiLowQuality = (window.__HitDebug.aiLowQuality || 0) + 1;
                 window.__HitDebug.lastSource = 'AI';
-                window.__HitDebug.lastReason = `lowConfidence(${(result.confidence * 100).toFixed(1)}%)`;
+                window.__HitDebug.lastReason = `lowQuality(${(finalConfidence * 100).toFixed(1)}%<${(minConfidence * 100).toFixed(1)}%)`;
             }
+
+            // 显示低质量击打的视觉反馈
+            this.showQualityFeedback('low', result.type, finalConfidence);
             return;
         }
 
-        // 触发游戏事件
-        this.triggerGameEvent(result.type, result);
+        // 4) 高质量击打 - 触发游戏事件
+        this.triggerGameEventWithQuality(result.type, result, qualityScore, finalConfidence);
 
-        // 更新性能统计
-        this.performanceMonitor.successRate =
-            (this.performanceMonitor.successRate * 0.9) + (result.confidence * 0.1);
+        // 5) 更新界面显示
+        this.updateScorePanelWithRecognition(result.type, qualityScore, finalConfidence);
+    }
+
+    /**
+     * 计算击打质量分数
+     */
+    calculateHitQuality(result) {
+        let score = 0;
+        let factors = [];
+
+        // 1) 基础置信度权重 (40%)
+        const confidenceScore = result.confidence * 0.4;
+        score += confidenceScore;
+        factors.push(`conf:${(confidenceScore * 100).toFixed(1)}%`);
+
+        // 2) 频谱特征匹配度 (30%)
+        if (result.features && result.features.energyDistribution) {
+            const spectralScore = this.evaluateSpectralMatch(result.type, result.features) * 0.3;
+            score += spectralScore;
+            factors.push(`spec:${(spectralScore * 100).toFixed(1)}%`);
+        }
+
+        // 3) 时域特征评估 (20%)
+        if (result.features && result.features.attackFeatures) {
+            const temporalScore = this.evaluateTemporalFeatures(result.type, result.features) * 0.2;
+            score += temporalScore;
+            factors.push(`temp:${(temporalScore * 100).toFixed(1)}%`);
+        }
+
+        // 4) 上下文一致性 (10%)
+        const contextScore = this.evaluateContextConsistency(result.type) * 0.1;
+        score += contextScore;
+        factors.push(`ctx:${(contextScore * 100).toFixed(1)}%`);
+
+        // 计算质量等级
+        let grade = 'poor';
+        let multiplier = 0.8;
+
+        if (score >= 0.85) {
+            grade = 'excellent';
+            multiplier = 1.2;
+        } else if (score >= 0.70) {
+            grade = 'good';
+            multiplier = 1.0;
+        } else if (score >= 0.55) {
+            grade = 'fair';
+            multiplier = 0.9;
+        }
+
+        return {
+            score: score,
+            grade: grade,
+            multiplier: multiplier,
+            factors: factors.join(', ')
+        };
+    }
+
+    /**
+     * 评估频谱匹配度
+     */
+    evaluateSpectralMatch(hitType, features) {
+        // 基于预定义的理想频谱分布进行匹配
+        const idealDistributions = {
+            bass: [0.7, 0.25, 0.05],    // 低频主导
+            open: [0.4, 0.4, 0.2],      // 平衡分布
+            slap: [0.2, 0.3, 0.5],      // 高频突出
+            tip: [0.3, 0.5, 0.2]        // 中频为主
+        };
+
+        const ideal = idealDistributions[hitType] || [0.33, 0.33, 0.34];
+        const actual = features.energyDistribution || [0.33, 0.33, 0.34];
+
+        // 计算分布相似度
+        let similarity = 0;
+        for (let i = 0; i < 3; i++) {
+            similarity += 1 - Math.abs(ideal[i] - actual[i]);
+        }
+
+        return Math.max(0, similarity / 3);
+    }
+
+    /**
+     * 评估时域特征
+     */
+    evaluateTemporalFeatures(hitType, features) {
+        const attack = features.attackFeatures;
+        if (!attack) return 0.5; // 默认中等分数
+
+        // 不同打击类型的理想攻击特征
+        const idealAttacks = {
+            slap: { riseTime: [5, 15], sustainRatio: [0.1, 0.3] },
+            bass: { riseTime: [15, 40], sustainRatio: [0.6, 0.9] },
+            open: { riseTime: [10, 30], sustainRatio: [0.4, 0.7] },
+            tip: { riseTime: [8, 25], sustainRatio: [0.3, 0.5] }
+        };
+
+        const ideal = idealAttacks[hitType] || idealAttacks.open;
+
+        // 评估上升时间匹配度
+        const riseScore = (attack.riseTime >= ideal.riseTime[0] && attack.riseTime <= ideal.riseTime[1]) ? 1.0 : 0.3;
+
+        // 评估持续比匹配度
+        const sustainScore = (attack.sustainRatio >= ideal.sustainRatio[0] && attack.sustainRatio <= ideal.sustainRatio[1]) ? 1.0 : 0.3;
+
+        return (riseScore + sustainScore) / 2;
+    }
+
+    /**
+     * 评估上下文一致性
+     */
+    evaluateContextConsistency(hitType) {
+        // 基于最近的识别历史评估一致性
+        if (!this.resultBuffer.recent || this.resultBuffer.recent.length < 3) {
+            return 0.5; // 历史不足，给中等分数
+        }
+
+        const recentTypes = this.resultBuffer.recent.slice(-5).map(r => r.type);
+        const typeFreq = {};
+        recentTypes.forEach(type => {
+            typeFreq[type] = (typeFreq[type] || 0) + 1;
+        });
+
+        // 如果当前类型在最近历史中出现，给予额外分数
+        const consistency = (typeFreq[hitType] || 0) / recentTypes.length;
+        return Math.min(1.0, 0.5 + consistency * 0.5);
+    }
+
+    /**
+     * 显示质量反馈
+     */
+    showQualityFeedback(quality, hitType, confidence) {
+        // 在界面上显示质量反馈
+        if (window.scorePanelInterface && window.scorePanelInterface.showTempFeedback) {
+            const feedbackText = `${hitType.toUpperCase()} (${(confidence * 100).toFixed(0)}%)`;
+            window.scorePanelInterface.showTempFeedback(feedbackText, quality);
+        }
+    }
+
+    /**
+     * 带质量信息的游戏事件触发
+     */
+    triggerGameEventWithQuality(hitType, recognitionData, qualityScore, finalConfidence) {
+        try {
+            // 检查是否在等待第一击状态
+            if (window.waitingForFirstHit) {
+                window.startPerformanceAfterFirstHit();
+                return;
+            }
+
+            // 检查触发条件（高置信度可以绕过部分检查）
+            const highConf = finalConfidence >= 0.80;
+            if (!highConf && !window.shouldAcceptTrigger(hitType)) {
+                if (window.__HitDebug) {
+                    window.__HitDebug.aiRejectedByGate = (window.__HitDebug.aiRejectedByGate || 0) + 1;
+                    window.__HitDebug.lastSource = 'AI';
+                    window.__HitDebug.lastReason = window.__GateLastReason || 'gate';
+                }
+                return;
+            }
+
+            if (window.__HitDebug) {
+                window.__HitDebug.aiAccepted = (window.__HitDebug.aiAccepted || 0) + 1;
+                window.__HitDebug.lastSource = 'AI';
+                window.__HitDebug.lastReason = `${qualityScore.grade}_quality`;
+
+                // 更新质量统计到全局调试对象
+                if (!window.__HitDebug.qualityDistribution) {
+                    window.__HitDebug.qualityDistribution = { excellent: 0, good: 0, fair: 0, poor: 0 };
+                }
+                window.__HitDebug.qualityDistribution[qualityScore.grade]++;
+            }
+
+            // 如果游戏正在运行
+            if (window.running && window.rm) {
+                // 记录延迟分析
+                if (window.LatencyProbe) {
+                    window.LatencyProbe.markNote({
+                        reason: hitType,
+                        mode: window.RhythmSelector?.getCurrentMode?.(),
+                        chart: window.ChartSelector?.currentChart?.name || 'unknown',
+                        bpm: (window.speedToBPM?.(window.rm?.speedFactor || 0.25) | 0),
+                        confidence: finalConfidence,
+                        quality: qualityScore.grade,
+                        processingTime: recognitionData.processingTime
+                    });
+                }
+
+                const hitTime = window.rm._t();
+
+                // 调用游戏的击打注册
+                window.rm.registerHit(hitType);
+
+                // 添加视觉效果
+                if (window.SweepMode?.addHitNow) {
+                    window.SweepMode.addHitNow();
+                }
+
+                if (window.HitMarkers?.addHitMarker) {
+                    window.HitMarkers.addHitMarker(hitTime);
+                }
+
+                // 设置发光效果（根据质量调整强度）
+                if (typeof window.judgeLineGlow !== 'undefined') {
+                    window.judgeLineGlow = qualityScore.grade === 'excellent' ? 1.5 : 1.0;
+                }
+
+                // 记录最后击打类型
+                window._lastHitType = hitType;
+
+                console.log(`高质量击打: ${hitType} (${qualityScore.grade}, ${(finalConfidence * 100).toFixed(1)}%)`);
+            }
+
+        } catch (error) {
+            console.error('触发游戏事件失败:', error);
+            this.performanceMonitor.errorCount++;
+
+            // 回退到简单模式
+            if (this.fallbackToSimple) {
+                this.triggerSimpleEvent();
+            }
+        }
+    }
+
+    /**
+     * 更新ScorePanel的识别显示
+     */
+    updateScorePanelWithRecognition(hitType, qualityScore, finalConfidence) {
+        // 将识别结果和质量信息传递给ScorePanel
+        if (window.scorePanelInterface && window.scorePanelInterface.updateRecognitionDisplay) {
+            window.scorePanelInterface.updateRecognitionDisplay({
+                type: hitType,
+                quality: qualityScore.grade,
+                confidence: finalConfidence,
+                factors: qualityScore.factors
+            });
+        }
     }
 
     /**
@@ -452,7 +717,8 @@ class HitRecognitionIntegration {
             performance: this.performanceMonitor,
             consistency: this.resultBuffer.consistency,
             recognitionStats: this.recognitionSystem?.getPerformanceStats(),
-            noiseStats: this.noiseProcessor?.getStatus()
+            noiseStats: this.noiseProcessor?.getStatus(),
+            qualityStats: this.qualityStats  // 新添加的行
         };
     }
 
@@ -768,4 +1034,21 @@ if (typeof window !== 'undefined') {
     window.HitRecognitionIntegration = HitRecognitionIntegration;
     window.initializeIntelligentRecognition = initializeIntelligentRecognition;
     window.hitRecognitionIntegration = hitRecognitionIntegration;
+    window.showQualityStats = showQualityStats;
+}
+
+function showQualityStats() {
+    if (window.hitRecognitionIntegration) {
+        const stats = window.hitRecognitionIntegration.qualityStats;
+        console.log(`
+=== 质量评估统计 ===
+总处理数: ${stats.totalProcessed}
+质量分布:
+  优秀: ${stats.qualityDistribution.excellent} (${(stats.qualityDistribution.excellent / stats.totalProcessed * 100).toFixed(1)}%)
+  良好: ${stats.qualityDistribution.good} (${(stats.qualityDistribution.good / stats.totalProcessed * 100).toFixed(1)}%)
+  一般: ${stats.qualityDistribution.fair} (${(stats.qualityDistribution.fair / stats.totalProcessed * 100).toFixed(1)}%)
+  较差: ${stats.qualityDistribution.poor} (${(stats.qualityDistribution.poor / stats.totalProcessed * 100).toFixed(1)}%)
+==================
+        `);
+    }
 }

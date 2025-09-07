@@ -41,6 +41,12 @@ const ScorePanel = (() => {
         tip: { icon: '👆', name: 'Tip', color: '#45b7d1' },
         bass: { icon: '👊', name: 'Bass', color: '#f39c12' }
     };
+    //智能识别显示
+    let _recognitionData = null;
+    let _recognitionTime = 0;
+    let _tempFeedback = null;
+    let _tempFeedbackTime = 0;
+
 
     // 节拍选择（AI互动模式）
     let _selectedRhythm = 0;
@@ -144,7 +150,9 @@ const ScorePanel = (() => {
             reset: () => reset(),
             setMode: (isEntertainment) => setMode(isEntertainment),
             selectRhythm: (index) => selectRhythm(index),
-            triggerBubbles: () => triggerBubbleEffect()
+            triggerBubbles: () => triggerBubbleEffect(),
+            updateRecognitionDisplay: (recognitionData) => updateRecognitionDisplay(recognitionData),
+            showTempFeedback: (text, quality) => showTempFeedback(text, quality)
         };
 
         return {
@@ -154,6 +162,27 @@ const ScorePanel = (() => {
             getScoreData: getScoreData
         };
     }
+
+    /**
+     * 更新识别显示数据
+     */
+    function updateRecognitionDisplay(data) {
+        _recognitionData = data;
+        _recognitionTime = millis();
+
+        console.log(`识别显示更新: ${data.type}, 质量: ${data.quality}, 置信度: ${(data.confidence * 100).toFixed(1)}%`);
+    }
+
+    /**
+     * 显示临时反馈
+     */
+    function showTempFeedback(text, quality) {
+        _tempFeedback = { text, quality };
+        _tempFeedbackTime = millis();
+
+        console.log(`临时反馈: ${text} (${quality})`);
+    }
+
 
     function registerHit(timing = 'good', hitType = 'unknown') {
         const now = millis();
@@ -662,32 +691,132 @@ const ScorePanel = (() => {
     }
 
     function renderCurrentHitDisplay(ctx, x, y, w, h) {
-        // 显示当前击打类型
-        if (_currentHitType && millis() - _currentHitTime < 1500) {
-            const type = _hitTypes[_currentHitType];
+        const now = millis();
 
-            // 大图标
-            ctx.fillStyle = type.color;
-            ctx.font = '28px Arial';
+        // 优先显示智能识别结果
+        if (_recognitionData && now - _recognitionTime < 2500) {
+            const data = _recognitionData;
+            const type = _hitTypes[data.type];
+            const fadeProgress = (now - _recognitionTime) / 2500;
+            const alpha = 1 - fadeProgress;
+
+            if (type) {
+                // 主图标 - 根据质量调整颜色
+                let iconColor = type.color;
+                if (data.quality === 'excellent') {
+                    iconColor = '#00ff88'; // 绿色表示优秀
+                } else if (data.quality === 'good') {
+                    iconColor = type.color; // 保持原色
+                } else if (data.quality === 'fair') {
+                    iconColor = '#ffaa00'; // 橙色表示一般
+                } else if (data.quality === 'poor') {
+                    iconColor = '#ff6b6b'; // 红色表示较差
+                }
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+
+                // 优秀质量添加发光效果
+                if (data.quality === 'excellent') {
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = iconColor;
+                }
+
+                ctx.fillStyle = iconColor;
+                ctx.font = '28px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(type.icon, x + w / 2, y + h / 2 - 5);
+
+                // 重置阴影
+                ctx.shadowBlur = 0;
+
+                // 类型名称
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 11px Arial';
+                ctx.fillText(type.name, x + w / 2, y + h / 2 + 15);
+
+                // 质量和置信度信息
+                ctx.fillStyle = '#aaa';
+                ctx.font = '9px Arial';
+                const infoText = `${data.quality.toUpperCase()} ${(data.confidence * 100).toFixed(0)}%`;
+                ctx.fillText(infoText, x + w / 2, y + h - 10);
+
+                // 在调试模式下显示更多信息
+                if (window.debugMode && data.factors) {
+                    ctx.fillStyle = '#666';
+                    ctx.font = '7px Arial';
+                    ctx.fillText(data.factors.substring(0, 20) + '...', x + w / 2, y + h - 2);
+                }
+
+                ctx.restore();
+            }
+
+        } else if (_tempFeedback && now - _tempFeedbackTime < 1200) {
+            // 显示临时反馈（低质量击打等）
+            const fadeProgress = (now - _tempFeedbackTime) / 1200;
+            const alpha = 1 - fadeProgress;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            // 根据质量类型设置颜色
+            let feedbackColor = '#ff9800'; // 默认橙色
+            if (_tempFeedback.quality === 'low') {
+                feedbackColor = '#ff6b6b'; // 红色表示低质量
+            } else if (_tempFeedback.quality === 'good') {
+                feedbackColor = '#4CAF50'; // 绿色表示好
+            }
+
+            ctx.fillStyle = feedbackColor;
+            ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(type.icon, x + w / 2, y + h / 2 + 5);
+            ctx.fillText(_tempFeedback.text, x + w / 2, y + h / 2);
 
-            // 名称
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText(type.name, x + w / 2, y + h - 15);
+            // 添加质量标识
+            ctx.fillStyle = '#999';
+            ctx.font = '8px Arial';
+            ctx.fillText(`(${_tempFeedback.quality})`, x + w / 2, y + h / 2 + 15);
+
+            ctx.restore();
 
         } else {
-            // 待机状态
-            ctx.fillStyle = '#cbcbcbff';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Waiting...', x + w / 2, y + h / 2);
+            // 待机状态 - 显示当前模式和系统状态
+            const mode = window.hitRecognitionIntegration?.processingMode || 'classic';
+            const isEnabled = window.hitRecognitionIntegration?.isEnabled || false;
 
-            // ctx.font = '9px Arial';
-            // ctx.fillText('Waiting', x + w / 2, y + h - 15);
+            let modeText = 'Classic Mode';
+            let modeColor = '#9E9E9E';
+            let statusText = 'Waiting...';
+
+            if (isEnabled && mode === 'intelligent') {
+                modeText = 'AI Ready';
+                modeColor = '#4CAF50';
+                statusText = 'Smart Detection';
+            } else if (isEnabled && mode === 'hybrid') {
+                modeText = 'Hybrid Mode';
+                modeColor = '#FF9800';
+                statusText = 'Mixed Detection';
+            }
+
+            ctx.fillStyle = modeColor;
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(modeText, x + w / 2, y + h / 2);
+
+            ctx.fillStyle = '#666';
+            ctx.font = '9px Arial';
+            ctx.fillText(statusText, x + w / 2, y + h - 15);
+
+            // 在智能模式下显示额外状态指示
+            if (isEnabled && mode === 'intelligent') {
+                // 添加小的智能指示图标
+                ctx.fillStyle = '#4CAF50';
+                ctx.font = '12px Arial';
+                ctx.fillText('🧠', x + w / 2 + 35, y + h / 2 - 2);
+            }
         }
     }
+
 
     function renderRhythmSelector(ctx, x, y, w, h) {
         // 2×2 布局
@@ -891,7 +1020,12 @@ const ScorePanel = (() => {
             batteryCharge: _batteryCharge,
             unlockedSongs: _unlockedSongs,
             isEntertainmentMode: _isEntertainmentMode,
-            selectedRhythm: _selectedRhythm
+            selectedRhythm: _selectedRhythm,
+            recognitionMode: window.hitRecognitionIntegration?.processingMode || 'classic',
+            recognitionEnabled: window.hitRecognitionIntegration?.isEnabled || false,
+            hasActiveRecognition: _recognitionData !== null,
+            lastRecognitionType: _recognitionData?.type || null,
+            lastRecognitionQuality: _recognitionData?.quality || null
         };
     }
 
@@ -923,7 +1057,54 @@ const ScorePanel = (() => {
         _bubbles = [];
         _isBubbleActive = false;
 
+        // 重置智能识别显示数据
+        _recognitionData = null;
+        _recognitionTime = 0;
+        _tempFeedback = null;
+        _tempFeedbackTime = 0;
+
         addFloatingText('System Reset', '#4a9eff', 12);
+    }
+
+    /**
+     * 调试：获取当前识别显示状态
+     */
+    function getRecognitionDisplayStatus() {
+        return {
+            hasRecognitionData: _recognitionData !== null,
+            recognitionAge: _recognitionData ? (millis() - _recognitionTime) : null,
+            hasTempFeedback: _tempFeedback !== null,
+            tempFeedbackAge: _tempFeedback ? (millis() - _tempFeedbackTime) : null,
+            currentData: _recognitionData,
+            currentFeedback: _tempFeedback
+        };
+    }
+    /**
+     * 调试：手动触发识别显示测试
+     */
+    function testRecognitionDisplay(type = 'slap', quality = 'excellent', confidence = 0.95) {
+        updateRecognitionDisplay({
+            type: type,
+            quality: quality,
+            confidence: confidence,
+            factors: 'test:100%, demo:100%'
+        });
+        console.log(`测试识别显示: ${type} (${quality}, ${(confidence * 100).toFixed(0)}%)`);
+    }
+
+    /**
+     * 调试：手动触发临时反馈测试
+     */
+    function testTempFeedback(text = 'Test Feedback', quality = 'good') {
+        showTempFeedback(text, quality);
+        console.log(`测试临时反馈: ${text} (${quality})`);
+    }
+
+    // 将调试函数添加到全局（总是可用）
+    if (typeof window !== 'undefined') {
+        window.getRecognitionDisplayStatus = getRecognitionDisplayStatus;
+        window.testRecognitionDisplay = testRecognitionDisplay;
+        window.testTempFeedback = testTempFeedback;
     }
 
     return { init };
