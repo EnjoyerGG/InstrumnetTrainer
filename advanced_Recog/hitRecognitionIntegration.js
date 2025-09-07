@@ -157,8 +157,13 @@ class HitRecognitionIntegration {
      */
     processIntelligentResult(result) {
         if (result.confidence < 0.5) {
-            // 置信度太低，可能需要回退到简单模式
             this.performanceMonitor.errorCount++;
+            if (typeof window !== 'undefined') {
+                window.__HitDebug = window.__HitDebug || {};
+                window.__HitDebug.aiLowConfidence = (window.__HitDebug.aiLowConfidence || 0) + 1;
+                window.__HitDebug.lastSource = 'AI';
+                window.__HitDebug.lastReason = `lowConfidence(${(result.confidence * 100).toFixed(1)}%)`;
+            }
             return;
         }
 
@@ -202,7 +207,19 @@ class HitRecognitionIntegration {
 
             // 检查触发条件
             if (!window.shouldAcceptTrigger(hitType)) {
+                if (typeof window !== 'undefined') {
+                    window.__HitDebug = window.__HitDebug || {};
+                    window.__HitDebug.aiRejectedByGate = (window.__HitDebug.aiRejectedByGate || 0) + 1;
+                    window.__HitDebug.lastSource = 'AI';
+                    window.__HitDebug.lastReason = window.__GateLastReason || 'unknown';
+                }
                 return;
+            }
+            if (typeof window !== 'undefined') {
+                window.__HitDebug = window.__HitDebug || {};
+                window.__HitDebug.aiAccepted = (window.__HitDebug.aiAccepted || 0) + 1;
+                window.__HitDebug.lastSource = 'AI';
+                window.__HitDebug.lastReason = 'ok';
             }
 
             // 如果游戏正在运行

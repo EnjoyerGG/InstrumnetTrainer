@@ -20,6 +20,21 @@ window.addEventListener('mousedown', () => window.userStartAudio?.(), { once: tr
 let rm, metro, mic, fftHUD, ampHUD, drumTrigger, settingsPanel, scoreHUD;
 let running = false, counting = false;
 let debugPanel = null;
+
+// ★ 调试计数器（AI / TRG 命中与拒绝统计）
+window.__HitDebug = window.__HitDebug || {
+    aiAccepted: 0,
+    aiRejectedByGate: 0,
+    aiLowConfidence: 0,
+    trgAccepted: 0,
+    trgRejectedByGate: 0,
+    lastSource: '',
+    lastReason: ''
+};
+// shouldAcceptTrigger 内会写这个原因
+window.__GateLastReason = '';
+
+
 let ctStart = 0;
 let judgeLineGlow = 0;
 let metronomeEnabled = false;
@@ -373,12 +388,18 @@ function shouldAcceptTrigger(kindHint = null) {
     const now = millis();
 
     // 1) 硬性不可重复期
-    if (now - _lastTriggerWallMs < TRIG_REFRACTORY_MS) return false;
+    if (now - _lastTriggerWallMs < TRIG_REFRACTORY_MS) {
+        window.__GateLastReason = 'refractory';
+        return false;
+    }
 
     // 2) 电平门限
     let lvl = 0;
     try { if (mic?.getLevel) lvl = mic.getLevel(); } catch (_) { }
-    if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') return false;
+    if (lvl < TRIG_MIN_LEVEL && kindHint !== 'tip') {
+        window.__GateLastReason = `level<${TRIG_MIN_LEVEL.toFixed(3)} (lvl=${lvl.toFixed(3)})`;
+        return false;
+    }
 
     // 3) 频谱特征（抑制同一击的低频余振二次触发）
     try {
@@ -391,17 +412,19 @@ function shouldAcceptTrigger(kindHint = null) {
             const mid = avg(spec, idx(180), idx(800));
             const high = avg(spec, idx(1000), idx(4000));
             const total = low + mid + high;
-            if (total < 50 && kindHint !== 'tip') return false;
+            if (total < 50 && kindHint !== 'tip') {
+                window.__GateLastReason = 'totalEnergy<50';
+                return false;
+            }
             const midHighFrac = (mid + high) / Math.max(1, total);
-            if (kindHint === 'bass') {
-                // 放宽电平门限 & 不要求中高频比例
-                if (lvl < TRIG_MIN_LEVEL * 0.8) return false;
-            } else if (kindHint !== 'tip' && midHighFrac < 0.15) {
+            if (kindHint !== 'tip' && midHighFrac < 0.25) {
+                window.__GateLastReason = `midHighFrac<0.25 (=${midHighFrac.toFixed(2)})`;
                 return false;
             }
         }
     } catch (_) { }
 
+    window.__GateLastReason = 'ok';
     _lastTriggerWallMs = now;
     return true;
 
@@ -494,7 +517,19 @@ function initDrumTriggerForDesktop() {
                 return; // 第一击不计入游戏判定
             }
             const hint = (reason === 'tip') ? 'tip' : null;
-            if (!shouldAcceptTrigger(hint)) return;
+            if (!shouldAcceptTrigger(hint)) {
+                if (window.__HitDebug) {
+                    window.__HitDebug.trgRejectedByGate++;
+                    window.__HitDebug.lastSource = 'TRG';
+                    window.__HitDebug.lastReason = window.__GateLastReason || 'unknown';
+                }
+                return;
+            }
+            if (window.__HitDebug) {
+                window.__HitDebug.trgAccepted++;
+                window.__HitDebug.lastSource = 'TRG';
+                window.__HitDebug.lastReason = 'ok';
+            }
 
             if (running) {
                 // 如果智能识别系统已启用，让它优先处理
@@ -523,6 +558,7 @@ function initDrumTriggerForDesktop() {
                     }
 
                 }
+
                 rm.registerHit();
                 SweepMode?.addHitNow?.();
                 HitMarkers.addHitMarker(hitTime);
