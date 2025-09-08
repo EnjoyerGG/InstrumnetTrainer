@@ -433,7 +433,7 @@ class CongaHitRecognition {
             , { type: 'unknown', score: 0, factors: '' });
 
         // 设置置信度阈值
-        const minConfidence = 0.4;
+        const minConfidence = 0.2;
         if (bestMatch.score < minConfidence) {
             return {
                 type: 'ambiguous',

@@ -693,8 +693,15 @@ const ScorePanel = (() => {
     function renderCurrentHitDisplay(ctx, x, y, w, h) {
         const now = millis();
 
+        // 清空绘制区域，防止残留
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.9)'; // 与背景一致
+        ctx.fillRect(x, y, w, h);
+        ctx.restore();
+
         // 优先显示智能识别结果
         if (_recognitionData && now - _recognitionTime < 2500) {
+            // ... 智能识别显示逻辑
             const data = _recognitionData;
             const type = _hitTypes[data.type];
             const fadeProgress = (now - _recognitionTime) / 2500;
@@ -750,9 +757,8 @@ const ScorePanel = (() => {
 
                 ctx.restore();
             }
-
         } else if (_tempFeedback && now - _tempFeedbackTime < 1200) {
-            // 显示临时反馈（低质量击打等）
+            // 显示临时反馈逻辑
             const fadeProgress = (now - _tempFeedbackTime) / 1200;
             const alpha = 1 - fadeProgress;
 
@@ -778,9 +784,9 @@ const ScorePanel = (() => {
             ctx.fillText(`(${_tempFeedback.quality})`, x + w / 2, y + h / 2 + 15);
 
             ctx.restore();
-
         } else {
-            // 待机状态 - 显示当前模式和系统状态
+            // 待机状态显示
+            // 待机显示逻辑
             const mode = window.hitRecognitionIntegration?.processingMode || 'classic';
             const isEnabled = window.hitRecognitionIntegration?.isEnabled || false;
 

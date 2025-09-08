@@ -389,7 +389,8 @@ function shouldAcceptTrigger(kindHint = null) {
 
     // ★ 检查当前是否在智能识别模式
     const isIntelligentMode = window.hitRecognitionIntegration?.isEnabled &&
-        window.hitRecognitionIntegration?.processingMode === 'intelligent';
+        (window.hitRecognitionIntegration?.processingMode === 'intelligent' ||
+            window.hitRecognitionIntegration?.processingMode === 'hybrid');
 
     if (isIntelligentMode) {
         // =================================================================
