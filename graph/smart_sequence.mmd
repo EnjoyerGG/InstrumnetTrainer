@@ -1,0 +1,44 @@
+%%{init:{
+  "securityLevel":"loose",
+  "flowchart":{"htmlLabels":true,"useMaxWidth":true,"nodeSpacing":90,"rankSpacing":120},
+  "theme":"base",
+  "themeVariables":{
+    "fontFamily":"Inter, Arial, sans-serif",
+    "fontSize":"22px",
+    "fontWeight":700,
+
+    /* 节点与子图全部白底、深灰边/字色 */
+    "primaryColor":"#ffffff",
+    "primaryTextColor":"#111827",
+    "primaryBorderColor":"#9CA3AF",
+
+    /* 子图(Cluster)背景与边框 */
+    "clusterBkg":"#ffffff",
+    "clusterBorder":"#9CA3AF",
+    "clusterTextColor":"#111827"
+  }
+}}%%
+flowchart LR
+  subgraph Pipeline["Conga Hit Recognition — Pipeline"]
+    HTS["Hit-to-Start<br/>(wait for first strike)"] --> MIC["Mic Input<br/>(desktop/web audio)"]
+    MIC --> DT["DrumTrigger<br/>(short refractory, low threshold)"]
+    DT --> NR["NoiseReductionProcessor<br/>(adaptive profile, spectral subtraction, 50/60 Hz notch)"]
+    NR --> FE["Feature Extraction<br/>(attack/envelope, L/M/H energy, f0 & harmonics)"]
+    FE --> PM["Profile Matching<br/>(open / slap / bass / tip)"]
+    PM --> QG["Quality Gate<br/>(dynamic per-type thresholds)"]
+    QG -->|pass| ACC["Accept<br/>score + feedback"]
+    QG -->|fail| REJ["Reject<br/>visual hint only"]
+  end
+
+  subgraph UI["UI & Tools"]
+    HUD["HUDs: ampHUD / fftHUD<br/>(hybrid axis, overlays)"]
+    DBG["Debug Panel<br/>(modes, thresholds, telemetry)"]
+  end
+
+  FE -.-> HUD
+  QG -.-> HUD
+  DBG -.-> DT
+  DBG -.-> NR
+  DBG -.-> FE
+  DBG -.-> QG
+  DBG -.-> HUD

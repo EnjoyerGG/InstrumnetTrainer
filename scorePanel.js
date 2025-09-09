@@ -798,10 +798,10 @@ const ScorePanel = (() => {
                 modeText = 'AI Ready';
                 modeColor = '#4CAF50';
                 statusText = 'Smart Detection';
-            } else if (isEnabled && mode === 'hybrid') {
-                modeText = 'Hybrid Mode';
-                modeColor = '#FF9800';
-                statusText = 'Mixed Detection';
+            } else if (mode === 'simple') {
+                modeText = 'Simple Mode';
+                modeColor = '#2196F3';
+                statusText = 'Basic Detection';
             }
 
             ctx.fillStyle = modeColor;

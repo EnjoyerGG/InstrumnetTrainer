@@ -389,8 +389,7 @@ function shouldAcceptTrigger(kindHint = null) {
 
     // ★ 检查当前是否在智能识别模式
     const isIntelligentMode = window.hitRecognitionIntegration?.isEnabled &&
-        (window.hitRecognitionIntegration?.processingMode === 'intelligent' ||
-            window.hitRecognitionIntegration?.processingMode === 'hybrid');
+        window.hitRecognitionIntegration?.processingMode === 'intelligent'
 
     if (isIntelligentMode) {
         // =================================================================
@@ -900,6 +899,12 @@ async function initializeIntelligentRecognitionWrapper() {
         if (success) {
             console.log('✅ 智能识别系统启动成功');
             window._intelligentRecognitionInitialized = true;
+
+            // 强制设置为智能模式（禁用混合模式后的默认选择）
+            if (window.hitRecognitionIntegration?.setProcessingMode) {
+                window.hitRecognitionIntegration.setProcessingMode('intelligent');
+                console.log('🎯 默认启用智能识别模式');
+            }
 
             // 初始化其他组件...
             if (window.initializeTestingSuite && window.hitRecognitionIntegration?.recognitionSystem) {
@@ -1951,10 +1956,11 @@ function keyPressed() {
     // Shift+M: 切换识别模式
     if (key === 'M') { // 注意这里是大写M，因为按了Shift
         if (window.hitRecognitionIntegration) {
-            const modes = ['intelligent', 'hybrid', 'simple'];
+            const modes = ['intelligent', 'simple'];
             const current = window.hitRecognitionIntegration.processingMode;
             const nextIndex = (modes.indexOf(current) + 1) % modes.length;
             window.hitRecognitionIntegration.setProcessingMode(modes[nextIndex]);
+            console.log(`模式切换至: ${modes[nextIndex]}`);
         }
         return;
     }
